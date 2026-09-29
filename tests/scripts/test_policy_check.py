@@ -146,14 +146,19 @@ class TestPins:
 class TestPullRequestTitle:
     @pytest.mark.parametrize(
         "title",
-        ["ci: add the quality gate", "feat(api)!: drop legacy route", "fix: `x` overflow"],
+        [
+            "ci: add the quality gate",
+            "feat(api)!: drop legacy route",
+            "fix: `x` overflow",
+            "build(deps-dev): Bump vite from 8.3.1 to 8.3.2 in /web",
+        ],
     )
     def test_conventional_titles_pass(self, title: str) -> None:
         assert policy_check.check_pr_title(title) == []
 
     @pytest.mark.parametrize(
         "title",
-        ["Add stuff", "feat: Capitalised summary", "feature: x", "fix: " + "x" * 80],
+        ["Add stuff", "feat:missing space", "feature: x", "fix: " + "x" * 80],
     )
     def test_other_titles_are_rejected(self, title: str) -> None:
         assert len(policy_check.check_pr_title(title)) == 1

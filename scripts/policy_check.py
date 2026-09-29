@@ -66,7 +66,7 @@ USES = re.compile(r"\buses:\s*([^\s#]+)")
 GO_TOOL = re.compile(r"\bgo\s+(?:run|install)\s+[^\s@]+@(\S+)")
 PR_TITLE = re.compile(
     r"^(?:build|chore|ci|docs|feat|fix|perf|refactor|revert|test)"
-    r"(?:\([a-z0-9-]+\))?!?: [a-z0-9`].{0,70}$"
+    r"(?:\([a-z0-9-]+\))?!?: [A-Za-z0-9`].{0,70}$"
 )
 
 
@@ -248,7 +248,8 @@ def check_pr_title(title: str) -> list[Violation]:
         Violation(
             "pull request title",
             0,
-            f"{title!r} is not '<type>(<scope>)?: <lower-case summary>' within 80 characters",
+            f"{title!r} is not '<type>(<scope>)?: <summary>' "
+            "with a summary of at most 71 characters",
         )
     ]
 

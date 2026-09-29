@@ -32,6 +32,11 @@ updates:
     cooldown:
       default-days: 7
     versioning-strategy: increase
+    ignore:
+      # Type definitions track the runtime's major version (web/.nvmrc), which is
+      # upgraded deliberately, not by Dependabot.
+      - dependency-name: "@types/node"
+        update-types: ["version-update:semver-major"]
     commit-message:
       prefix: build
       include: scope
