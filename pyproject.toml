@@ -1,0 +1,170 @@
+[project]
+name = "hermes-trainer"
+version = "0.1.0"
+description = "Single-user strength-training app with a Hermes coach."
+readme = "README.md"
+requires-python = "==3.13.*"
+license = "LicenseRef-Proprietary"
+dependencies = [
+    "fastapi==0.142.0",
+]
+
+[dependency-groups]
+dev = [
+    "coverage==7.16.2",
+    "deptry==0.25.1",
+    "diff-cover==10.6.0",
+    "httpx2==2.13.1",
+    "hypothesis==6.168.3",
+    "import-linter==2.15",
+    "mutmut==3.8.0",
+    "mypy==2.3.1",
+    "pip-audit==2.10.1",
+    "pytest==9.1.1",
+    "pytest-cov==7.1.0",
+    "pytest-randomly==5.0.0",
+    "pytest-socket==0.8.1",
+    "pytest-timeout==2.4.0",
+    "ruff==0.16.9",
+    "zizmor==1.30.1",
+]
+
+[build-system]
+requires = ["hatchling==1.32.4"]
+build-backend = "hatchling.build"
+
+[tool.hatch.build.targets.wheel]
+packages = ["src/trainer"]
+
+[tool.uv]
+required-version = "==0.11.27"
+
+# ---------------------------------------------------------------- ruff
+[tool.ruff]
+target-version = "py313"
+line-length = 100
+src = ["src", "tests", "scripts"]
+
+[tool.ruff.lint]
+select = ["ALL"]
+ignore = [
+    "COM812",  # conflicts with the formatter
+    "CPY001",  # no per-file copyright headers
+    "D203",    # incompatible with D211
+    "D213",    # incompatible with D212
+]
+
+[tool.ruff.lint.per-file-ignores]
+"tests/**" = [
+    "S101",     # assert is how pytest asserts
+    "PLR2004",  # literal expectations are clearer than named constants in tests
+    "D101",     # test names are the documentation
+    "D102",
+    "D103",
+    "INP001",   # pytest runs in importlib mode; test dirs are not packages
+]
+
+[tool.ruff.lint.flake8-tidy-imports]
+ban-relative-imports = "all"
+
+[tool.ruff.lint.pydocstyle]
+convention = "google"
+
+[tool.ruff.lint.mccabe]
+max-complexity = 8
+
+[tool.ruff.lint.pylint]
+max-args = 5
+max-branches = 8
+max-returns = 4
+max-statements = 30
+
+[tool.ruff.format]
+docstring-code-format = true
+
+# ---------------------------------------------------------------- mypy
+[tool.mypy]
+python_version = "3.13"
+strict = true
+warn_unreachable = true
+disallow_any_unimported = true
+disallow_any_decorated = false
+enable_error_code = [
+    "deprecated",
+    "exhaustive-match",
+    "explicit-override",
+    "ignore-without-code",
+    "mutable-override",
+    "possibly-undefined",
+    "redundant-expr",
+    "redundant-self",
+    "truthy-bool",
+    "truthy-iterable",
+    "unimported-reveal",
+    "unused-awaitable",
+]
+files = ["src", "tests", "scripts"]
+mypy_path = "src:scripts"
+explicit_package_bases = true
+
+# ---------------------------------------------------------------- pytest
+[tool.pytest.ini_options]
+minversion = "9.0"
+testpaths = ["tests"]
+pythonpath = ["scripts"]
+addopts = [
+    "--strict-config",
+    "--strict-markers",
+    "--disable-socket",
+    "--allow-unix-socket",
+    "--import-mode=importlib",
+    "-ra",
+]
+xfail_strict = true
+filterwarnings = ["error"]
+timeout = 30
+
+# ---------------------------------------------------------------- coverage
+[tool.coverage.run]
+branch = true
+source = ["trainer"]
+
+[tool.coverage.report]
+show_missing = true
+skip_covered = true
+exclude_also = [
+    "if TYPE_CHECKING:",
+    "@overload",
+]
+
+# ---------------------------------------------------------------- mutation
+[tool.mutmut]
+source_paths = ["src/trainer/"]
+# Gate-script tests exercise scripts/, which is not mutated (or copied into mutants/).
+pytest_add_cli_args_test_selection = ["tests/", "--ignore=tests/scripts"]
+pytest_add_cli_args = ["-p", "no:randomly"]
+
+# ---------------------------------------------------------------- architecture
+[tool.importlinter]
+root_package = "trainer"
+include_external_packages = true
+
+[[tool.importlinter.contracts]]
+name = "Layered architecture"
+type = "layers"
+layers = [
+    "(trainer.api) | (trainer.mcp)",
+    "(trainer.services)",
+    "(trainer.storage)",
+    "(trainer.domain)",
+]
+
+[[tool.importlinter.contracts]]
+name = "Domain is pure"
+type = "forbidden"
+source_modules = ["trainer.domain"]
+forbidden_modules = ["fastapi", "starlette", "sqlite3", "httpx", "uvicorn", "urllib", "socket", "os", "subprocess"]
+
+# ---------------------------------------------------------------- dependencies
+[tool.deptry]
+known_first_party = ["trainer"]
