@@ -50,10 +50,38 @@ class TestText:
     def test_secrets_are_rejected(self, secret: str, label: str) -> None:
         assert messages(policy_check.check_text("a.md", secret)) == [f"likely {label}"]
 
+    @pytest.mark.parametrize(
+        ("text", "label"),
+        [
+            ("owner " + "someone" + "@gmail.com", "email address"),
+            ("host " + "pi.tail1234" + ".ts.net", "tailnet hostname"),
+            ("peer " + "100.73" + ".12.46", "Tailscale IP address"),
+        ],
+    )
+    def test_private_details_are_rejected(self, text: str, label: str) -> None:
+        assert messages(policy_check.check_text("a.md", text)) == [
+            f"private detail in a public repository: {label}"
+        ]
+
+    @pytest.mark.parametrize(
+        "text",
+        [
+            "noreply" + "@anthropic.com",
+            "user" + "@example.com",
+            "react-dom@19.3.0 and pnpm@12.8.1+sha512.abc",
+            "actions/checkout@" + "a" * 40,
+            "@nickderaj reviews; 10.0.0.1 and 100.200.1.1 are not tailnet IPs",
+            "match `*.ts.net` names",
+        ],
+    )
+    def test_look_alikes_are_allowed(self, text: str) -> None:
+        assert policy_check.check_text("a.md", text) == []
+
     def test_lockfiles_are_exempt_from_secret_patterns(self) -> None:
         secret = "s" + "k-" + "b" * 24
 
         assert policy_check.check_text("uv.lock", secret) == []
+        assert policy_check.check_text("web/pnpm-lock.yaml", secret) == []
 
 
 class TestPython:
@@ -200,6 +228,14 @@ class TestRepository:
         (tmp_path / "link.md").symlink_to(target)
 
         assert messages(policy_check.run(tmp_path, None)) == ["repository symlinks are prohibited"]
+
+    @pytest.mark.parametrize("name", ["package-lock.json", "npm-shrinkwrap.json"])
+    def test_npm_lockfiles_are_rejected(self, tmp_path: Path, name: str) -> None:
+        write(tmp_path, f"web/{name}", "{}")
+
+        assert messages(policy_check.run(tmp_path, None)) == [
+            "npm lockfiles are prohibited; use pnpm"
+        ]
 
     def test_files_are_routed_to_their_checks(self, tmp_path: Path) -> None:
         write(tmp_path, "a.py", f"x = 1  {NOQA}\n")

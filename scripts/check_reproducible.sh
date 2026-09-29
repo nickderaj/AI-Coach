@@ -15,7 +15,7 @@ build() {
   local out=$1
   rm -rf dist web/dist
   uv build --quiet --out-dir "$out/python"
-  (cd web && npm run -s build >/dev/null)
+  (cd web && pnpm --silent build >/dev/null)
   cp -r web/dist "$out/web"
   (
     cd "$out"

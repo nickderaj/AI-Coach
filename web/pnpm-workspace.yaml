@@ -1,0 +1,11 @@
+# pnpm settings for the web app (a single package, not a multi-package workspace).
+engineStrict: true
+saveExact: true
+# Refuse versions published less than a day ago (supply-chain buffer; Dependabot
+# adds a further seven-day cooldown).
+minimumReleaseAge: 1440
+# Do not self-manage the pnpm version: that writes an extra "environment" document
+# at the top of pnpm-lock.yaml, which GitHub's dependency graph and Dependabot read as
+# an empty graph (dependabot/dependabot-core#15904). The version is pinned by
+# `packageManager` in package.json and installed by Corepack / pnpm/action-setup.
+pmOnFail: ignore

@@ -25,6 +25,7 @@ updates:
       python:
         patterns: ["*"]
 
+  # Dependabot's "npm" ecosystem is also the one that updates pnpm lockfiles.
   - package-ecosystem: npm
     directory: /web
     schedule:

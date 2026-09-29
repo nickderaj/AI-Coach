@@ -4,9 +4,8 @@ A single-user strength-training app: multi-week programs, a phone-first logging
 UI, and a Hermes coach with persistent memory. It replaces the `gym` Telegram bot
 from the retired `ultron` monorepo.
 
-Status: planning complete (2026-09-29). Nothing below is built yet; the first
-pull requests establish the quality gate (see [DEVELOPMENT.md](DEVELOPMENT.md)),
-and every later change lands through that gate.
+Progress and the next step are tracked in [STATUS.md](STATUS.md). Every change
+lands through the quality gate in [DEVELOPMENT.md](DEVELOPMENT.md).
 
 ## 1. Why a rebuild
 
@@ -32,16 +31,16 @@ sessions, weights recovered from names) and is the import source for this app.
 | D2 | **Private to the tailnet.** Served with `tailscale serve` (HTTPS, tailnet-only). The Tailscale identity header is the login; nothing is exposed to the internet. |
 | D3 | **Stack:** Python 3.13 + FastAPI + SQLite on the server; React + Vite + TypeScript PWA on the client. |
 | D4 | **Programs** are fixed blocks: **6 training weeks + 1 deload week**, typically a 3–4 day split. |
-| D5 | **Progression is rule-based double progression**, computed when a day is opened — never pre-computed. If every working set of an exercise reached the top of its rep range at the current load, the next session's load increases by the exercise's increment; otherwise it repeats. |
+| D5 | **Progression is rule-based double progression**, computed when a day is opened — never pre-computed. If every working set of an exercise reached the top of its rep range at the current load, the next session's load rises by the exercise's increment **and the rep target resets to the bottom of the range** (owner's stated rule: 12 × 10 kg → next time 12.5 kg for 8–10). If the sets fell short of the bottom of the range (a failed session), the load drops one increment and is worked back up. Otherwise load and target repeat. |
 | D6 | **Deload week:** same exercises, ~60% of the sets, ~90% of the last working load. After it the app offers a new program. |
 | D7 | **Supersets are structure**: a program day is an ordered list of *blocks*; a block with more than one exercise is a superset (A1/A2). |
 | D8 | **Exercises are chosen, never typed.** A searchable catalogue backs every screen, including ad-hoc logging (e.g. 100 push-ups mid-day). New exercises are built from structured fields (equipment + movement) with a near-duplicate check. |
 | D9 | **Equipment is part of an exercise's identity** (dumbbell vs cable overhead tricep extension are different exercises). Bench-type moves under 30 kg are dumbbells, weight per hand. |
 | D10 | **Hermes owns coaching, SQLite owns facts.** Hermes memory/skills/session search hold soft knowledge (injuries, preferences, style); sets, programs and the catalogue live in SQLite and reach Hermes only through MCP tools. |
-| D11 | **Hermes learning is on from day one**, writes land immediately, and the profile's memory and skills directory is **committed to git nightly** so every learned fact is a reviewable, revertible diff. |
+| D11 | **Hermes learning is on from day one**, writes land immediately, and the profile's memory and skills directory is **committed nightly to a private, local-only git repository on the host** so every learned fact is a reviewable, revertible diff. It is personal data and never enters this (public) repository. |
 | D12 | **Program generation goes through Hermes** (`propose_program` MCP tool, exercise ids only), so it benefits from memory. Progression itself never calls a model. |
-| D13 | **Model provider: Surplus** (`gpt-6-astra`), via Hermes's OpenAI-compatible custom endpoint. |
-| D14 | **Runtime:** a dedicated `gym` system user; data under `/mnt/media/gym`. |
+| D13 | **Model provider: Surplus**, via Hermes's OpenAI-compatible custom endpoint. Endpoint, model id and key are deployment configuration. |
+| D14 | **Runtime:** a dedicated unprivileged system user; code root-owned and read-only; one writable data directory. User, paths and bind address are deployment configuration (`deploy/local.env`, git-ignored), never committed. |
 | D15 | **Strict gate from the first commit.** Every change after bootstrap lands by pull request through required checks and owner review (see DEVELOPMENT.md). |
 
 ## 3. Architecture
@@ -52,9 +51,8 @@ iPhone (home-screen PWA, offline queue)
    ▼
 tailscale serve ──▶ trainer-api (FastAPI, 127.0.0.1)
                       ├─ REST API for the web app
-                      ├─ Apple Health import endpoint (bearer token)
                       ├─ Web Push sender
-                      ├─ SQLite  /mnt/media/gym/trainer.db
+                      ├─ SQLite  $TRAINER_DATA_DIR/trainer.db
                       └─ Coach proxy ──▶ hermes-gateway (127.0.0.1, session API)
                                            profile: trainer
                                            memory · skills · session_search · todo · clarify
@@ -81,7 +79,8 @@ src/trainer/
   api/        FastAPI routers and app factory
   mcp/        Hermes tool surface
 web/          React + Vite PWA
-hermes/       trainer profile: config.yaml, SOUL.md, seed memory, skills
+hermes/       trainer profile templates: config.yaml, SOUL.md, reviewed skills
+              (memory lives in a private store on the host, not here)
 deploy/       systemd units, tailscale serve config, backup + nightly memory commit
 docs/         this plan, DEVELOPMENT.md, DATA_MODEL.md
 ```
@@ -104,7 +103,7 @@ workouts           id, started_at, ended_at, program_day_id?, program_week?, not
 workout_sets       id, workout_id, block_position, exercise_id, set_number,
                    reps, load_kg, duration_s, rpe, completed_at, client_id (idempotency)
 body_metrics       id, measured_at, metric, value, unit, source
-cardio_sessions    id, started_at, activity, duration_s, distance_m, avg_hr, source
+cardio_sessions    id, started_at, activity, duration_s, distance_m, notes   -- logged in the app
 push_subscriptions id, endpoint, keys, created_at
 ```
 
@@ -133,11 +132,16 @@ writes:
 
 - the 35 movements → `exercises`, with every historical v1 name seeded as an alias;
 - 22 strength sessions → `workouts` + `workout_sets` (dead hang as seconds);
-- body metrics and Apple Health cardio;
-- the 5 confirmed v1 preferences → Hermes seed memory (`USER.md`).
+- body metrics (2 rows) and the single manual cardio session;
+- the owner's stated v1 preferences → Hermes seed memory in the private store
+  (personal data; not reproduced in this repository).
 
-Cut-over: once logging works (phase 2), stop logging in v1; after phase 5, stop
-`gym.service` and repoint the Apple Health shortcut.
+Cut-over: once logging works (phase 2), stop logging in v1; after phase 5,
+retire the v1 service.
+
+**Apple Health is out of scope.** v1's sync never worked (no import was ever
+recorded) and only produced a daily "not imported for five days" nag. v2 has no
+Health endpoint and no staleness nudge; cardio is logged in the app.
 
 ## 7. Phases
 
@@ -146,12 +150,12 @@ Each phase is one or more gated pull requests.
 | Phase | Scope | Exit criterion |
 | --- | --- | --- |
 | 0a | **Quality gate** — pinned toolchains, policy checker, lint/type/test/coverage/mutation/dependency/reproducibility gates, CI workflows, CODEOWNERS, branch-protection script | All required checks green on the bootstrap PR; branch protection applied |
-| 0b | **Runtime skeleton** — `gym` user, `/mnt/media/gym`, systemd units, `tailscale serve` HTTPS, deploy + backup scripts | A health page loads on the phone over the tailnet |
+| 0b | **Runtime skeleton** — service user, data directory, systemd units, `tailscale serve` HTTPS, deploy + backup scripts, all driven by `deploy/local.env` | A health page loads on the phone over the tailnet |
 | 1 | **Data** — schema, migrations, catalogue + aliases, v1 importer, read-only history API and screens | Imported history visible on the phone |
 | 2 | **Logging** — exercise picker, ad-hoc logging, offline queue, workouts | Old bot no longer needed for logging |
-| 3 | **Hermes** — gateway + `trainer` profile, MCP tools, Coach tab, nightly memory commit | Coach remembers across turns and days |
+| 3 | **Hermes** — gateway + `trainer` profile, MCP tools, Coach tab, nightly memory commit to the private store | Coach remembers across turns and days |
 | 4 | **Programs** — `propose_program`, Today screen, supersets, rest timer, progression + deload engine | A full week trained from the app |
-| 5 | **Cut-over** — Web Push, Apple Health import, retire v1 | `gym.service` stopped |
+| 5 | **Cut-over** — Web Push, retire v1 | `gym.service` stopped |
 
 ## 8. Owner actions required
 

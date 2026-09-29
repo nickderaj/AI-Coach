@@ -14,3 +14,7 @@ Read [docs/PLAN.md](docs/PLAN.md) for what is being built and why, and
 - Tests are hermetic: no network, no real Hermes/model/Tailscale, no production
   database.
 - Pin every new dependency exactly and justify it in the PR description.
+- **The repository is public.** Never commit hostnames, tailnet names, IPs,
+  emails, host paths, service accounts, ports in use, or personal data (training
+  preferences, Hermes memory). Host-specific values go in the git-ignored
+  `deploy/local.env`; personal data stays in the private store on the host.
