@@ -26,3 +26,7 @@ __pycache__/
 !.env.example
 /.idea/
 /.vscode/
+
+# Environment-specific and personal files: never committed (the repo is public).
+/.private/
+/deploy/local.env

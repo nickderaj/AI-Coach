@@ -11,7 +11,7 @@ require() {
     exit 2
   fi
 }
-for tool in uv node npm git gitleaks actionlint; do require "$tool"; done
+for tool in uv node pnpm git gitleaks actionlint; do require "$tool"; done
 
 step() { printf '\n==> %s\n' "$*"; }
 
@@ -50,20 +50,20 @@ uv export --locked --no-dev --no-emit-project --no-hashes --format requirements-
 step web
 (
   cd web
-  npm ci --no-fund --no-audit --silent
-  npm run -s format:check
-  npm run -s lint
-  npm run -s typecheck
-  npm run -s coverage
-  npm run -s knip
-  npm run -s build
+  pnpm install --frozen-lockfile --silent
+  pnpm --silent format:check
+  pnpm --silent lint
+  pnpm --silent typecheck
+  pnpm --silent coverage
+  pnpm --silent knip
+  pnpm --silent build
 )
 
 step web-dependencies
 (
   cd web
-  npm audit --audit-level=low
-  npm run -s licenses >/dev/null
+  pnpm audit --audit-level low
+  pnpm licenses list --prod --json | uv run python ../scripts/check_licenses.py --pnpm
 )
 
 step reproducibility

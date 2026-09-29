@@ -2,7 +2,8 @@
 
 Rules that ruff, mypy, eslint and tsc cannot express live here: pinned
 versions, pinned CI actions, justified suppressions, no skipped or focused
-tests, no secrets or owner-specific paths, and Conventional Commit PR titles.
+tests, no secrets, owner-specific paths or private environment details (the
+repository is public), and Conventional Commit PR titles.
 """
 
 from __future__ import annotations
@@ -38,13 +39,26 @@ SKIP_PARTS = frozenset(
     }
 )
 # Lockfiles are machine-written and full of hashes; gitleaks scans them instead.
-SECRET_SCAN_EXEMPT = frozenset({"uv.lock", "web/package-lock.json"})
+SECRET_SCAN_EXEMPT = frozenset({"uv.lock", "web/pnpm-lock.yaml"})
+# The web app is managed by pnpm; an npm lockfile means someone ran npm by mistake.
+NPM_ONLY_FILES = frozenset({"package-lock.json", "npm-shrinkwrap.json"})
 OWNER_PATHS = ("/home/" + "nick", "/Users/" + "nick")
 SECRET_PATTERNS = {
     "private key": re.compile(r"-----BEGIN (?:RSA |EC |OPENSSH )?PRIVATE KEY-----"),
     "GitHub token": re.compile(r"\bgh[oprsu]_[A-Za-z0-9_]{30,}\b"),
     "provider key": re.compile(r"\bsk-[A-Za-z0-9_-]{20,}\b"),
     "Telegram bot token": re.compile(r"\b\d{8,10}:AA[A-Za-z0-9_-]{33}\b"),
+}
+# The repository is public: environment-specific and personal details stay out.
+PRIVATE_PATTERNS = {
+    "email address": re.compile(
+        r"\b(?!noreply@)[A-Za-z0-9._%+-]+@(?!example\.)[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)*"
+        r"\.[A-Za-z]{2,}\b"
+    ),
+    "tailnet hostname": re.compile(r"\b[a-z0-9-]+\.ts\.net\b"),
+    "Tailscale IP address": re.compile(
+        r"\b100\.(?:6[4-9]|[7-9]\d|1[01]\d|12[0-7])\.\d{1,3}\.\d{1,3}\b"
+    ),
 }
 PYTHON_SUPPRESSION = re.compile(
     r"#\s*(?:noqa\b|type:\s*ignore\b|pragma:\s*no\s*(?:cover|mutate)\b)"
@@ -125,6 +139,11 @@ def check_text(relative: str, text: str) -> list[Violation]:
         found.extend(
             Violation(relative, 0, f"likely {label}")
             for label, pattern in SECRET_PATTERNS.items()
+            if pattern.search(text)
+        )
+        found.extend(
+            Violation(relative, 0, f"private detail in a public repository: {label}")
+            for label, pattern in PRIVATE_PATTERNS.items()
             if pattern.search(text)
         )
     return found
@@ -226,13 +245,21 @@ def checks_for(relative: str) -> list[Check]:
     return checks
 
 
+def check_path(relative: str, path: Path) -> list[Violation]:
+    """Rules about a path's existence or kind, independent of its content."""
+    if path.is_symlink():
+        return [Violation(relative, 0, "repository symlinks are prohibited")]
+    if path.name in NPM_ONLY_FILES:
+        return [Violation(relative, 0, "npm lockfiles are prohibited; use pnpm")]
+    return []
+
+
 def check_file(root: Path, path: Path) -> list[Violation]:
     """Run every applicable check on one repository path."""
     relative = path.relative_to(root).as_posix()
-    if path.is_symlink():
-        return [Violation(relative, 0, "repository symlinks are prohibited")]
-    if not path.is_file():
-        return []
+    found = check_path(relative, path)
+    if found or not path.is_file():
+        return found
     try:
         text = path.read_text(encoding="utf-8")
     except UnicodeDecodeError:
