@@ -18,7 +18,8 @@ All versions are exact; bumping one is a visible, reviewed change.
 | gitleaks, actionlint | 8.30.1, 1.7.12 | `scripts/install_tools.sh` (SHA-256 verified) |
 | GitHub Actions | full commit SHA | workflows |
 
-Setup:
+Setup (Linux or macOS, Intel or Apple silicon; the scripts avoid GNU-only tools and
+run on macOS's stock bash 3.2):
 
 ```console
 ./scripts/install_tools.sh          # gitleaks + actionlint into ~/.local/bin
