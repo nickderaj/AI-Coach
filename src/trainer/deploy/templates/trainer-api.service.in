@@ -1,0 +1,47 @@
+[Unit]
+Description=hermes-trainer API
+Documentation=https://github.com/nickderaj/hermes-trainer
+After=network.target
+
+[Service]
+Type=exec
+User=${user}
+Group=${user}
+Environment=TRAINER_DATA_DIR=${data_dir}
+ExecStart=${prefix}/venv/bin/python -m trainer.api --host ${bind_host} --port ${bind_port}
+Restart=on-failure
+RestartSec=5
+UMask=0077
+
+# Code is root-owned and read-only; the data directory is the only writable path.
+ReadWritePaths=${data_dir}
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+# Reached only through tailscale serve on loopback; no other network access yet.
+IPAddressDeny=any
+IPAddressAllow=localhost
+
+[Install]
+WantedBy=multi-user.target

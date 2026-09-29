@@ -7,6 +7,7 @@ requires-python = "==3.13.*"
 license = "LicenseRef-Proprietary"
 dependencies = [
     "fastapi==0.142.0",
+    "uvicorn==0.54.0",
 ]
 
 [dependency-groups]
@@ -142,6 +143,8 @@ exclude_also = [
 source_paths = ["src/trainer/"]
 # Gate-script tests exercise scripts/, which is not mutated (or copied into mutants/).
 pytest_add_cli_args_test_selection = ["tests/", "--ignore=tests/scripts"]
+# Deploy tests read the committed example config and scripts.
+also_copy = ["deploy/"]
 pytest_add_cli_args = ["-p", "no:randomly"]
 
 # ---------------------------------------------------------------- architecture
