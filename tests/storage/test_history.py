@@ -169,8 +169,10 @@ def test_exercise_history_newest_session_first(imported: sqlite3.Connection) -> 
     assert history.exercise.workouts == 2
     assert history.exercise.best_load_kg == 80.0
     assert history.sessions == [
-        ExerciseSession(later, "2026-09-01T10:00:00+00:00", [set_view(1, 5, 80.0)]),
-        ExerciseSession(july, JULY, [set_view(1, 8, 60.0), SetView(2, 6, 70.0, None, 8, "grindy")]),
+        ExerciseSession(later, 1, "2026-09-01T10:00:00+00:00", [set_view(1, 5, 80.0)]),
+        ExerciseSession(
+            july, 1, JULY, [set_view(1, 8, 60.0), SetView(2, 6, 70.0, None, 8, "grindy")]
+        ),
     ]
 
 
@@ -233,3 +235,30 @@ def test_workouts_with_the_same_start_time_are_separate_sessions(db: sqlite3.Con
 
     assert history is not None
     assert [session.workout_id for session in history.sessions] == [second, first]
+
+
+def test_an_exercise_repeated_in_a_workout_is_one_session_per_block(
+    db: sqlite3.Connection,
+) -> None:
+    bench = upsert_exercise(db, ExerciseSpec("bench", "Bench", None, None, Measure.REPS))
+    row = upsert_exercise(db, ExerciseSpec("row", "Row", None, None, Measure.REPS))
+    workout = db.execute(
+        "INSERT INTO workouts (started_at, source) VALUES ('2026-01-01T10:00:00+00:00', 't') "
+        "RETURNING id"
+    ).fetchone()[0]
+    for position, exercise in ((1, bench), (2, row), (3, bench)):
+        add_set(db, workout, exercise, position)
+    db.execute(
+        "INSERT INTO workout_sets (workout_id, exercise_id, exercise_position, set_number, reps) "
+        "VALUES (?, ?, 3, 2, 3)",
+        (workout, bench),
+    )
+
+    history = exercise_history(db, bench)
+
+    assert history is not None
+    assert history.exercise.workouts == 1
+    assert history.sessions == [
+        ExerciseSession(workout, 1, "2026-01-01T10:00:00+00:00", [set_view(1, 5)]),
+        ExerciseSession(workout, 3, "2026-01-01T10:00:00+00:00", [set_view(1, 5), set_view(2, 3)]),
+    ]

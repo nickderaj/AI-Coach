@@ -1,5 +1,5 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
-import { afterEach, describe, expect, it } from "vitest";
+import { afterEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "./App";
 import { at, mockFetch, set } from "./test/fetch";
@@ -80,8 +80,8 @@ const EXERCISES = [
 const HISTORY_45 = {
   exercise: EXERCISES[0],
   sessions: [
-    { workout_id: 2, started_at: "2026-09-28T11:30:59+00:00", sets: [set(1, 12, 50)] },
-    { workout_id: 1, started_at: "2026-07-09T10:47:23+00:00", sets: [set(1, 10, 40)] },
+    { workout_id: 2, position: 1, started_at: "2026-09-28T11:30:59+00:00", sets: [set(1, 12, 50)] },
+    { workout_id: 1, position: 1, started_at: "2026-07-09T10:47:23+00:00", sets: [set(1, 10, 40)] },
   ],
 };
 
@@ -223,6 +223,41 @@ describe("Exercises", () => {
       "href",
       "#/exercises",
     );
+  });
+});
+
+describe("Repeated exercises", () => {
+  it("renders every block of an exercise done twice in one workout", async () => {
+    const errors = vi.spyOn(console, "error");
+    mockFetch({
+      "/api/exercises/45/history": {
+        body: {
+          exercise: EXERCISES[0],
+          sessions: [
+            {
+              workout_id: 2,
+              position: 1,
+              started_at: "2026-09-28T11:30:59+00:00",
+              sets: [set(1, 12, 50)],
+            },
+            {
+              workout_id: 2,
+              position: 4,
+              started_at: "2026-09-28T11:30:59+00:00",
+              sets: [set(1, 10, 45), set(2, 8, 45)],
+            },
+          ],
+        },
+      },
+    });
+    await go("#/exercises/45");
+    render(<App />);
+
+    expect(await screen.findByText("12 × 50 kg")).toBeInTheDocument();
+    expect(screen.getAllByRole("link", { name: "29 Sept 2026" })).toHaveLength(2);
+    expect(screen.getByText("10 × 45 kg")).toBeInTheDocument();
+    expect(screen.getByText("8 × 45 kg")).toBeInTheDocument();
+    expect(errors).not.toHaveBeenCalled();
   });
 });
 

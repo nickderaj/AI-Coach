@@ -74,9 +74,14 @@ class ExerciseSummary:
 
 @dataclass(frozen=True)
 class ExerciseSession:
-    """Every set of one exercise in one workout."""
+    """One block of an exercise in a workout: the workout and position identify it.
+
+    An exercise done twice in a workout (say, at the start and again at the end)
+    is two sessions with the same ``workout_id`` and different ``position``.
+    """
 
     workout_id: int
+    position: int
     started_at: str
     sets: list[SetView]
 
@@ -197,7 +202,7 @@ def exercise_history(conn: sqlite3.Connection, exercise_id: int) -> ExerciseHist
         return None
     rows = conn.execute(
         """
-        SELECT w.id AS workout_id, w.started_at, s.set_number, s.reps, s.load_kg,
+        SELECT w.id, s.exercise_position, w.started_at, s.set_number, s.reps, s.load_kg,
             s.duration_s, s.rpe, s.notes
         FROM workout_sets s JOIN workouts w ON w.id = s.workout_id
         WHERE s.exercise_id = ?
@@ -205,8 +210,11 @@ def exercise_history(conn: sqlite3.Connection, exercise_id: int) -> ExerciseHist
         """,
         (exercise_id,),
     ).fetchall()
-    sessions = [
-        ExerciseSession(group[0][0], group[0][1], [_set(set_row) for set_row in group])
-        for group in (list(items) for _, items in groupby(rows, key=lambda r: r[0]))
-    ]
+    sessions = [_session(list(block)) for _, block in groupby(rows, key=lambda r: (r[0], r[1]))]
     return ExerciseHistory(_summary(row), sessions)
+
+
+def _session(rows: list[sqlite3.Row]) -> ExerciseSession:
+    """``rows`` start with: workout id, exercise_position, started_at."""
+    workout_id, position, started_at = rows[0][:3]
+    return ExerciseSession(workout_id, position, started_at, [_set(r) for r in rows])

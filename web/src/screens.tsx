@@ -148,7 +148,10 @@ export function ExerciseHistory({ id }: { id: number }): ReactElement {
             <p className="muted">{exerciseFacts(exercise)}</p>
             <ol className="list">
               {sessions.map((session) => (
-                <li key={session.workout_id} className="block">
+                <li
+                  key={`${String(session.workout_id)}:${String(session.position)}`}
+                  className="block"
+                >
                   <a href={href({ name: "workout", id: session.workout_id })}>
                     {formatDate(session.started_at)}
                   </a>

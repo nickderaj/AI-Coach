@@ -52,6 +52,7 @@ const exerciseHistorySchema = z.object({
   sessions: z.array(
     z.object({
       workout_id: z.number().int(),
+      position: z.number().int(),
       started_at: z.string(),
       sets: z.array(setSchema),
     }),
