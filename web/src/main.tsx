@@ -2,6 +2,8 @@ import { StrictMode } from "react";
 import { createRoot } from "react-dom/client";
 
 import { App } from "./App";
+import { DraftContext } from "./log/context";
+import { draftStore } from "./log/store";
 import { createOutbox, webLock } from "./outbox/outbox";
 import { OutboxContext } from "./outbox/Sync";
 import { outboxStore } from "./outbox/store";
@@ -27,7 +29,9 @@ if (import.meta.env.PROD && "serviceWorker" in navigator) {
 createRoot(root).render(
   <StrictMode>
     <OutboxContext value={outbox}>
-      <App />
+      <DraftContext value={draftStore(localStorage, window)}>
+        <App />
+      </DraftContext>
     </OutboxContext>
   </StrictMode>,
 );

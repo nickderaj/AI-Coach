@@ -9,6 +9,7 @@ import { formatDate, formatLoad, formatShortDate, formatVolume, plural } from ".
 import { href } from "../router";
 import { chronological, personalRecords, sessionStats } from "../stats";
 import type { SessionStats } from "../stats";
+import { QuickLog } from "./QuickLog";
 
 type History = z.infer<typeof exerciseHistorySchema>;
 
@@ -108,6 +109,7 @@ export function ExerciseDetail({ id }: { id: number }): ReactElement {
               </span>
             </header>
             <Progress history={history} />
+            <QuickLog exercise={history.exercise} />
             <section>
               <h2>History</h2>
               <ol className="list">

@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { SetEntry } from "./api";
 import {
+  formatClock,
   formatDate,
   formatDay,
   formatLoad,
@@ -107,5 +108,17 @@ describe("new formatters", () => {
     ["2026-09-29T17:00:00+13:00", "Evening"],
   ])("names the part of day for %s", (iso, part) => {
     expect(partOfDay(iso)).toBe(part);
+  });
+});
+
+describe("formatClock", () => {
+  it.each([
+    [0, "0:00"],
+    [5_400, "0:05"],
+    [754_000, "12:34"],
+    [3_723_000, "1:02:03"],
+    [-2_000, "0:00"],
+  ])("%s ms -> %s", (ms, clock) => {
+    expect(formatClock(ms)).toBe(clock);
   });
 });

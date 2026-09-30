@@ -5,11 +5,15 @@ export type Route =
   | { name: "history" }
   | { name: "workout"; id: number }
   | { name: "exercises" }
-  | { name: "exercise"; id: number };
+  | { name: "exercise"; id: number }
+  | { name: "log" }
+  | { name: "pick" };
 
 const STATIC: Record<string, Route> = {
   "#/history": { name: "history" },
   "#/exercises": { name: "exercises" },
+  "#/log": { name: "log" },
+  "#/log/add": { name: "pick" },
 };
 
 const PATTERNS: [RegExp, (id: number) => Route][] = [
@@ -48,6 +52,10 @@ export function href(route: Route): string {
       return `#/workouts/${String(route.id)}`;
     case "exercise":
       return `#/exercises/${String(route.id)}`;
+    case "log":
+      return "#/log";
+    case "pick":
+      return "#/log/add";
   }
 }
 
@@ -56,6 +64,11 @@ function subscribe(onChange: () => void): () => void {
   return (): void => {
     window.removeEventListener("hashchange", onChange);
   };
+}
+
+/** Go to `route`, as if a link to it had been followed. */
+export function navigate(route: Route): void {
+  window.location.hash = href(route);
 }
 
 export function useRoute(): Route {

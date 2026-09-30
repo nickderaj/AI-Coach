@@ -2,7 +2,7 @@ import { act, render, screen } from "@testing-library/react";
 import type { ReactElement } from "react";
 import { afterEach, describe, expect, it } from "vitest";
 
-import { href, parseRoute, useRoute } from "./router";
+import { href, navigate, parseRoute, useRoute } from "./router";
 import type { Route } from "./router";
 
 describe("parseRoute", () => {
@@ -13,6 +13,8 @@ describe("parseRoute", () => {
     ["#/exercises", { name: "exercises" }],
     ["#/workouts/12", { name: "workout", id: 12 }],
     ["#/exercises/7", { name: "exercise", id: 7 }],
+    ["#/log", { name: "log" }],
+    ["#/log/add", { name: "pick" }],
     ["#/workouts/abc", { name: "home" }],
     ["#/exercises/7/extra", { name: "home" }],
     ["#/nonsense", { name: "home" }],
@@ -28,6 +30,8 @@ describe("href", () => {
     [{ name: "exercises" }, "#/exercises"],
     [{ name: "workout", id: 3 }, "#/workouts/3"],
     [{ name: "exercise", id: 9 }, "#/exercises/9"],
+    [{ name: "log" }, "#/log"],
+    [{ name: "pick" }, "#/log/add"],
   ])("round-trips %j", (route, hash) => {
     expect(href(route)).toBe(hash);
     expect(parseRoute(hash)).toEqual(route);
@@ -37,6 +41,18 @@ describe("href", () => {
 function Probe(): ReactElement {
   return <output>{JSON.stringify(useRoute())}</output>;
 }
+
+describe("navigate", () => {
+  afterEach(() => {
+    window.location.hash = "";
+  });
+
+  it("follows the route's link", () => {
+    navigate({ name: "pick" });
+
+    expect(window.location.hash).toBe("#/log/add");
+  });
+});
 
 describe("useRoute", () => {
   afterEach(() => {

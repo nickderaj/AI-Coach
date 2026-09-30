@@ -7,6 +7,8 @@ import { ExerciseDetail } from "./screens/ExerciseDetail";
 import { Exercises } from "./screens/Exercises";
 import { History, WorkoutDetail } from "./screens/History";
 import { Home } from "./screens/Home";
+import { Log } from "./screens/Log";
+import { Picker } from "./screens/Picker";
 
 function Screen({ route }: { route: Route }): ReactElement {
   switch (route.name) {
@@ -20,6 +22,10 @@ function Screen({ route }: { route: Route }): ReactElement {
       return <Exercises />;
     case "exercise":
       return <ExerciseDetail key={route.id} id={route.id} />;
+    case "log":
+      return <Log />;
+    case "pick":
+      return <Picker />;
   }
 }
 
@@ -34,6 +40,8 @@ const TABS: { tab: Tab; route: Route; icon: string; label: string }[] = [
 function tabOf(route: Route): Tab {
   switch (route.name) {
     case "home":
+    case "log":
+    case "pick":
       return "home";
     case "history":
     case "workout":
