@@ -8,7 +8,7 @@ committed `deploy/local.env.example` documents the keys with placeholders.
 ## Requirements on the host
 
 - systemd, `python3` (3.13) with `venv`, `curl`, `useradd`
-- `uv` for the unprivileged build step
+- `uv`, Node (see `web/.nvmrc`) and pnpm (Corepack) for the unprivileged build step
 - Tailscale with HTTPS certificates enabled for the tailnet, and an ACL that
   lets only the owner's devices reach port 443 on the host
 
@@ -34,6 +34,7 @@ Two layers, both failing closed:
      disjoint, so the service-writable data can never contain or be the
      root-owned code, and `/home` (hidden by `ProtectHome=yes`) is excluded;
    - unknown or duplicate keys are rejected.
+   - `TRAINER_OWNER_LOGIN` must look like a Tailscale login (no spaces or `%`).
 2. **Host preflight** (`install.sh` → `python -m trainer.deploy preflight`, run
    from the bundled wheel before anything is changed):
    - an existing service account must be a dedicated system account (uid 1–999,
@@ -50,6 +51,14 @@ Two layers, both failing closed:
 `install.sh` and `tailscale-serve.sh` only read the validated, shell-quoted
 `build/deploy/install.env`.
 
+## Who can use it
+
+`tailscale serve` adds a `Tailscale-User-Login` header to every request from a
+user-owned device on the tailnet. The API answers only when that header equals
+`TRAINER_OWNER_LOGIN`; everything except `/healthz` returns 403 otherwise,
+including requests from tagged devices (they carry no identity). This sits on top
+of the tailnet ACL, which already limits who can reach the host at all.
+
 ## Upgrade
 
 Pull, then run `./deploy/build.sh` and `sudo ./deploy/install.sh` again. The
@@ -61,7 +70,7 @@ service's recent logs if `/healthz` does not answer within 20 seconds.
 
 | Unit | Runs | Notes |
 | --- | --- | --- |
-| `trainer-api.service` | `python -m trainer.api` | Loopback only (`IPAddressAllow=localhost`), read-only system, writable data directory only, no capabilities, `@system-service` syscalls |
+| `trainer-api.service` | `python -m trainer.api` (JSON API under `/api`, the built web app at `/`) | Loopback only (`IPAddressAllow=localhost`), read-only system, writable data directory only, no capabilities, `@system-service` syscalls |
 | `trainer-backup.timer` → `trainer-backup.service` | `python -m trainer.deploy backup` nightly at 03:30 | SQLite online backup into `<data dir>/backups`, keeps `TRAINER_BACKUP_KEEP`; no network at all |
 
 Code is root-owned under `TRAINER_PREFIX`; the service user can write only

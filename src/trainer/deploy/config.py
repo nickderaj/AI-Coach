@@ -14,8 +14,11 @@ KEYS = (
     "TRAINER_BIND_HOST",
     "TRAINER_BIND_PORT",
     "TRAINER_BACKUP_KEEP",
+    "TRAINER_OWNER_LOGIN",
 )
 USER_NAME = re.compile(r"^[a-z_][a-z0-9_-]{0,31}$")
+# A Tailscale login (e.g. an email address). No "%": systemd expands it in units.
+LOGIN = re.compile(r"^[A-Za-z0-9._+@-]{1,254}$")
 SAFE_PATH = re.compile(r"^(?:/[A-Za-z0-9._-]+)+$")
 # Dedicated locations only. The two sets are disjoint, so the service-writable
 # data directory and the root-owned code prefix can never be equal or nested.
@@ -41,6 +44,7 @@ class DeployConfig:
     bind_host: str
     bind_port: int
     backup_keep: int
+    owner_login: str
 
     @property
     def upstream(self) -> str:
@@ -94,6 +98,7 @@ def load(text: str) -> DeployConfig:
         bind_host=_loopback(values["TRAINER_BIND_HOST"]),
         bind_port=_integer("TRAINER_BIND_PORT", values["TRAINER_BIND_PORT"], MIN_PORT, MAX_PORT),
         backup_keep=_integer("TRAINER_BACKUP_KEEP", values["TRAINER_BACKUP_KEEP"], 1, MAX_BACKUPS),
+        owner_login=_login(values["TRAINER_OWNER_LOGIN"]),
     )
 
 
@@ -106,8 +111,16 @@ def to_env(config: DeployConfig) -> str:
         "TRAINER_BIND_HOST": config.bind_host,
         "TRAINER_BIND_PORT": str(config.bind_port),
         "TRAINER_BACKUP_KEEP": str(config.backup_keep),
+        "TRAINER_OWNER_LOGIN": config.owner_login,
     }
     return "".join(f"{key}={value}\n" for key, value in values.items())
+
+
+def _login(value: str) -> str:
+    if not LOGIN.match(value):
+        message = f"TRAINER_OWNER_LOGIN {value!r} is not a valid Tailscale login"
+        raise ConfigError(message)
+    return value
 
 
 def _user(value: str) -> str:

@@ -21,6 +21,7 @@ VALID = {
     "TRAINER_BIND_HOST": "127.0.0.1",
     "TRAINER_BIND_PORT": "8000",
     "TRAINER_BACKUP_KEEP": "14",
+    "TRAINER_OWNER_LOGIN": "owner@example.com",
 }
 
 
@@ -59,6 +60,7 @@ class TestLoad:
             bind_host="127.0.0.1",
             bind_port=8000,
             backup_keep=14,
+            owner_login="owner@example.com",
         )
 
     def test_missing_keys_are_listed_in_order(self) -> None:
@@ -142,6 +144,16 @@ class TestLoad:
     def test_invalid_ports(self, port: str) -> None:
         assert error_for(TRAINER_BIND_PORT=port) == (
             f"TRAINER_BIND_PORT {port!r} must be an integer from 1024 to 65535"
+        )
+
+    @pytest.mark.parametrize("login", ["owner@example.com", "someone@github", "a", "x" * 254])
+    def test_valid_logins(self, login: str) -> None:
+        assert load(document(TRAINER_OWNER_LOGIN=login)).owner_login == login
+
+    @pytest.mark.parametrize("login", ["", "a b@example.com", "50%@example.com", "x" * 255, "a;b"])
+    def test_invalid_logins(self, login: str) -> None:
+        assert error_for(TRAINER_OWNER_LOGIN=login) == (
+            f"TRAINER_OWNER_LOGIN {login!r} is not a valid Tailscale login"
         )
 
     @pytest.mark.parametrize(("keep", "expected"), [("1", 1), ("365", 365)])

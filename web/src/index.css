@@ -1,0 +1,160 @@
+:root {
+  color-scheme: light dark;
+  --bg: #f6f6f4;
+  --surface: #ffffff;
+  --text: #1b1c1e;
+  --muted: #6a6f76;
+  --accent: #2f6f4f;
+  --line: #e2e2de;
+  --error: #b3261e;
+  font-family:
+    system-ui,
+    -apple-system,
+    "Segoe UI",
+    Roboto,
+    sans-serif;
+  line-height: 1.4;
+  -webkit-text-size-adjust: 100%;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --bg: #111214;
+    --surface: #1b1d20;
+    --text: #ececea;
+    --muted: #9aa0a6;
+    --accent: #6fcf97;
+    --line: #2c2f33;
+    --error: #f2b8b5;
+  }
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+  background: var(--bg);
+  color: var(--text);
+}
+
+a {
+  color: var(--accent);
+  text-decoration: none;
+}
+
+.app main {
+  max-width: 40rem;
+  margin: 0 auto;
+  padding: calc(env(safe-area-inset-top) + 1rem) 1rem calc(env(safe-area-inset-bottom) + 5rem);
+}
+
+h1 {
+  font-size: 1.5rem;
+  margin: 0.25rem 0 1rem;
+}
+
+.muted {
+  color: var(--muted);
+  font-weight: normal;
+}
+
+.error {
+  color: var(--error);
+}
+
+.list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.card,
+.block {
+  display: grid;
+  gap: 0.15rem;
+  padding: 0.75rem 1rem;
+  background: var(--surface);
+  border: 1px solid var(--line);
+  border-radius: 0.75rem;
+  color: var(--text);
+}
+
+.card-title {
+  font-weight: 600;
+}
+
+.card-body {
+  font-size: 0.9rem;
+}
+
+.block > a {
+  font-weight: 600;
+}
+
+.chips {
+  list-style: none;
+  margin: 0.25rem 0 0;
+  padding: 0;
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.35rem;
+}
+
+.chip {
+  padding: 0.2rem 0.55rem;
+  border-radius: 999px;
+  background: var(--bg);
+  border: 1px solid var(--line);
+  font-variant-numeric: tabular-nums;
+  font-size: 0.9rem;
+}
+
+.rpe {
+  color: var(--muted);
+}
+
+.notes {
+  font-style: italic;
+  color: var(--muted);
+}
+
+.back {
+  display: inline-block;
+  margin-bottom: 0.5rem;
+}
+
+.search {
+  width: 100%;
+  font: inherit;
+  padding: 0.6rem 0.8rem;
+  margin-bottom: 0.75rem;
+  border-radius: 0.6rem;
+  border: 1px solid var(--line);
+  background: var(--surface);
+  color: var(--text);
+}
+
+.tabs {
+  position: fixed;
+  inset: auto 0 0 0;
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  background: var(--surface);
+  border-top: 1px solid var(--line);
+  padding-bottom: env(safe-area-inset-bottom);
+}
+
+.tabs a {
+  padding: 0.9rem;
+  text-align: center;
+  color: var(--muted);
+}
+
+.tabs a[aria-current="page"] {
+  color: var(--accent);
+  font-weight: 600;
+}
