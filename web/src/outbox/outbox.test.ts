@@ -1,8 +1,11 @@
 import { IDBFactory } from "fake-indexeddb";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { Mock } from "vitest";
 
+import { at } from "../test/fetch";
 import type { Outbox } from "./outbox";
-import { FIRST_RETRY_MS, MAX_RETRY_MS, createOutbox } from "./outbox";
+import type { OutboxLock } from "./outbox";
+import { DELIVERY_TIMEOUT_MS, FIRST_RETRY_MS, MAX_RETRY_MS, createOutbox, webLock } from "./outbox";
 import type { OutboxStore, Write } from "./store";
 import { outboxStore } from "./store";
 
@@ -13,9 +16,21 @@ const put = (path: string, body: unknown = { reps: 8 }): Write => ({
   label: `Save ${path}`,
 });
 
+let factory: IDBFactory;
+let lock: OutboxLock;
 let store: OutboxStore;
 let outbox: Outbox;
-let fetchMock: ReturnType<typeof vi.fn>;
+
+/** A lock shared by every outbox given it, like Web Locks across tabs. */
+function mutex(): OutboxLock {
+  let tail: Promise<unknown> = Promise.resolve();
+  return (task) => {
+    const run = tail.then(task);
+    tail = run.catch(() => undefined);
+    return run;
+  };
+}
+let fetchMock: Mock<typeof fetch>;
 
 /** Answer fetches in turn; `Error`s are thrown like a network failure. */
 function replies(...answers: (Response | Error)[]): void {
@@ -32,21 +47,19 @@ const ok = (): Response => new Response("{}", { status: 200 });
 const refused = (status: number, body: string): Response => new Response(body, { status });
 
 function sent(): [string, string | undefined, unknown][] {
-  return (fetchMock.mock.calls as [string, RequestInit][]).map(([path, init]) => [
-    path,
-    init.method,
-    init.body,
-  ]);
+  return fetchMock.mock.calls.map(([path, init]) => [path as string, init?.method, init?.body]);
 }
 
 const idle = (): Promise<void> => outbox.idle();
 
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["setTimeout", "clearTimeout"] });
-  fetchMock = vi.fn();
+  fetchMock = vi.fn<typeof fetch>();
   vi.stubGlobal("fetch", fetchMock);
-  store = outboxStore(new IDBFactory());
-  outbox = createOutbox(store);
+  factory = new IDBFactory();
+  lock = mutex();
+  store = outboxStore(factory);
+  outbox = createOutbox(store, lock);
 });
 
 afterEach(() => {
@@ -60,11 +73,15 @@ describe("send", () => {
     await outbox.send(put("/api/sets/a", { reps: 10 }));
     await idle();
 
-    expect(fetchMock).toHaveBeenCalledWith("/api/sets/a", {
+    const [path, init] = at(fetchMock.mock.calls, 0);
+    expect(path).toBe("/api/sets/a");
+    expect({ ...init, signal: null }).toEqual({
       method: "PUT",
       headers: { "Content-Type": "application/json" },
       body: '{"reps":10}',
+      signal: null,
     });
+    expect(init?.signal).toBeInstanceOf(AbortSignal);
     expect(outbox.status()).toEqual({ pending: 0, rejected: [], offline: false });
   });
 
@@ -79,7 +96,7 @@ describe("send", () => {
   });
 
   it("has the write saved on the phone before it resolves", async () => {
-    fetchMock.mockReturnValue(new Promise(() => undefined)); // the server never answers
+    fetchMock.mockReturnValue(new Promise<Response>(() => undefined)); // the server never answers
     const listener = vi.fn();
     outbox.subscribe(listener);
 
@@ -193,6 +210,98 @@ describe("when the server cannot be reached", () => {
 
     expect(fetchMock).toHaveBeenCalledTimes(4);
     expect(outbox.status().pending).toBe(0);
+  });
+
+  it("gives up on an answer that never comes and tries again", async () => {
+    fetchMock.mockImplementationOnce(
+      (_path, init) =>
+        new Promise<Response>((_resolve, reject) => {
+          init?.signal?.addEventListener("abort", () => {
+            reject(new DOMException("aborted", "AbortError"));
+          });
+        }),
+    );
+    fetchMock.mockImplementationOnce(() => new Promise<Response>(() => undefined)); // ignores the abort
+    replies(ok());
+
+    await outbox.send(put("/api/sets/a"));
+    await vi.advanceTimersByTimeAsync(DELIVERY_TIMEOUT_MS - 1);
+    expect(outbox.status().offline).toBe(false);
+    await vi.advanceTimersByTimeAsync(1);
+    await idle();
+    expect(outbox.status()).toMatchObject({ pending: 1, offline: true });
+    expect(at(fetchMock.mock.calls, 0)[1]?.signal?.aborted).toBe(true);
+
+    await vi.advanceTimersByTimeAsync(FIRST_RETRY_MS + DELIVERY_TIMEOUT_MS);
+    await idle();
+    expect(fetchMock).toHaveBeenCalledTimes(2);
+
+    await vi.advanceTimersByTimeAsync(FIRST_RETRY_MS * 2);
+    await idle();
+    expect(fetchMock).toHaveBeenCalledTimes(3);
+    expect(outbox.status()).toEqual({ pending: 0, rejected: [], offline: false });
+  });
+
+  it("gives up on an error body that never finishes", async () => {
+    fetchMock.mockResolvedValueOnce(
+      new Response(new ReadableStream(), { status: 404 }), // the body never arrives
+    );
+    replies(ok());
+
+    await outbox.send(put("/api/sets/a"));
+    await vi.advanceTimersByTimeAsync(DELIVERY_TIMEOUT_MS);
+    await idle();
+
+    expect(outbox.status()).toMatchObject({ pending: 1, rejected: [], offline: true });
+  });
+});
+
+describe("with the app open twice (a Safari tab and the installed app)", () => {
+  it("sends one write at a time, so an edit made mid-send is not overwritten", async () => {
+    const other = createOutbox(outboxStore(factory), lock);
+    let answerFirst: (response: Response) => void = () => undefined;
+    fetchMock.mockReturnValueOnce(
+      new Promise<Response>((resolve) => {
+        answerFirst = resolve;
+      }),
+    );
+    fetchMock.mockResolvedValue(ok());
+
+    await outbox.send(put("/api/sets/a", { reps: 8 }));
+    await vi.waitFor(() => {
+      expect(fetchMock).toHaveBeenCalledTimes(1);
+    });
+    // The other context corrects the set while the first send is on its way.
+    await other.send(put("/api/sets/a", { reps: 10 }));
+    await vi.advanceTimersByTimeAsync(0);
+    expect(fetchMock).toHaveBeenCalledTimes(1);
+
+    answerFirst(ok());
+    await idle();
+    await other.idle();
+
+    expect(sent().map(([, , body]) => body)).toEqual(['{"reps":8}', '{"reps":10}']);
+    expect(await store.pending()).toBe(0);
+  });
+});
+
+describe("webLock", () => {
+  it("holds the shared Web Lock while sending", async () => {
+    const request = vi.fn((_name: string, task: () => Promise<void>) => task());
+    const task = vi.fn(() => Promise.resolve());
+
+    await webLock({ request } as unknown as LockManager)(task);
+
+    expect(request).toHaveBeenCalledWith("trainer-outbox", task);
+    expect(task).toHaveBeenCalledOnce();
+  });
+
+  it("runs the task directly where Web Locks are missing", async () => {
+    const task = vi.fn(() => Promise.resolve());
+
+    await webLock(undefined)(task);
+
+    expect(task).toHaveBeenCalledOnce();
   });
 });
 

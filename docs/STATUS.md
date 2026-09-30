@@ -41,6 +41,10 @@ the offline queue from the start, instead of being rewritten later.
 - Network errors, 408, 429 and 5xx retry with backoff (2 s doubling to 60 s),
   and again when the phone comes back online or the app is reopened. Any
   other 4xx is kept as "refused" and shown in a banner until dismissed.
+- Only one copy of the app delivers at a time (a Web Lock shared by Safari tabs
+  and the installed app), so an older in-flight write cannot overwrite a newer
+  one. Each delivery attempt gives up after 20 s and counts as retryable, so a
+  request that never answers cannot stall the queue.
 - A banner shows what is still waiting to sync.
 - `web/src/sw/`: a service worker, built to `/sw.js`. Hashed `/assets/` are
   served cache-first. Everything else is network-first, falling back to the
