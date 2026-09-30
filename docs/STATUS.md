@@ -22,42 +22,36 @@ Last updated: 2026-09-29.
 | Phase 0a — quality gate | #1 | Seven required checks; branch protection and squash-only merges applied by the owner. |
 | Gate fix — Dependabot titles, `@types/node` major pinned to Node 24 | #3 | #2 (Dependabot) closed because of it. |
 | npm → pnpm; Apple Health dropped from scope; this status file | #4 | Single-document pnpm lockfile so GitHub's dependency graph and Dependabot can read it. |
+| Phase 0b repository side — serve, deploy config, units, backups, scripts | this PR | Owner host steps pending (see In progress). |
 
-## Next: phase 0b — runtime skeleton
+## In progress: phase 0b — runtime skeleton (repository side done)
 
-Goal: the API's `/healthz` answers over HTTPS on the owner's phone, through
-`tailscale serve`, with nothing exposed beyond the tailnet. One PR
-(`feat(deploy): ...`), plus owner-run host steps.
+The repository side is complete: `python -m trainer.api` serves the app with
+uvicorn; `trainer.deploy` validates `deploy/local.env`, renders hardened systemd
+units (API on loopback; nightly SQLite backup with rotation and no network) and
+shell-quoted installer variables; `deploy/build.sh` (unprivileged),
+`deploy/install.sh` and `deploy/tailscale-serve.sh` (root, idempotent) do the
+rest. The installer refuses to run on unsafe host state (`trainer.deploy
+preflight`: existing accounts must be dedicated system accounts; data and code
+directories and their ancestors must have safe owners and permissions). See [DEPLOY.md](DEPLOY.md). Rehearsed without root: the wheel installs from
+the hash-pinned requirements, `/healthz` answers, `systemd-analyze verify` passes.
 
-Every host-specific value is **configuration, not code**: the deploy scripts
-read `deploy/local.env` (git-ignored; a committed `deploy/local.env.example`
-documents each key with placeholder values). At minimum:
-`TRAINER_USER`, `TRAINER_DATA_DIR`, `TRAINER_PREFIX`, `TRAINER_BIND`
-(loopback `host:port`), `TRAINER_BACKUP_KEEP`.
+Exit criterion still open: the owner runs the root steps and opens the served
+URL on the phone. `shellcheck` for `deploy/*.sh` is not in the gate yet (a
+separate `ci:` PR); the scripts are syntax-checked by the test suite.
 
-Repository work (all gated):
+## Next: phase 1 — data
 
-- `deploy/systemd/trainer-api.service` template: runs `uvicorn` (add as an
-  exact-pinned runtime dependency) on the `create_app` factory as the
-  configured user, bound to the configured loopback address, hardened
-  (`NoNewPrivileges`, `ProtectSystem=strict`, `ProtectHome=true`, `PrivateTmp`,
-  `ReadWritePaths=` the data directory only, `RestrictAddressFamilies=AF_INET
-  AF_INET6 AF_UNIX`, empty `CapabilityBoundingSet=`).
-- `deploy/install.sh`: idempotent; creates the system user
-  (`--system --no-create-home --shell /usr/sbin/nologin`), the data directory
-  (0750, owned by that user) and the install prefix (root-owned, read-only to the
-  service), builds the wheel into a venv there with `uv`, renders and installs
-  the units, enables them. Code is root-owned; only data is writable.
-- `deploy/tailscale-serve.sh`: `tailscale serve --bg --https=443 http://$TRAINER_BIND`.
-- `deploy/backup.sh` + timer: nightly `sqlite3 .backup` of the database into
-  `$TRAINER_DATA_DIR/backups`, keeping `$TRAINER_BACKUP_KEEP`.
-- Tests that render and validate the unit templates from the example env (no
-  host access in tests), and `shellcheck` for `deploy/*.sh` if it can join the
-  gate cleanly (separate `ci:` PR if it changes the gate).
+One or more PRs:
 
-Owner/host steps (need root; by rule the owner runs them, not an agent):
-fill in `deploy/local.env`, then `sudo ./deploy/install.sh` and
-`sudo ./deploy/tailscale-serve.sh`, then open the URL on the phone.
+- `trainer.storage`: SQLite connection factory (WAL, foreign keys on) at
+  `$TRAINER_DATA_DIR/trainer.db`, migration runner on `PRAGMA user_version`, the
+  PLAN §4 schema for exercises, aliases, workouts and sets.
+- `trainer.domain`: exercise identity and alias normalisation (pure).
+- v1 importer as a one-off command reading the v1 database read-only (path
+  passed on the command line, never committed), seeding every historical name
+  listed below as an alias.
+- Read-only history API and a History screen in the web app.
 
 ## Remaining phases
 
