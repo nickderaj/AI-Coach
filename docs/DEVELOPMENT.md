@@ -55,6 +55,20 @@ Node version in `web/.nvmrc`). GitHub Actions majors are still proposed. pnpm
 itself refuses any package version published less than a day ago
 (`minimumReleaseAge` in `web/pnpm-workspace.yaml`).
 
+## App icons
+
+`web/public/icon.svg` is the source. The PNGs next to it are rendered from it
+with any Chromium, at 192 and 512 px with rounded corners (`icon-*.png`), and at
+512 and 180 px with square corners (`icon-maskable-512.png`, `apple-touch-icon.png`;
+the phone applies its own mask). Commit the SVG and the PNGs together.
+
+## Service worker
+
+`web/src/sw/worker.ts` is built to `/sw.js` (see `vite.config.ts`) and only wires
+browser events to `strategy.ts`, which holds the tested logic. Only production
+builds register it, so `pnpm dev` is never served from a cache. Bump `CACHE_NAME`
+to drop every cached response on the next update.
+
 ## Rules the tools cannot enforce
 
 - **`# coverage-critical`** goes directly above any function that decides

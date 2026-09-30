@@ -5,6 +5,14 @@ export default defineConfig({
   plugins: [react()],
   build: {
     sourcemap: false,
+    rolldownOptions: {
+      input: { app: "index.html", sw: "src/sw/worker.ts" },
+      output: {
+        // The service worker must keep a fixed name at the root, for its scope and
+        // so the browser can find new versions of it.
+        entryFileNames: (chunk) => (chunk.name === "sw" ? "sw.js" : "assets/[name]-[hash].js"),
+      },
+    },
   },
   server: {
     // `pnpm dev` against a local API (python -m trainer.api --port 8000).
@@ -20,8 +28,9 @@ export default defineConfig({
     coverage: {
       provider: "v8",
       include: ["src/**/*.{ts,tsx}"],
-      // main.tsx only mounts <App /> into the DOM; everything it renders is tested.
-      exclude: ["src/main.tsx", "src/test/**", "src/**/*.test.{ts,tsx}"],
+      // main.tsx only mounts <App /> and worker.ts only wires worker events to
+      // strategy.ts; everything they call is tested.
+      exclude: ["src/main.tsx", "src/sw/worker.ts", "src/test/**", "src/**/*.test.{ts,tsx}"],
       reporter: ["text", "json-summary", "lcov"],
       thresholds: {
         lines: 90,

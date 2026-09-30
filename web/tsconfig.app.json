@@ -27,5 +27,7 @@
     "forceConsistentCasingInFileNames": true,
     "erasableSyntaxOnly": true
   },
-  "include": ["src"]
+  "include": ["src"],
+  // Compiled with the service worker's globals instead: see tsconfig.sw.json.
+  "exclude": ["src/sw/worker.ts"]
 }

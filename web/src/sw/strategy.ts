@@ -1,0 +1,139 @@
+/**
+ * What the service worker does with each request, kept free of worker globals
+ * so it can be tested.
+ *
+ * - Built assets (`/assets/*`) have content hashes in their names, so a cached
+ *   copy is always right: cache first.
+ * - Everything else the app reads (the page, `/api` reads, the manifest and
+ *   icons) is network first, falling back to the last copy when the network
+ *   fails, answers 5xx or is too slow, so the app opens and shows recent data
+ *   in a gym with no signal.
+ * - Writes and other sites are left alone; writes go through the outbox.
+ */
+
+/** Bump to discard every cached response when the worker is next updated. */
+export const CACHE_NAME = "trainer-v1";
+
+/** How long to wait for the network before answering from the cache. */
+export const NETWORK_TIMEOUT_MS = 3_000;
+
+export type Strategy = "cache-first" | "network-first" | "bypass";
+
+type Cache = Pick<globalThis.Cache, "match" | "put" | "keys" | "delete">;
+type Fetch = (request: Request) => Promise<Response>;
+
+export interface Deps {
+  cache: Cache;
+  fetch: Fetch;
+}
+
+export function strategyFor(method: string, url: URL, origin: string): Strategy {
+  if (method !== "GET" || url.origin !== origin) {
+    return "bypass";
+  }
+  return url.pathname.startsWith("/assets/") ? "cache-first" : "network-first";
+}
+
+export async function cacheFirst(request: Request, deps: Deps): Promise<Response> {
+  const cached = await deps.cache.match(request);
+  if (cached !== undefined) {
+    return cached;
+  }
+  const response = await deps.fetch(request);
+  if (response.ok) {
+    await deps.cache.put(request, response.clone());
+  }
+  return response;
+}
+
+export interface Answer {
+  response: Promise<Response>;
+  /** Settles once the network answer is cached, which may be after `response`. */
+  done: Promise<unknown>;
+}
+
+/**
+ * The network's answer, or the cached one if the network fails, answers 5xx or
+ * takes longer than `timeoutMs`. A navigation falls back to the cached app shell (`/`), since
+ * every screen is the same page.
+ */
+export function networkFirst(
+  request: Request,
+  deps: Deps,
+  options: { navigation: boolean; timeoutMs: number },
+): Answer {
+  const network = deps.fetch(request).then(async (response) => {
+    if (response.ok) {
+      await deps.cache.put(request, response.clone());
+    }
+    return response;
+  });
+  const cachedCopy = (async (): Promise<Response | undefined> =>
+    (await deps.cache.match(request)) ??
+    (options.navigation ? deps.cache.match(new URL("/", request.url).href) : undefined))();
+
+  const response = cachedCopy.then((cached) => {
+    if (cached === undefined) {
+      return network;
+    }
+    // A 5xx usually means the app is down behind a proxy that is up: as good as offline.
+    const fallback = network.then(
+      (fresh) => (fresh.status >= 500 ? cached : fresh),
+      () => cached,
+    );
+    const slow = new Promise<Response>((resolve) => {
+      setTimeout(() => {
+        resolve(cached);
+      }, options.timeoutMs);
+    });
+    return Promise.race([fallback, slow]);
+  });
+  return { response, done: network.catch(() => undefined) };
+}
+
+/**
+ * Same-origin `/assets/` files that a built `index.html` loads.
+ *
+ * @internal Exported for tests; the worker uses `precache`.
+ */
+export function assetPaths(html: string): string[] {
+  const paths = [...html.matchAll(/(?:src|href)="(\/assets\/[^"]+)"/g)].map((match) => match[1]);
+  return [...new Set(paths.filter((path) => path !== undefined))];
+}
+
+/**
+ * Cache the app shell and the assets it loads, then forget assets from older
+ * builds, so the app opens offline straight after it is installed or updated.
+ */
+export async function precache(deps: Deps, origin: string): Promise<void> {
+  const shell = await deps.fetch(new Request(`${origin}/`, { cache: "reload" }));
+  if (!shell.ok) {
+    throw new Error(`the app shell answered ${String(shell.status)}`);
+  }
+  const assets = assetPaths(await shell.clone().text());
+  for (const path of assets) {
+    const response = await deps.fetch(new Request(`${origin}${path}`));
+    if (!response.ok) {
+      throw new Error(`${path} answered ${String(response.status)}`);
+    }
+    await deps.cache.put(`${origin}${path}`, response);
+  }
+  await deps.cache.put(`${origin}/`, shell);
+
+  const current = new Set(assets);
+  for (const cached of await deps.cache.keys()) {
+    const path = new URL(cached.url).pathname;
+    if (path.startsWith("/assets/") && !current.has(path)) {
+      await deps.cache.delete(cached);
+    }
+  }
+}
+
+/** Delete caches left by earlier versions of the worker. */
+export async function dropOldCaches(storage: Pick<CacheStorage, "keys" | "delete">): Promise<void> {
+  for (const name of await storage.keys()) {
+    if (name !== CACHE_NAME) {
+      await storage.delete(name);
+    }
+  }
+}
