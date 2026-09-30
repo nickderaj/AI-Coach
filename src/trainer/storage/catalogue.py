@@ -68,3 +68,43 @@ def resolve(conn: sqlite3.Connection, text: str) -> int | None:
         (key, key),
     ).fetchone()
     return None if row is None else int(row[0])
+
+
+def create_exercise(conn: sqlite3.Connection, spec: ExerciseSpec) -> int:
+    """Create a new exercise and return its id.
+
+    Raises:
+        sqlite3.IntegrityError: if the name is already taken.
+    """
+    row = conn.execute(
+        """
+        INSERT INTO exercises (name, display_name, equipment, muscle_groups, measure)
+        VALUES (?, ?, ?, ?, ?)
+        RETURNING id
+        """,
+        (
+            normalise_name(spec.name),
+            spec.display_name,
+            spec.equipment,
+            spec.muscle_groups,
+            spec.measure.value,
+        ),
+    ).fetchone()
+    return int(row[0])
+
+
+def known_names(conn: sqlite3.Connection) -> list[tuple[int, str]]:
+    """Every (exercise id, name) a new exercise could collide with.
+
+    Display names and aliases, ordered by exercise id.
+    """
+    return [
+        (int(row[0]), str(row[1]))
+        for row in conn.execute(
+            """
+            SELECT id, display_name FROM exercises
+            UNION ALL SELECT exercise_id, alias FROM exercise_aliases
+            ORDER BY 1, 2
+            """
+        )
+    ]

@@ -11,6 +11,7 @@ from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
 from trainer.api.history import router as history_router
+from trainer.api.journal import router as journal_router
 from trainer.api.settings import Settings, settings_from_env
 from trainer.storage.database import connect, migrate
 
@@ -56,6 +57,8 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     def healthz() -> dict[str, str]:
         return {"status": "ok"}
 
+    # The journal router first: its /api/workouts/current must win over /{workout_id}.
+    app.include_router(journal_router)
     app.include_router(history_router)
     if settings.web_dir is not None:
         app.mount("/", StaticFiles(directory=settings.web_dir, html=True))

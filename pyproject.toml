@@ -7,6 +7,7 @@ requires-python = "==3.13.*"
 license = "LicenseRef-Proprietary"
 dependencies = [
     "fastapi==0.142.0",
+    "pydantic==2.13.5",
     "uvicorn==0.54.0",
 ]
 

@@ -3,7 +3,12 @@
 from __future__ import annotations
 
 import sqlite3
+from contextlib import contextmanager
 from pathlib import Path
+from typing import TYPE_CHECKING
+
+if TYPE_CHECKING:
+    from collections.abc import Iterator
 
 DATABASE_FILE = "trainer.db"
 
@@ -73,6 +78,12 @@ MIGRATIONS: tuple[str, ...] = (
         source TEXT NOT NULL
     ) STRICT;
     """,
+    """
+    -- Workouts logged in the app carry the phone-generated id they were created
+    -- under, so offline replays update rather than duplicate them.
+    ALTER TABLE workouts ADD COLUMN client_id TEXT;
+    CREATE UNIQUE INDEX workouts_client_id ON workouts (client_id);
+    """,
 )
 
 
@@ -87,6 +98,23 @@ def connect(path: str | Path) -> sqlite3.Connection:
     conn.execute("""PRAGMA foreign_keys = ON""")
     conn.execute("""PRAGMA journal_mode = WAL""")
     return conn
+
+
+@contextmanager
+def write_transaction(conn: sqlite3.Connection) -> Iterator[None]:
+    """Run a read-modify-write atomically: take the write lock before reading.
+
+    ``BEGIN IMMEDIATE`` makes concurrent writers queue (up to the busy timeout)
+    instead of two of them reading the same state and both acting on it.
+    Commits on success, rolls back on any exception.
+    """
+    conn.execute("""BEGIN IMMEDIATE""")
+    try:
+        yield
+    except BaseException:
+        conn.rollback()
+        raise
+    conn.commit()
 
 
 def connect_readonly(path: str | Path) -> sqlite3.Connection:

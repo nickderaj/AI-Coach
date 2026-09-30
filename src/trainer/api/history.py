@@ -12,6 +12,7 @@ from trainer.storage.history import (
     ExerciseHistory,
     ExerciseSummary,
     WorkoutDetail,
+    WorkoutNotFoundError,
     WorkoutSummary,
     exercise_history,
     get_workout,
@@ -38,11 +39,11 @@ def workouts(
 @router.get("/workouts/{workout_id}")
 def workout(request: Request, workout_id: int) -> WorkoutDetail:
     """One workout with all its sets."""
-    with closing(connect(_database(request))) as conn:
-        found = get_workout(conn, workout_id)
-    if found is None:
-        raise HTTPException(status_code=404, detail="workout not found")
-    return found
+    try:
+        with closing(connect(_database(request))) as conn:
+            return get_workout(conn, workout_id)
+    except WorkoutNotFoundError as error:
+        raise HTTPException(status_code=404, detail="workout not found") from error
 
 
 @router.get("/exercises")

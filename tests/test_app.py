@@ -147,6 +147,7 @@ class TestHistory:
                 "duration_s": None,
                 "rpe": None,
                 "notes": None,
+                "client_id": None,
             }
         ]
 
