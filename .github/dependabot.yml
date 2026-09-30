@@ -18,6 +18,12 @@ updates:
       interval: weekly
     cooldown:
       default-days: 7
+    # Major versions are planned upgrades done in their own PR (they move in
+    # lockstep with peers, e.g. TypeScript/typescript-eslint, @types/node/Node).
+    # Advisories in any version still fail the nightly audit.
+    ignore:
+      - dependency-name: "*"
+        update-types: ["version-update:semver-major"]
     commit-message:
       prefix: build
       include: scope
@@ -33,10 +39,11 @@ updates:
     cooldown:
       default-days: 7
     versioning-strategy: increase
+    # Major versions are planned upgrades done in their own PR (they move in
+    # lockstep with peers, e.g. TypeScript/typescript-eslint, @types/node/Node).
+    # Advisories in any version still fail the nightly audit.
     ignore:
-      # Type definitions track the runtime's major version (web/.nvmrc), which is
-      # upgraded deliberately, not by Dependabot.
-      - dependency-name: "@types/node"
+      - dependency-name: "*"
         update-types: ["version-update:semver-major"]
     commit-message:
       prefix: build
