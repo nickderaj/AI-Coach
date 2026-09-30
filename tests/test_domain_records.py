@@ -35,17 +35,23 @@ def test_timed_exercises_rank_by_duration_then_load() -> None:
     assert best(Measure.SECONDS, sets) == 2
 
 
+def test_timed_sets_without_a_duration_rank_by_reps() -> None:
+    sets = [(5, 10.0, None), (10, 10.0, None), (8, 10.0, None)]
+
+    assert best(Measure.SECONDS, sets) == 1
+
+
 @pytest.mark.parametrize(
     ("measure", "args", "key"),
     [
         (Measure.REPS, (8, 60.0, 30.0), (60.0, 8.0)),
         (Measure.REPS, (None, None, None), (0.0, 0.0)),
-        (Measure.SECONDS, (8, 60.0, 30.0), (30.0, 60.0)),
-        (Measure.SECONDS, (None, None, None), (0.0, 0.0)),
+        (Measure.SECONDS, (8, 60.0, 30.0), (30.0, 60.0, 8.0)),
+        (Measure.SECONDS, (None, None, None), (0.0, 0.0, 0.0)),
         (Measure.DISTANCE, (8, 60.0, 30.0), (60.0, 8.0)),
     ],
 )
 def test_set_rank_keys(
-    measure: Measure, args: tuple[int | None, float | None, float | None], key: tuple[float, float]
+    measure: Measure, args: tuple[int | None, float | None, float | None], key: tuple[float, ...]
 ) -> None:
     assert set_rank(measure, *args) == key

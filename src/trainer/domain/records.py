@@ -14,8 +14,14 @@ def set_volume(reps: int | None, load_kg: float | None) -> float:
 
 def set_rank(
     measure: Measure, reps: int | None, load_kg: float | None, duration_s: float | None
-) -> tuple[float, float]:
-    """Sort key for "best set": heaviest then most reps, or longest then heaviest if timed."""
+) -> tuple[float, ...]:
+    """Sort key for "best set": heaviest then most reps.
+
+    Timed sets rank longest, then heaviest, then most reps: the write API lets
+    a timed set carry reps without a duration, and it is shown as reps then.
+    Keys are only compared between sets of the same exercise, so their lengths
+    never mix.
+    """
     if measure is Measure.SECONDS:
-        return (duration_s or 0.0, load_kg or 0.0)
+        return (duration_s or 0.0, load_kg or 0.0, float(reps or 0))
     return (load_kg or 0.0, float(reps or 0))

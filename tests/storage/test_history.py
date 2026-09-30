@@ -305,6 +305,7 @@ def test_an_exercise_repeated_in_a_workout_is_one_session_per_block(
 def test_summary_best_set_uses_reps_and_duration_for_ties(db: sqlite3.Connection) -> None:
     pulldown = upsert_exercise(db, ExerciseSpec("pulldown", "Pulldown", None, None, Measure.REPS))
     hang = upsert_exercise(db, ExerciseSpec("hang", "Hang", None, None, Measure.SECONDS))
+    carry = upsert_exercise(db, ExerciseSpec("carry", "Carry", None, None, Measure.SECONDS))
     workout = db.execute(
         "INSERT INTO workouts (started_at, source) VALUES ('t', 'test') RETURNING id"
     ).fetchone()[0]
@@ -315,6 +316,9 @@ def test_summary_best_set_uses_reps_and_duration_for_ties(db: sqlite3.Connection
         (hang, 2, 1, None, None, 30.0),
         (hang, 2, 2, None, None, 50.0),  # longest: best
         (hang, 2, 3, None, None, 40.0),
+        (carry, 3, 1, 5, 20.0, None),  # timed, but logged as reps without a duration
+        (carry, 3, 2, 10, 20.0, None),  # same load, more reps: best
+        (carry, 3, 3, 8, 20.0, None),
     ]
     db.executemany(
         "INSERT INTO workout_sets (workout_id, exercise_id, exercise_position, set_number, "
@@ -327,4 +331,5 @@ def test_summary_best_set_uses_reps_and_duration_for_ties(db: sqlite3.Connection
     assert [(line.position, line.name, line.best.set_number) for line in summary.exercises] == [
         (1, "Pulldown", 2),
         (2, "Hang", 2),
+        (3, "Carry", 2),
     ]

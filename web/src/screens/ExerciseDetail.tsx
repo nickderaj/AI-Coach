@@ -7,7 +7,7 @@ import { LineChart } from "../charts";
 import { Avatar, Load, SetTable, StatTile, equipmentTone, tone } from "../components";
 import { formatDate, formatLoad, formatShortDate, formatVolume, plural } from "../format";
 import { href } from "../router";
-import { personalRecords, sessionStats } from "../stats";
+import { chronological, personalRecords, sessionStats } from "../stats";
 import type { SessionStats } from "../stats";
 
 type History = z.infer<typeof exerciseHistorySchema>;
@@ -40,8 +40,7 @@ const TIMED_METRICS: Metrics = [
 function Progress({ history }: { history: History }): ReactElement {
   const metrics = history.exercise.measure === "seconds" ? TIMED_METRICS : LIFT_METRICS;
   const [metric, setMetric] = useState<Metric>(metrics[0]);
-  const oldestFirst = [...history.sessions].reverse();
-  const points = oldestFirst.flatMap((session) => {
+  const points = chronological(history.sessions).flatMap((session) => {
     const value = sessionStats(session.sets)[metric.key];
     const key = `${String(session.workout_id)}:${String(session.position)}`;
     return value === null ? [] : [{ key, label: formatShortDate(session.started_at), value }];

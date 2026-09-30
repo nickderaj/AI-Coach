@@ -95,6 +95,25 @@ export function durationMinutes(workout: WorkoutLike): number | null {
   return Math.round(ms / 60_000);
 }
 
+interface SessionLike {
+  workout_id: number;
+  position: number;
+  started_at: string;
+}
+
+/**
+ * Sessions oldest first. The API lists workouts newest first but repeated blocks
+ * within one workout in position order, so a plain reverse would flip those.
+ */
+export function chronological<T extends SessionLike>(sessions: readonly T[]): T[] {
+  return [...sessions].sort(
+    (a, b) =>
+      new Date(a.started_at).getTime() - new Date(b.started_at).getTime() ||
+      a.workout_id - b.workout_id ||
+      a.position - b.position,
+  );
+}
+
 /**
  * Estimated one-rep max (Epley); a single rep is its own max. Null without load and reps.
  *

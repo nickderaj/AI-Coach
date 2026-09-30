@@ -389,6 +389,45 @@ describe("Exercises", () => {
     );
   });
 
+  it("charts a repeated exercise in workout order", async () => {
+    mockFetch({
+      "/api/exercises/45/history": {
+        body: {
+          exercise: PULLDOWN,
+          sessions: [
+            {
+              workout_id: 2,
+              position: 1,
+              started_at: "2026-09-28T11:30:59+00:00",
+              sets: [set(1, 8, 50)],
+            },
+            {
+              workout_id: 2,
+              position: 4,
+              started_at: "2026-09-28T11:30:59+00:00",
+              sets: [set(1, 8, 55)],
+            },
+            {
+              workout_id: 1,
+              position: 1,
+              started_at: "2026-07-09T10:47:23+00:00",
+              sets: [set(1, 10, 40)],
+            },
+          ],
+        },
+      },
+    });
+    await go("#/exercises/45");
+    render(<App />);
+
+    const chart = await screen.findByRole("img", { name: "Heaviest per session" });
+    expect(text([...chart.querySelectorAll("circle title")])).toEqual([
+      "9 Jul: 40 kg",
+      "29 Sept: 50 kg",
+      "29 Sept: 55 kg",
+    ]);
+  });
+
   it("shows timed exercises in seconds", async () => {
     standardApi();
     await go("#/exercises/23");

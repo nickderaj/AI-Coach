@@ -2,6 +2,7 @@ import { describe, expect, it } from "vitest";
 
 import type { WorkoutLike } from "./stats";
 import {
+  chronological,
   durationMinutes,
   estimatedOneRepMax,
   personalRecords,
@@ -99,6 +100,38 @@ describe("durationMinutes", () => {
 
   it("is null while unfinished", () => {
     expect(durationMinutes(workout("2026-09-29T10:00:00Z"))).toBeNull();
+  });
+});
+
+describe("chronological", () => {
+  it("orders by start, then workout, then position within the workout", () => {
+    interface Session {
+      workout_id: number;
+      position: number;
+      started_at: string;
+    }
+    const session = (workout_id: number, position: number, started_at: string): Session => ({
+      workout_id,
+      position,
+      started_at,
+    });
+    // As the API returns them: newest workout first, its blocks in position order.
+    const sessions = [
+      session(7, 1, "2026-09-28T11:30:00+00:00"),
+      session(7, 4, "2026-09-28T11:30:00+00:00"),
+      session(5, 2, "2026-09-21T10:00:00+00:00"),
+      session(4, 3, "2026-09-21T10:00:00+00:00"),
+      session(3, 1, "2026-09-21T12:00:00+02:00"), // the same instant as workouts 4 and 5
+    ];
+
+    expect(chronological(sessions).map((s) => [s.workout_id, s.position])).toEqual([
+      [3, 1],
+      [4, 3],
+      [5, 2],
+      [7, 1],
+      [7, 4],
+    ]);
+    expect(sessions[0]).toEqual(session(7, 1, "2026-09-28T11:30:00+00:00")); // input untouched
   });
 });
 
