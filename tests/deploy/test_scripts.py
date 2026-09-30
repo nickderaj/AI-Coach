@@ -13,7 +13,12 @@ SCRIPTS = sorted(DEPLOY.glob("*.sh"))
 
 
 def test_there_are_deploy_scripts() -> None:
-    assert [path.name for path in SCRIPTS] == ["build.sh", "install.sh", "tailscale-serve.sh"]
+    assert [path.name for path in SCRIPTS] == [
+        "build.sh",
+        "import-v1.sh",
+        "install.sh",
+        "tailscale-serve.sh",
+    ]
 
 
 @pytest.mark.parametrize("script", SCRIPTS, ids=lambda path: path.name)
@@ -27,7 +32,7 @@ def test_script_parses_and_is_strict(script: Path) -> None:
     assert "set -euo pipefail" in text
 
 
-@pytest.mark.parametrize("script", ["install.sh", "tailscale-serve.sh"])
+@pytest.mark.parametrize("script", ["import-v1.sh", "install.sh", "tailscale-serve.sh"])
 def test_root_scripts_refuse_to_run_unprivileged(script: str) -> None:
     text = (DEPLOY / script).read_text(encoding="utf-8")
 
