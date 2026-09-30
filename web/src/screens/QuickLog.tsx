@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { ReactElement } from "react";
 
 import type { ExerciseSummary } from "../api";
@@ -20,13 +20,18 @@ function QuickLogForm({
 }): ReactElement {
   const [set, setSet] = useState(EMPTY);
   const [logged, setLogged] = useState<string | null>(null);
+  // Set before the first await: a double tap must not log two one-off workouts.
+  const saving = useRef(false);
+  const [busy, setBusy] = useState(false);
   const timed = exercise.measure === "seconds";
   const values = valuesOf(set, exercise.measure);
 
   const submit = async (): Promise<void> => {
-    if (values === null) {
+    if (values === null || saving.current) {
       return;
     }
+    saving.current = true;
+    setBusy(true);
     const now = new Date();
     const oneOff = newDraft(crypto.randomUUID(), now);
     const row = { ...set, id: crypto.randomUUID(), logged: typedOf(set) };
@@ -35,6 +40,8 @@ function QuickLogForm({
     await logging.outbox.send(setWrite(oneOff, block, row, values));
     setLogged(formatSet(values, exercise.measure));
     setSet(EMPTY);
+    saving.current = false;
+    setBusy(false);
   };
 
   return (
@@ -68,7 +75,7 @@ function QuickLogForm({
             setLogged(null);
           }}
         />
-        <button type="submit" className="primary" disabled={values === null}>
+        <button type="submit" className="primary" disabled={values === null || busy}>
           Log
         </button>
       </div>

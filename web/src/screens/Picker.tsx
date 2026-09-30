@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { ReactElement } from "react";
 
 import {
@@ -116,9 +116,16 @@ function NewExercise({
   const [timed, setTimed] = useState(false);
   const [result, setResult] = useState<CreateResult | null>(null);
   const [busy, setBusy] = useState(false);
+  // Set before the first await: the form can be submitted again (Enter) even
+  // while its button is disabled, which must not post the exercise twice.
+  const posting = useRef(false);
   const measure = timed ? "seconds" : "reps";
 
   const create = async (allowSimilar: boolean): Promise<void> => {
+    if (posting.current) {
+      return;
+    }
+    posting.current = true;
     setBusy(true);
     const outcome = await createExercise({
       name: name.trim(),
@@ -126,6 +133,7 @@ function NewExercise({
       measure,
       allow_similar: allowSimilar,
     });
+    posting.current = false;
     setBusy(false);
     if (outcome.kind === "created") {
       onAdd(toDraft(outcome.exercise));
@@ -211,6 +219,7 @@ function Choose({ logging, draft }: { logging: Logging; draft: Draft }): ReactEl
   const state = useApi("/api/exercises", exerciseListSchema);
   const [query, setQuery] = useState("");
   const [creating, setCreating] = useState(false);
+  // Disables every choice at once (React applies it before a second tap lands).
   const [adding, setAdding] = useState(false);
 
   const add = async (exercise: DraftExercise): Promise<void> => {

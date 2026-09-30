@@ -203,6 +203,21 @@ describe("Picker", () => {
     ]);
   });
 
+  it("adds an exercise once however fast it is tapped", async () => {
+    routeFetch({ "GET /api/exercises": { body: EXERCISES } });
+    await go("#/log/add");
+    const { drafts } = renderLogging(newDraft("w1", STARTED));
+
+    const choice = await screen.findByRole("button", { name: /Arnold Press/ });
+    fireEvent.click(choice);
+    fireEvent.click(choice);
+
+    await waitFor(() => {
+      expect(window.location.hash).toBe("#/log");
+    });
+    expect(drafts.get()?.blocks).toHaveLength(1);
+  });
+
   it("adds an exercise without last time when its history cannot be loaded", async () => {
     routeFetch({ "GET /api/exercises": { body: EXERCISES } });
     await go("#/log/add");
@@ -330,6 +345,29 @@ describe("Picker", () => {
         measure: "reps",
       });
     });
+  });
+
+  it("posts a new exercise once however fast the form is submitted", async () => {
+    const fetchMock = routeFetch({
+      "GET /api/exercises": { body: EXERCISES },
+      "POST /api/exercises": {
+        status: 201,
+        body: { ...ARNOLD, id: 61, name: "Plank" },
+      },
+    });
+    await go("#/log/add");
+    const { drafts } = renderLogging(newDraft("w1", STARTED));
+    fireEvent.click(await screen.findByRole("button", { name: "+ New exercise" }));
+    const form = screen.getByRole("form", { name: "New exercise" });
+    fireEvent.change(within(form).getByLabelText("Name"), { target: { value: "Plank" } });
+
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+
+    await waitFor(() => {
+      expect(drafts.get()?.blocks).toHaveLength(1);
+    });
+    expect(fetchMock.mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(1);
   });
 
   it("says a new exercise needs a connection", async () => {
@@ -612,6 +650,36 @@ describe("QuickLog", () => {
     });
     expect(set?.body).toMatchObject({ workout_client_id: workout?.path.split("/").at(-1) });
     expect(within(form).getByLabelText("reps")).toHaveValue("");
+  });
+
+  it("logs one workout however fast the button is tapped", async () => {
+    routeFetch(history(PULLDOWN));
+    await go("#/exercises/45");
+    const { outbox } = renderLogging();
+    let arrive: () => void = () => undefined;
+    outbox.send.mockImplementationOnce(
+      () =>
+        new Promise<void>((resolve) => {
+          arrive = resolve;
+        }),
+    );
+
+    const form = await screen.findByRole("form", { name: "Log one set" });
+    fireEvent.change(within(form).getByLabelText("reps"), { target: { value: "8" } });
+    fireEvent.submit(form);
+    fireEvent.submit(form);
+    expect(within(form).getByRole("button", { name: "Log" })).toBeDisabled();
+    await act(async () => {
+      arrive();
+      await Promise.resolve();
+    });
+
+    expect(await within(form).findByRole("status")).toHaveTextContent("Logged 8 reps.");
+    const paths = outbox.send.mock.calls.map(([write]) => write.path);
+    expect(paths).toHaveLength(2);
+    expect(paths[0]).toMatch(/^\/api\/workouts\//);
+    expect(paths[1]).toMatch(/^\/api\/sets\//);
+    expect(within(form).getByRole("button", { name: "Log" })).toBeDisabled(); // empty again
   });
 
   it("logs a hold in seconds", async () => {
