@@ -217,7 +217,9 @@ function Choose({ logging, draft }: { logging: Logging; draft: Draft }): ReactEl
     setAdding(true);
     const previous = await previousFor(exercise.id, draft.started_at);
     const ids = { block: crypto.randomUUID(), set: crypto.randomUUID() };
-    logging.drafts.set(addBlock(logging.drafts.get() ?? draft, ids, exercise, previous));
+    logging.drafts.update((current) =>
+      current === null ? null : addBlock(current, ids, exercise, previous),
+    );
     navigate({ name: "log" });
   };
 

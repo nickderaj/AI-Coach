@@ -39,7 +39,7 @@ export function renderLogging(draft: Draft | null = null): {
   drafts: DraftStore;
 } {
   const outbox = fakeOutbox();
-  const drafts = draftStore(localStorage);
+  const drafts = draftStore(localStorage, window);
   drafts.set(draft);
   render(
     <OutboxContext value={outbox}>

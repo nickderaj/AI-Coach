@@ -25,13 +25,16 @@ const previousSchema = z.object({
   duration_s: z.number().nullable(),
 });
 
+const typedSchema = z.object({ kg: z.string(), reps: z.string(), seconds: z.string() });
+
 /** One row of the set table. Values are kept as typed, and parsed when logged. */
-const draftSetSchema = z.object({
+const draftSetSchema = typedSchema.extend({
   id: z.string(),
-  kg: z.string(),
-  reps: z.string(),
-  seconds: z.string(),
-  done: z.boolean(),
+  /**
+   * What was last sent to the outbox for this set, or null if it is not logged.
+   * The server has (or will have) exactly these values, whatever is typed now.
+   */
+  logged: typedSchema.nullable(),
 });
 
 const blockSchema = z.object({
@@ -55,6 +58,7 @@ export type DraftBlock = z.infer<typeof blockSchema>;
 export type DraftSet = z.infer<typeof draftSetSchema>;
 export type DraftExercise = z.infer<typeof exerciseSchema>;
 export type Previous = z.infer<typeof previousSchema>;
+export type Typed = z.infer<typeof typedSchema>;
 
 export interface SetValues {
   reps: number | null;
@@ -62,8 +66,25 @@ export interface SetValues {
   duration_s: number | null;
 }
 
+/**
+ * Whole seconds, as the server stores times; compare times with this.
+ *
+ * @internal Exported for tests.
+ */
+export function toSecond(iso: string): number {
+  return Math.floor(Date.parse(iso) / 1000);
+}
+
 export function newDraft(id: string, now: Date): Draft {
-  return { id, started_at: now.toISOString(), blocks: [], restUntil: null };
+  // Whole seconds, as the server keeps it, so this workout's own session is
+  // recognisable when its history comes back.
+  const started = new Date(Math.floor(now.getTime() / 1000) * 1000);
+  return { id, started_at: started.toISOString(), blocks: [], restUntil: null };
+}
+
+/** Just the typed values of a row. */
+export function typedOf(set: Typed): Typed {
+  return { kg: set.kg, reps: set.reps, seconds: set.seconds };
 }
 
 /**
@@ -103,7 +124,7 @@ function prefilled(block: DraftBlock, id: string): DraftSet {
   const previous = block.previous[block.sets.length];
   if (previous !== undefined) {
     const { reps, load_kg, duration_s } = previous;
-    return { id, kg: text(load_kg), reps: text(reps), seconds: text(duration_s), done: false };
+    return { id, kg: text(load_kg), reps: text(reps), seconds: text(duration_s), logged: null };
   }
   const above = block.sets.at(-1);
   return {
@@ -111,7 +132,7 @@ function prefilled(block: DraftBlock, id: string): DraftSet {
     kg: above?.kg ?? "",
     reps: above?.reps ?? "",
     seconds: above?.seconds ?? "",
-    done: false,
+    logged: null,
   };
 }
 
@@ -163,7 +184,10 @@ export function updateSet(
 }
 
 export function loggedSets(draft: Draft): number {
-  return draft.blocks.reduce((total, block) => total + block.sets.filter((s) => s.done).length, 0);
+  return draft.blocks.reduce(
+    (total, block) => total + block.sets.filter((set) => set.logged !== null).length,
+    0,
+  );
 }
 
 /**
@@ -174,9 +198,36 @@ export function previousFrom(
   sessions: { started_at: string; sets: Previous[] }[],
   startedAt: string,
 ): Previous[] {
-  const since = Date.parse(startedAt);
-  const last = sessions.find((session) => Date.parse(session.started_at) !== since);
+  const since = toSecond(startedAt);
+  const last = sessions.find((session) => toSecond(session.started_at) !== since);
   return (last?.sets ?? []).map(({ reps, load_kg, duration_s }) => ({ reps, load_kg, duration_s }));
+}
+
+function loggedRow(id: string, values: SetValues): DraftSet {
+  const shown = {
+    kg: text(values.load_kg),
+    reps: text(values.reps),
+    seconds: text(values.duration_s),
+  };
+  return { id, ...shown, logged: shown };
+}
+
+/**
+ * The draft as it was last sent: a logged row left half-edited (the app closed
+ * mid-correction) shows what the server has again. Run when the app starts.
+ */
+export function restored(draft: Draft): Draft {
+  return {
+    ...draft,
+    blocks: draft.blocks.map((block) => ({
+      ...block,
+      sets: block.sets.map((set) =>
+        set.logged !== null && valuesOf(set, block.exercise.measure) === null
+          ? { ...set, ...set.logged }
+          : set,
+      ),
+    })),
+  };
 }
 
 /** Pick a workout back up from the server, e.g. after the phone's copy was lost. */
@@ -196,17 +247,7 @@ export function draftFromServer(detail: WorkoutDetail, id: string): Draft {
       previous: [],
       // Every set logged from the app has a client id; there are no others to show.
       sets: block.sets.flatMap((set) =>
-        set.client_id === null
-          ? []
-          : [
-              {
-                id: set.client_id,
-                kg: text(set.load_kg),
-                reps: text(set.reps),
-                seconds: text(set.duration_s),
-                done: true,
-              },
-            ],
+        set.client_id === null ? [] : [loggedRow(set.client_id, set)],
       ),
     })),
   };
@@ -242,7 +283,8 @@ export function discardWrite(draft: Draft): Write {
 }
 
 function setLabel(block: DraftBlock, set: DraftSet): string {
-  return `set ${String(block.sets.indexOf(set) + 1)} of ${block.exercise.name}`;
+  const number = block.sets.findIndex((row) => row.id === set.id) + 1;
+  return `set ${String(number)} of ${block.exercise.name}`;
 }
 
 export function setWrite(draft: Draft, block: DraftBlock, set: DraftSet, values: SetValues): Write {

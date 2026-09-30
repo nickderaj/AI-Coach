@@ -2,6 +2,9 @@ import { describe, expect, it } from "vitest";
 
 import type { SetEntry, WorkoutDetail } from "../api";
 import {
+  restored,
+  toSecond,
+  typedOf,
   addBlock,
   addSet,
   deleteSetWrite,
@@ -30,9 +33,11 @@ const row = (values: Partial<DraftSet> = {}): DraftSet => ({
   kg: "",
   reps: "",
   seconds: "",
-  done: false,
+  logged: null,
   ...values,
 });
+
+const BENCH_8x60 = { kg: "60", reps: "8", seconds: "" };
 
 function withBench(previous = [{ reps: 8, load_kg: 60, duration_s: null }]): Draft {
   return addBlock(newDraft("w", START), { block: "b", set: "s1" }, BENCH, previous);
@@ -83,6 +88,13 @@ describe("valuesOf", () => {
 });
 
 describe("editing a draft", () => {
+  it("starts at a whole second, as the server keeps it", () => {
+    expect(newDraft("w", new Date("2026-09-30T08:00:00.987Z")).started_at).toBe(
+      "2026-09-30T08:00:00.000Z",
+    );
+    expect(toSecond("2026-09-30T08:00:00.987Z")).toBe(toSecond("2026-09-30T08:00:00+00:00"));
+  });
+
   it("starts empty", () => {
     expect(newDraft("w", START)).toEqual({
       id: "w",
@@ -130,9 +142,9 @@ describe("editing a draft", () => {
   it("changes only the named block and set", () => {
     let draft = addBlock(withBench(), { block: "h", set: "h1" }, HANG, []);
     draft = addSet(draft, "b", "s2");
-    draft = updateSet(draft, "b", "s1", { done: true });
+    draft = updateSet(draft, "b", "s1", { logged: BENCH_8x60 });
 
-    expect(block(draft).sets.map((s) => s.done)).toEqual([true, false]);
+    expect(block(draft).sets.map((s) => s.logged)).toEqual([BENCH_8x60, null]);
     expect(block(draft, 1).sets).toEqual([row({ id: "h1" })]);
     expect(loggedSets(draft)).toBe(1);
 
@@ -168,8 +180,42 @@ describe("previousFrom", () => {
     ]);
   });
 
+  it("recognises this workout at the server's precision", () => {
+    const draft = newDraft("w", new Date("2026-09-30T08:00:00.123Z"));
+
+    expect(previousFrom(sessions, draft.started_at)).toEqual([
+      { reps: 8, load_kg: 60, duration_s: null },
+      { reps: null, load_kg: null, duration_s: 40 },
+    ]);
+  });
+
   it("is empty for a first time", () => {
     expect(previousFrom([], "2026-09-30T08:00:00.000Z")).toEqual([]);
+  });
+});
+
+describe("restored", () => {
+  it("puts a half-edited logged row back to what was sent", () => {
+    let draft = addSet(withBench(), "b", "s2");
+    draft = updateSet(draft, "b", "s1", { reps: "", logged: BENCH_8x60 });
+    draft = updateSet(draft, "b", "s2", { reps: "" });
+
+    expect(block(restored(draft)).sets).toEqual([
+      row({ ...BENCH_8x60, id: "s1", logged: BENCH_8x60 }),
+      row({ id: "s2", kg: "60", reps: "" }),
+    ]);
+  });
+
+  it("keeps a completed correction", () => {
+    const draft = updateSet(withBench(), "b", "s1", { reps: "9", logged: BENCH_8x60 });
+
+    expect(restored(draft)).toEqual(draft);
+  });
+});
+
+describe("typedOf", () => {
+  it("keeps just what was typed", () => {
+    expect(typedOf(row({ ...BENCH_8x60, id: "x", logged: BENCH_8x60 }))).toEqual(BENCH_8x60);
   });
 });
 
@@ -223,13 +269,19 @@ describe("draftFromServer", () => {
           key: "server-1",
           exercise: { ...BENCH, equipment: null },
           previous: [],
-          sets: [row({ id: "a", kg: "60", reps: "8", done: true })],
+          sets: [row({ ...BENCH_8x60, id: "a", logged: BENCH_8x60 })],
         },
         {
           key: "server-2",
           exercise: HANG,
           previous: [],
-          sets: [row({ id: "b", seconds: "45", done: true })],
+          sets: [
+            row({
+              id: "b",
+              seconds: "45",
+              logged: { kg: "", reps: "", seconds: "45" },
+            }),
+          ],
         },
       ],
     });
@@ -260,6 +312,14 @@ describe("writes", () => {
       body: null,
       label: "Discard workout",
     });
+  });
+
+  it("names a set by its place even in an edited copy", () => {
+    const edited = { ...second, reps: "9" };
+
+    expect(setWrite(draft, bench, edited, { reps: 9, load_kg: 60, duration_s: null }).label).toBe(
+      "Log set 2 of Bench Press",
+    );
   });
 
   it("logs and deletes a set by its id, in its workout and exercise", () => {

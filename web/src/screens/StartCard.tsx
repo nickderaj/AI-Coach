@@ -28,10 +28,15 @@ function Start({ logging }: { logging: Logging }): ReactElement {
   const clientId = unfinished?.client_id ?? null;
 
   const start = (): void => {
-    const draft = newDraft(crypto.randomUUID(), new Date());
-    logging.drafts.set(draft);
-    void logging.outbox.send(startWrite(draft));
-    navigate({ name: "pick" });
+    const fresh = newDraft(crypto.randomUUID(), new Date());
+    // Another tab may have started one since this screen was drawn: use that.
+    const draft = logging.drafts.update((current) => current ?? fresh);
+    if (draft === fresh) {
+      void logging.outbox.send(startWrite(fresh));
+      navigate({ name: "pick" });
+    } else {
+      navigate({ name: "log" });
+    }
   };
 
   return (
@@ -44,7 +49,7 @@ function Start({ logging }: { logging: Logging }): ReactElement {
           type="button"
           className="link"
           onClick={() => {
-            logging.drafts.set(draftFromServer(unfinished, clientId));
+            logging.drafts.update((current) => current ?? draftFromServer(unfinished, clientId));
             navigate({ name: "log" });
           }}
         >

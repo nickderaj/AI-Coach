@@ -43,8 +43,12 @@ logging works without signal.
   Strong-style table (set | previous | kg | reps or secs | ✓). Rows are
   prefilled from last time's matching set, else from the row above.
   - Ticking a set queues its `PUT` and starts a 90 s rest timer (±15 s, skip).
-  - Editing a logged set re-sends it. Clearing it, or unticking it, queues a
-    `DELETE`.
+  - A correction to a logged set is queued as it is typed; the outbox keeps
+    only the latest. An edit left incomplete goes back to the last sent values
+    when you leave the field, or when the app next opens. Unticking a set
+    queues a `DELETE`.
+  - Every change re-reads the latest saved copy, and other tabs' changes show
+    as they happen, so two tabs keep working on the same workout.
   - You can add or remove sets and remove an exercise with nothing logged.
   - Finish refuses an empty workout. Discard asks first.
 - **Picker (`#/log/add`).** Most recently done exercises first, with search.

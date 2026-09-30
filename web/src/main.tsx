@@ -29,7 +29,7 @@ if (import.meta.env.PROD && "serviceWorker" in navigator) {
 createRoot(root).render(
   <StrictMode>
     <OutboxContext value={outbox}>
-      <DraftContext value={draftStore(localStorage)}>
+      <DraftContext value={draftStore(localStorage, window)}>
         <App />
       </DraftContext>
     </OutboxContext>

@@ -14,10 +14,11 @@ import {
   removeBlock,
   removeSet,
   setWrite,
+  typedOf,
   updateSet,
   valuesOf,
 } from "../log/draft";
-import type { Draft, DraftBlock, DraftSet } from "../log/draft";
+import type { Draft, DraftBlock, DraftSet, Typed } from "../log/draft";
 import { useNow } from "../log/useNow";
 import { href, navigate } from "../router";
 
@@ -39,49 +40,55 @@ export function NoWorkout(): ReactElement {
 }
 
 interface Actions {
-  edit: (block: DraftBlock, set: DraftSet, change: Partial<DraftSet>) => void;
-  commit: (block: DraftBlock, set: DraftSet) => void;
+  edit: (block: DraftBlock, set: DraftSet, change: Partial<Typed>) => void;
+  settle: (block: DraftBlock, set: DraftSet) => void;
   toggle: (block: DraftBlock, set: DraftSet) => void;
   addSet: (block: DraftBlock) => void;
   removeLastSet: (block: DraftBlock) => void;
   removeBlock: (block: DraftBlock) => void;
 }
 
+/**
+ * The rule for logged rows: the outbox always has what the row's `logged` says.
+ * A valid edit is queued at once (the outbox keeps only the latest per set), so
+ * the app being closed mid-correction loses nothing; an edit that leaves the
+ * row incomplete is not sent, and the row goes back to what was.
+ */
 function actionsFor({ outbox, drafts }: Logging, draft: Draft): Actions {
   const change = (update: (current: Draft) => Draft): void => {
-    drafts.set(update(drafts.get() ?? draft));
+    drafts.update((current) => (current === null ? null : update(current)));
   };
-  const unlog = (block: DraftBlock, set: DraftSet): void => {
-    change((d) => updateSet(d, block.key, set.id, { done: false }));
-    void outbox.send(deleteSetWrite(block, set));
+  const send = (block: DraftBlock, set: DraftSet): void => {
+    const values = valuesOf(set, block.exercise.measure);
+    if (values !== null) {
+      void outbox.send(setWrite(draft, block, set, values));
+    }
   };
   const actions: Actions = {
-    edit: (block, set, values) => {
-      change((d) => updateSet(d, block.key, set.id, values));
-    },
-    // A logged row is always on the server: re-send it when edited, or take it
-    // back off if the edit left it incomplete.
-    commit: (block, set) => {
-      if (!set.done) {
-        return;
+    edit: (block, set, typing) => {
+      const edited = { ...set, ...typing };
+      const complete = valuesOf(edited, block.exercise.measure) !== null;
+      const logged = set.logged !== null && complete ? typedOf(edited) : set.logged;
+      change((d) => updateSet(d, block.key, set.id, { ...typing, logged }));
+      if (set.logged !== null) {
+        send(block, edited);
       }
-      const values = valuesOf(set, block.exercise.measure);
-      if (values === null) {
-        unlog(block, set);
-      } else {
-        void outbox.send(setWrite(draft, block, set, values));
+    },
+    settle: (block, set) => {
+      if (set.logged !== null && valuesOf(set, block.exercise.measure) === null) {
+        change((d) => updateSet(d, block.key, set.id, { ...set.logged }));
       }
     },
     toggle: (block, set) => {
-      const values = valuesOf(set, block.exercise.measure);
-      if (set.done) {
-        unlog(block, set);
-      } else if (values !== null) {
+      if (set.logged !== null) {
+        change((d) => updateSet(d, block.key, set.id, { logged: null }));
+        void outbox.send(deleteSetWrite(block, set));
+      } else if (valuesOf(set, block.exercise.measure) !== null) {
         change((d) => ({
-          ...updateSet(d, block.key, set.id, { done: true }),
+          ...updateSet(d, block.key, set.id, { logged: typedOf(set) }),
           restUntil: Date.now() + REST_MS,
         }));
-        void outbox.send(setWrite(draft, block, set, values));
+        send(block, set);
       }
     },
     addSet: (block) => {
@@ -93,7 +100,7 @@ function actionsFor({ outbox, drafts }: Logging, draft: Draft): Actions {
         return;
       }
       change((d) => removeSet(d, block.key, last.id));
-      if (last.done) {
+      if (last.logged !== null) {
         void outbox.send(deleteSetWrite(block, last));
       }
     },
@@ -121,7 +128,7 @@ function SetRow({
   const ready = valuesOf(set, measure) !== null;
   const amount = timed ? "seconds" : "reps";
   return (
-    <tr className={set.done ? "done" : undefined}>
+    <tr className={set.logged === null ? undefined : "done"}>
       <td>
         <span className="set-number tint">{number}</span>
       </td>
@@ -135,7 +142,7 @@ function SetRow({
             actions.edit(block, set, { kg: event.target.value });
           }}
           onBlur={() => {
-            actions.commit(block, set);
+            actions.settle(block, set);
           }}
         />
       </td>
@@ -149,7 +156,7 @@ function SetRow({
             actions.edit(block, set, timed ? { seconds: typed } : { reps: typed });
           }}
           onBlur={() => {
-            actions.commit(block, set);
+            actions.settle(block, set);
           }}
         />
       </td>
@@ -158,8 +165,8 @@ function SetRow({
           type="button"
           className="check"
           aria-label={`Set ${String(number)} done`}
-          aria-pressed={set.done}
-          disabled={!set.done && !ready}
+          aria-pressed={set.logged !== null}
+          disabled={set.logged === null && !ready}
           onClick={() => {
             actions.toggle(block, set);
           }}
@@ -173,7 +180,7 @@ function SetRow({
 
 function BlockCard({ block, actions }: { block: DraftBlock; actions: Actions }): ReactElement {
   const { exercise } = block;
-  const anyDone = block.sets.some((set) => set.done);
+  const anyDone = block.sets.some((set) => set.logged !== null);
   return (
     <section className="card" aria-label={exercise.name}>
       <header className="exercise-row">
@@ -242,9 +249,14 @@ function RestTimer({ logging, draft }: { logging: Logging; draft: Draft }): Reac
     return null;
   }
   const shift = (ms: number | null): void => {
-    const current = logging.drafts.get() ?? draft;
-    const until = ms === null || current.restUntil === null ? null : current.restUntil + ms;
-    logging.drafts.set({ ...current, restUntil: until });
+    logging.drafts.update((current) =>
+      current === null
+        ? null
+        : {
+            ...current,
+            restUntil: ms === null || current.restUntil === null ? null : current.restUntil + ms,
+          },
+    );
   };
   return (
     <div className="rest tint" style={tone("teal")} role="timer" aria-label="Rest">

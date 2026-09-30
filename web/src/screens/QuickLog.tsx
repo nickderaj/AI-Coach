@@ -5,11 +5,11 @@ import type { ExerciseSummary } from "../api";
 import { formatSet } from "../format";
 import type { Logging } from "../log/context";
 import { useDraft, useLogging } from "../log/context";
-import { finishWrite, newDraft, setWrite, valuesOf } from "../log/draft";
+import { finishWrite, newDraft, setWrite, typedOf, valuesOf } from "../log/draft";
 import type { DraftBlock, DraftSet } from "../log/draft";
 import { href } from "../router";
 
-const EMPTY: DraftSet = { id: "", kg: "", reps: "", seconds: "", done: false };
+const EMPTY: DraftSet = { id: "", kg: "", reps: "", seconds: "", logged: null };
 
 function QuickLogForm({
   exercise,
@@ -29,7 +29,7 @@ function QuickLogForm({
     }
     const now = new Date();
     const oneOff = newDraft(crypto.randomUUID(), now);
-    const row = { ...set, id: crypto.randomUUID(), done: true };
+    const row = { ...set, id: crypto.randomUUID(), logged: typedOf(set) };
     const block: DraftBlock = { key: "one-off", exercise, previous: [], sets: [row] };
     await logging.outbox.send({ ...finishWrite(oneOff, now), label: `One-off ${exercise.name}` });
     await logging.outbox.send(setWrite(oneOff, block, row, values));

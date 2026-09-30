@@ -1,8 +1,9 @@
-import { act, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { addBlock, addSet, newDraft, updateSet } from "../log/draft";
 import type { Draft, DraftExercise } from "../log/draft";
+import { draftStore } from "../log/store";
 import { renderLogging, routeFetch, writes } from "../test/logging";
 
 // Tests run in Pacific/Auckland (UTC+13): 07:30Z is 20:30 local.
@@ -47,6 +48,11 @@ function benchDraft(): Draft {
   ]);
 }
 
+/** The draft with set 1 of Bench Press logged as 8 × 60 kg. */
+function logged(draft: Draft): Draft {
+  return updateSet(draft, "b", "s1", { logged: { kg: "60", reps: "8", seconds: "" } });
+}
+
 async function go(hash: string): Promise<void> {
   await act(async () => {
     window.location.hash = hash;
@@ -87,7 +93,7 @@ describe("Home", () => {
   });
 
   it("offers to resume the workout in progress", async () => {
-    renderLogging(updateSet(benchDraft(), "b", "s1", { done: true }));
+    renderLogging(logged(benchDraft()));
 
     const resume = await screen.findByRole("link", { name: /Workout in progress/ });
     expect(resume).toHaveTextContent("Started 20:30 · 1 set logged");
@@ -191,7 +197,7 @@ describe("Picker", () => {
         exercise: { id: 45, name: "Lat Pulldown", measure: "reps", equipment: "cable" },
         previous: [{ reps: 10, load_kg: 55, duration_s: null }],
         sets: [
-          { id: expect.any(String) as string, kg: "55", reps: "10", seconds: "", done: false },
+          { id: expect.any(String) as string, kg: "55", reps: "10", seconds: "", logged: null },
         ],
       },
     ]);
@@ -415,27 +421,61 @@ describe("Log", () => {
     expect(outbox.send).not.toHaveBeenCalled();
   });
 
-  it("re-sends a logged set when it is corrected, and takes it back if cleared", () => {
-    const { outbox, drafts } = renderLogging(updateSet(benchDraft(), "b", "s1", { done: true }));
+  it("queues a correction to a logged set as it is typed", () => {
+    const { outbox, drafts } = renderLogging(logged(benchDraft()));
     const reps = within(table()).getByLabelText("Set 1 reps");
 
+    fireEvent.change(reps, { target: { value: "1" } });
     fireEvent.change(reps, { target: { value: "10" } });
-    fireEvent.blur(reps);
     fireEvent.change(within(table()).getByLabelText("Set 1 kg"), { target: { value: "62.5" } });
-    fireEvent.blur(within(table()).getByLabelText("Set 1 kg"));
-    fireEvent.change(reps, { target: { value: "" } });
-    fireEvent.blur(reps);
 
+    // No blur needed: all of it is already queued, the outbox keeping the latest.
     expect(writes(outbox)).toEqual([
+      ["PUT /api/sets/s1", expect.objectContaining({ reps: 1, load_kg: 60 })],
       ["PUT /api/sets/s1", expect.objectContaining({ reps: 10, load_kg: 60 })],
       ["PUT /api/sets/s1", expect.objectContaining({ reps: 10, load_kg: 62.5 })],
-      ["DELETE /api/sets/s1", null],
     ]);
-    expect(drafts.get()?.blocks[0]?.sets[0]?.done).toBe(false);
+    expect(drafts.get()?.blocks[0]?.sets[0]?.logged).toEqual({
+      kg: "62.5",
+      reps: "10",
+      seconds: "",
+    });
+  });
+
+  it("keeps the corrected set if the app is closed before leaving the field", () => {
+    const { outbox } = renderLogging(logged(benchDraft()));
+    fireEvent.change(within(table()).getByLabelText("Set 1 reps"), { target: { value: "9" } });
+    cleanup(); // iOS kills the app: no blur
+
+    const reopened = draftStore(localStorage, window).get();
+
+    expect(reopened?.blocks[0]?.sets[0]).toMatchObject({
+      reps: "9",
+      logged: { kg: "60", reps: "9", seconds: "" },
+    });
+    expect(writes(outbox)).toEqual([
+      ["PUT /api/sets/s1", expect.objectContaining({ reps: 9, load_kg: 60 })],
+    ]);
+  });
+
+  it("puts an unfinished correction back when leaving the field, sending nothing", () => {
+    const { outbox, drafts } = renderLogging(logged(benchDraft()));
+    const reps = within(table()).getByLabelText("Set 1 reps");
+
+    fireEvent.change(reps, { target: { value: "" } });
+    expect(screen.getByRole("button", { name: "Set 1 done" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
+    );
+    fireEvent.blur(reps);
+
+    expect(reps).toHaveValue("8");
+    expect(outbox.send).not.toHaveBeenCalled();
+    expect(drafts.get()?.blocks[0]?.sets[0]?.logged).toEqual({ kg: "60", reps: "8", seconds: "" });
   });
 
   it("takes a set back off when it is unticked", () => {
-    const { outbox } = renderLogging(updateSet(benchDraft(), "b", "s1", { done: true }));
+    const { outbox } = renderLogging(logged(benchDraft()));
 
     fireEvent.click(screen.getByRole("button", { name: "Set 1 done" }));
 
@@ -468,7 +508,7 @@ describe("Log", () => {
   });
 
   it("keeps an exercise with logged sets", () => {
-    renderLogging(updateSet(benchDraft(), "b", "s1", { done: true }));
+    renderLogging(logged(benchDraft()));
 
     expect(
       within(table()).queryByRole("button", { name: "Remove exercise" }),
@@ -507,7 +547,7 @@ describe("Log", () => {
 
   it("finishes the workout and goes home", async () => {
     routeFetch({ "GET /api/workouts?limit=500": { body: [] } });
-    const { outbox, drafts } = renderLogging(updateSet(benchDraft(), "b", "s1", { done: true }));
+    const { outbox, drafts } = renderLogging(logged(benchDraft()));
 
     fireEvent.click(screen.getByRole("button", { name: "Finish" }));
 
@@ -522,7 +562,7 @@ describe("Log", () => {
 
   it("asks before discarding the workout", async () => {
     routeFetch({ "GET /api/workouts?limit=500": { body: [] } });
-    const { outbox, drafts } = renderLogging(updateSet(benchDraft(), "b", "s1", { done: true }));
+    const { outbox, drafts } = renderLogging(logged(benchDraft()));
 
     fireEvent.click(screen.getByRole("button", { name: "Discard workout" }));
     expect(screen.getByRole("alert")).toHaveTextContent(
