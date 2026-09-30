@@ -89,11 +89,26 @@ def test_help(capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatc
         main(["--help"])
 
     out = capsys.readouterr().out
-    assert out.startswith("usage: python -m trainer.manage [-h] {migrate,import-v1} ...\n")
+    assert out.startswith(
+        "usage: python -m trainer.manage [-h] {migrate,import-v1,seed-exercises} ...\n"
+    )
     assert "database administration commands." in out
     lines = [" ".join(line.split()) for line in out.splitlines()]
     assert "migrate create or upgrade the database schema" in lines
     assert "import-v1 (re)import history from a v1 gym database copy" in lines
+    assert "seed-exercises add common exercises the catalogue does not have yet" in lines
+
+
+def test_seed_exercises_help(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("COLUMNS", "200")
+
+    with pytest.raises(SystemExit):
+        main(["seed-exercises", "--help"])
+
+    lines = [" ".join(line.split()) for line in capsys.readouterr().out.splitlines()]
+    assert "--dry-run list them without adding" in lines
 
 
 @pytest.mark.parametrize(
@@ -102,6 +117,7 @@ def test_help(capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatc
         (["migrate"], "--database"),
         (["import-v1", "--database", "x"], "--source"),
         (["import-v1", "--source", "x"], "--database"),
+        (["seed-exercises"], "--database"),
     ],
 )
 def test_options_are_required(
@@ -131,3 +147,20 @@ def test_module_entry_point(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> 
         runpy.run_module("trainer.manage", run_name="__main__")
 
     assert exited.value.code == 0
+
+
+def test_seed_exercises(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    database = str(tmp_path / "t.db")
+
+    assert main(["seed-exercises", "--database", database, "--dry-run"]) == 0
+    dry = capsys.readouterr().out.splitlines()
+    assert main(["seed-exercises", "--database", database]) == 0
+    real = capsys.readouterr().out.splitlines()
+    assert main(["seed-exercises", "--database", database]) == 0
+    again = capsys.readouterr().out
+
+    count = len(dry) - 1
+    assert dry[0] == f"would add {count} common exercises"
+    assert "  Barbell Back Squat (barbell)" in dry
+    assert real == [f"added {count} common exercises", *dry[1:]]
+    assert again == "added 0 common exercises\n"

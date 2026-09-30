@@ -59,6 +59,17 @@ user-owned device on the tailnet. The API answers only when that header equals
 including requests from tagged devices (they carry no identity). This sits on top
 of the tailnet ACL, which already limits who can reach the host at all.
 
+## Common exercises
+
+`python -m trainer.manage seed-exercises --database <data dir>/trainer.db` adds
+the common exercises in `src/trainer/data/common_exercises.csv` that the
+catalogue does not have yet. It can be run again at any time. Add `--dry-run` to list them
+first. An exercise counts as already there when a catalogued one with the same
+equipment has the same words, not counting equipment words, or a nearly
+identical spelling. Your "Dips" keeps "Dip" out, while "Incline Bench Press"
+still goes in beside "Barbell Bench Press". Run it as the service user, with
+the installed virtualenv.
+
 ## On the phone
 
 Open the served address in Safari, tap **Share → Add to Home Screen**. The app

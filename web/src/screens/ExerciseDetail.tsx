@@ -42,11 +42,14 @@ function Progress({ history }: { history: History }): ReactElement {
   const metrics = history.exercise.measure === "seconds" ? TIMED_METRICS : LIFT_METRICS;
   const [metric, setMetric] = useState<Metric>(metrics[0]);
   const points = chronological(history.sessions).flatMap((session) => {
-    const value = sessionStats(session.sets)[metric.key];
+    const value = sessionStats(session.sets, history.carried_kg)[metric.key];
     const key = `${String(session.workout_id)}:${String(session.position)}`;
     return value === null ? [] : [{ key, label: formatShortDate(session.started_at), value }];
   });
-  const records = personalRecords(history.sessions.map((session) => session.sets));
+  const records = personalRecords(
+    history.sessions.map((session) => session.sets),
+    history.carried_kg,
+  );
   return (
     <>
       <section className="card" style={tone(equipmentTone(history.exercise.equipment))}>

@@ -3,9 +3,12 @@
 import pytest
 
 from trainer.domain.exercises import (
+    EQUIPMENT_WORDS,
     Equipment,
     Measure,
+    is_catalogued,
     is_near_duplicate,
+    is_same_exercise,
     near_duplicates,
     normalise_name,
 )
@@ -103,3 +106,82 @@ def test_near_duplicates_lists_each_id_once_in_order() -> None:
 
     assert near_duplicates("Bench Press", names) == [3, 7]
     assert near_duplicates("Hip Thrust", names) == []
+
+
+@pytest.mark.parametrize(
+    ("candidate", "existing"),
+    [
+        ("Dip", "Dips"),  # plural folded
+        ("Pull-ups", "Pull-up"),  # "ups" keeps its "s" but the spellings are close
+        ("Bodyweight Squat", "Squat"),  # equipment words say nothing here
+        ("Dumbbell Fly", "Fly"),
+        ("Barbell Row", "Row"),
+        ("Kettlebell Swing", "Swing"),
+        ("Cable Crunch", "Crunch"),
+        ("Machine Chest Press", "Chest Press"),
+        ("Band Pull-Apart", "Pull-Apart"),
+        ("EZ Bar Curl", "Curl"),
+        ("DB Row", "Dumbbell Row"),  # shorthand
+    ],
+)
+def test_same_exercise(candidate: str, existing: str) -> None:
+    assert is_same_exercise(candidate, existing)
+
+
+@pytest.mark.parametrize(
+    ("candidate", "existing"),
+    [
+        ("Incline Bench Press", "Barbell Bench Press"),  # a variant, not the same
+        ("Seated Calf Raise", "Calf Raise"),
+        ("Chin-up", "Pull-up"),
+        ("Side Plank", "Plank"),
+        ("Dumbbell Bench Press", "Dumbbell Clean Press"),  # near-duplicate spelling only
+    ],
+)
+def test_variants_are_not_the_same_exercise(candidate: str, existing: str) -> None:
+    assert not is_same_exercise(candidate, existing)
+
+
+def test_same_spelling_threshold_is_inclusive() -> None:
+    # 18 of 20 characters match: ratio = 2 * 18 / 40 = 0.9 exactly.
+    assert is_same_exercise("abcdefghijklmnopqrst", "abcdefghijklmnopqrxy")
+    # 17 of 20: 0.85, a near-duplicate but not the same exercise.
+    assert not is_same_exercise("abcdefghijklmnopqrst", "abcdefghijklmnopqxyz")
+
+
+def test_equipment_words() -> None:
+    assert sorted(EQUIPMENT_WORDS) == [
+        "band",
+        "bar",
+        "barbell",
+        "bodyweight",
+        "cable",
+        "dumbbell",
+        "ez",
+        "kettlebell",
+        "machine",
+    ]
+
+
+CATALOGUE = [("Squat", "bodyweight"), ("Dips", "bodyweight"), ("Plank", None)]
+
+
+@pytest.mark.parametrize(
+    ("name", "equipment", "known"),
+    [
+        ("squat", "barbell", True),  # the name is taken, whatever the equipment
+        ("Bodyweight Squat", "bodyweight", True),
+        ("Barbell Back Squat", "barbell", False),
+        ("Bodyweight Squat", "barbell", False),  # the same words, other equipment
+        ("Dip", "bodyweight", True),
+        ("Dip", None, True),  # no equipment matches any
+        ("Planks", "bodyweight", True),  # ...on either side
+        ("Side Plank", None, False),
+    ],
+)
+def test_is_catalogued(name: str, equipment: str | None, known: bool) -> None:  # noqa: FBT001  # why: parametrised expectation
+    assert is_catalogued(name, equipment, CATALOGUE) is known
+
+
+def test_nothing_is_catalogued_in_an_empty_catalogue() -> None:
+    assert not is_catalogued("Squat", None, [])

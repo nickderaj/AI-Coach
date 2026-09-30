@@ -121,6 +121,11 @@ h2 {
   box-shadow: var(--shadow);
 }
 
+.card > p,
+.card > h2 {
+  margin: 0;
+}
+
 .list {
   list-style: none;
   margin: 0;
@@ -459,6 +464,20 @@ h2 {
   font-weight: 700;
 }
 
+.home-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: flex-start;
+  gap: 1rem;
+}
+
+.settings-link {
+  font-size: 1.5rem;
+  line-height: 1;
+  padding: 0.4rem;
+  color: var(--subtext0);
+}
+
 .log-head {
   display: flex;
   justify-content: space-between;
@@ -491,9 +510,28 @@ h2 {
   width: 2.6rem;
 }
 
-.log-table th:nth-child(3),
+.log-table th:nth-child(3) {
+  width: 3.6rem;
+}
+
 .log-table th:nth-child(4) {
-  width: 4.2rem;
+  width: 3.3rem;
+}
+
+.log-table th:nth-child(5) {
+  width: 2.8rem;
+}
+
+/* "Previous": one line, however narrow the phone. */
+.log-table td:nth-child(2) {
+  font-size: 0.8rem;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.log-table abbr {
+  text-decoration: none;
 }
 
 .log-table td {
@@ -543,9 +581,14 @@ h2 {
 }
 
 .rest {
-  position: sticky;
-  top: calc(env(safe-area-inset-top) + 0.5rem);
+  /* Floats above the tabs so it never pushes the workout around. */
+  position: fixed;
+  left: 0;
+  right: 0;
+  bottom: calc(env(safe-area-inset-bottom) + 4.1rem);
   z-index: 1;
+  width: min(40rem, calc(100% - 2rem));
+  margin: 0 auto;
   display: flex;
   flex-wrap: wrap;
   align-items: center;
@@ -554,6 +597,23 @@ h2 {
   border-radius: var(--radius);
   box-shadow: var(--shadow);
   font-variant-numeric: tabular-nums;
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .rest {
+    animation: rest-in 180ms ease-out;
+  }
+}
+
+@keyframes rest-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.5rem);
+  }
+}
+
+.rest-space {
+  height: 4.5rem;
 }
 
 .rest strong {

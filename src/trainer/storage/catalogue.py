@@ -93,6 +93,24 @@ def create_exercise(conn: sqlite3.Connection, spec: ExerciseSpec) -> int:
     return int(row[0])
 
 
+def catalogue_entries(conn: sqlite3.Connection) -> list[tuple[str, str | None]]:
+    """Every (name, equipment) in the catalogue.
+
+    Display names, and aliases with the equipment of the exercise they point at.
+    """
+    return [
+        (str(row[0]), row[1])
+        for row in conn.execute(
+            """
+            SELECT display_name, equipment FROM exercises
+            UNION ALL SELECT a.alias, e.equipment
+            FROM exercise_aliases a JOIN exercises e ON e.id = a.exercise_id
+            ORDER BY 1
+            """
+        )
+    ]
+
+
 def known_names(conn: sqlite3.Connection) -> list[tuple[int, str]]:
     """Every (exercise id, name) a new exercise could collide with.
 

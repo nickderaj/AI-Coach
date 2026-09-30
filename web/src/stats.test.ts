@@ -3,6 +3,7 @@ import { describe, expect, it } from "vitest";
 import type { WorkoutLike } from "./stats";
 import {
   chronological,
+  setVolume,
   durationMinutes,
   estimatedOneRepMax,
   personalRecords,
@@ -158,7 +159,7 @@ describe("sessionStats and personalRecords", () => {
   ];
 
   it("summarises one session", () => {
-    expect(sessionStats(monday)).toEqual({
+    expect(sessionStats(monday, 0)).toEqual({
       heaviest: 70,
       oneRepMax: 84,
       volume: 1020,
@@ -168,7 +169,7 @@ describe("sessionStats and personalRecords", () => {
   });
 
   it("takes the best of each number across sessions", () => {
-    expect(personalRecords([monday, friday])).toEqual({
+    expect(personalRecords([monday, friday], 0)).toEqual({
       heaviest: 70,
       oneRepMax: 84,
       volume: 1020,
@@ -177,13 +178,36 @@ describe("sessionStats and personalRecords", () => {
     });
   });
 
+  it("counts body weight in the volume of bodyweight exercises", () => {
+    const pullUps = [
+      { reps: 10, load_kg: null, duration_s: null },
+      { reps: 8, load_kg: 10, duration_s: null }, // with a 10 kg belt
+    ];
+
+    expect(sessionStats(pullUps, 65).volume).toBe(10 * 65 + 8 * 75);
+    expect(sessionStats(pullUps, 65).heaviest).toBe(10); // the added load, as before
+    expect(personalRecords([pullUps], 65).volume).toBe(1250);
+  });
+
   it("has nothing to report without sessions", () => {
-    expect(personalRecords([])).toEqual({
+    expect(personalRecords([], 0)).toEqual({
       heaviest: null,
       oneRepMax: null,
       volume: 0,
       mostReps: null,
       longest: null,
     });
+  });
+});
+
+describe("setVolume", () => {
+  it.each([
+    [{ reps: 8, load_kg: 60, duration_s: null }, 0, 480],
+    [{ reps: 8, load_kg: null, duration_s: null }, 0, 0],
+    [{ reps: 8, load_kg: null, duration_s: null }, 65, 520],
+    [{ reps: 8, load_kg: 10, duration_s: null }, 65, 600],
+    [{ reps: null, load_kg: null, duration_s: 45 }, 65, 0],
+  ])("%j carrying %s kg -> %s", (set, carried, volume) => {
+    expect(setVolume(set, carried)).toBe(volume);
   });
 });

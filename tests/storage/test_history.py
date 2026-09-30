@@ -19,6 +19,7 @@ from trainer.storage.history import (
     list_exercises,
     list_workouts,
 )
+from trainer.storage.profile import Profile, save_profile
 
 AUGUST = "2026-08-17T11:36:06+00:00"
 JULY = "2026-07-09T10:47:23+00:00"
@@ -74,6 +75,22 @@ def test_list_workouts_newest_first(imported: sqlite3.Connection) -> None:
     ]
 
 
+def test_bodyweight_exercises_count_the_owners_body_weight(
+    imported: sqlite3.Connection,
+) -> None:
+    save_profile(imported, Profile(65.0))
+
+    august = list_workouts(imported, 1)[0]
+    pull_up = exercise_history(imported, ids(imported)["pullup"])
+    bench = exercise_history(imported, ids(imported)["barbell bench press"])
+
+    assert august.volume_kg == 12 * 50 + 8 * 65  # lat pulldown + pull-ups at body weight
+    assert pull_up is not None
+    assert pull_up.carried_kg == 65.0
+    assert bench is not None
+    assert bench.carried_kg == 0.0
+
+
 def test_list_workouts_respects_the_limit(imported: sqlite3.Connection) -> None:
     assert [workout.started_at for workout in list_workouts(imported, 1)] == [AUGUST]
 
@@ -88,6 +105,7 @@ def test_list_workouts_breaks_ties_by_newest_id(db: sqlite3.Connection) -> None:
 
 
 def test_get_workout_groups_sets_by_exercise(imported: sqlite3.Connection) -> None:
+    save_profile(imported, Profile(65.0))
     july = imported.execute("SELECT id FROM workouts WHERE started_at = ?", (JULY,)).fetchone()[0]
     exercise = ids(imported)
 
@@ -106,6 +124,7 @@ def test_get_workout_groups_sets_by_exercise(imported: sqlite3.Connection) -> No
             exercise["barbell bench press"],
             "Barbell Bench Press",
             Measure.REPS,
+            0.0,
             [set_view(1, 8, 60.0), SetView(2, 6, 70.0, None, 8, "grindy", None)],
         ),
         ExerciseBlock(
@@ -113,6 +132,7 @@ def test_get_workout_groups_sets_by_exercise(imported: sqlite3.Connection) -> No
             exercise["dead hang"],
             "Dead Hang",
             Measure.SECONDS,
+            65.0,  # bodyweight, though a hold adds no volume
             [SetView(1, None, None, 50.0, None, None, None)],
         ),
     ]

@@ -7,13 +7,15 @@ export type Route =
   | { name: "exercises" }
   | { name: "exercise"; id: number }
   | { name: "log" }
-  | { name: "pick" };
+  | { name: "pick" }
+  | { name: "settings" };
 
 const STATIC: Record<string, Route> = {
   "#/history": { name: "history" },
   "#/exercises": { name: "exercises" },
   "#/log": { name: "log" },
   "#/log/add": { name: "pick" },
+  "#/settings": { name: "settings" },
 };
 
 const PATTERNS: [RegExp, (id: number) => Route][] = [
@@ -40,23 +42,26 @@ export function parseRoute(hash: string): Route {
   return { name: "home" };
 }
 
+/** Routes without an id: one screen each. */
+export type FixedRouteName = Exclude<Route, { id: number }>["name"];
+
+const FIXED: Record<FixedRouteName, string> = {
+  home: "#/",
+  history: "#/history",
+  exercises: "#/exercises",
+  log: "#/log",
+  pick: "#/log/add",
+  settings: "#/settings",
+};
+
 export function href(route: Route): string {
-  switch (route.name) {
-    case "home":
-      return "#/";
-    case "history":
-      return "#/history";
-    case "exercises":
-      return "#/exercises";
-    case "workout":
-      return `#/workouts/${String(route.id)}`;
-    case "exercise":
-      return `#/exercises/${String(route.id)}`;
-    case "log":
-      return "#/log";
-    case "pick":
-      return "#/log/add";
+  if (route.name === "workout") {
+    return `#/workouts/${String(route.id)}`;
   }
+  if (route.name === "exercise") {
+    return `#/exercises/${String(route.id)}`;
+  }
+  return FIXED[route.name];
 }
 
 function subscribe(onChange: () => void): () => void {

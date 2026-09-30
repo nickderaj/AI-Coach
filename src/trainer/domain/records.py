@@ -2,14 +2,25 @@
 
 from __future__ import annotations
 
-from trainer.domain.exercises import Measure
+from trainer.domain.exercises import Equipment, Measure
 
 
-def set_volume(reps: int | None, load_kg: float | None) -> float:
-    """Volume moved in one set (reps x load); zero when either is unknown."""
-    if reps is None or load_kg is None:
+def carried_load(equipment: str | None, bodyweight_kg: float | None) -> float:
+    """Body weight moved in each rep: the owner's for a bodyweight exercise, else none.
+
+    Weight added to a bodyweight exercise (a weighted dip) is the set's load,
+    counted on top of this.
+    """
+    if equipment != Equipment.BODYWEIGHT or bodyweight_kg is None:
         return 0.0
-    return reps * load_kg
+    return bodyweight_kg
+
+
+def set_volume(reps: int | None, load_kg: float | None, carried_kg: float) -> float:
+    """Volume moved in one set: reps x (load + body weight carried); zero without reps."""
+    if reps is None:
+        return 0.0
+    return reps * ((load_kg or 0.0) + carried_kg)
 
 
 def set_rank(

@@ -47,6 +47,7 @@ def test_migrate_creates_the_schema(tmp_path: Path) -> None:
             "workout_sets",
             "body_metrics",
             "cardio_sessions",
+            "profile",
         }
 
 
@@ -93,6 +94,8 @@ def test_migrations_apply_in_order_from_the_current_version(
 @pytest.mark.parametrize(
     "statement",
     [
+        "INSERT INTO profile (id, bodyweight_kg) VALUES (2, 65)",  # one row only
+        "INSERT INTO profile (id, bodyweight_kg) VALUES (1, 0)",
         "INSERT INTO exercises (name, display_name, measure) VALUES ('x', 'X', 'laps')",
         (
             "INSERT INTO workout_sets (workout_id, exercise_id, exercise_position, set_number) "

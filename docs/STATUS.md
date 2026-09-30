@@ -77,9 +77,29 @@ logging works without signal.
   cached copy when offline, on a 5xx, or after 3 s.
 - A manifest, icons and iOS meta tags, so the app installs to the home screen.
 
-**In this PR.** The near-duplicate rule spells out gym shorthand before
-comparing names (`ABBREVIATIONS` in `trainer.domain.exercises`: DB, BB, KB,
-BW, OHP, RDL), so "Incline DB Press" is caught as "Incline Dumbbell Press".
+**In this PR: fixes from the first real sessions.**
+- **Shorthand.** The near-duplicate rule spells out gym shorthand before
+  comparing names (`ABBREVIATIONS` in `trainer.domain.exercises`: DB, BB, KB,
+  BW, OHP, RDL), so "Incline DB Press" is caught as "Incline Dumbbell Press".
+- **Body weight in volume.** Schema v3 adds a one-row `profile` table
+  (`GET`/`PUT /api/profile`), set from a new Settings screen (⚙ on Home).
+  - Bodyweight exercises count reps × (body weight + added load).
+  - The server sends that carried weight as `carried_kg` on workout blocks and
+    exercise histories, so the charts, records and totals all agree.
+  - It uses the current body weight, so past sessions are recalculated when it
+    changes.
+- **RPE.** The workout table has an optional RPE column, a whole number from
+  1 to 10, sent with the set and corrected as it is typed. Drafts saved before
+  it existed load with it blank. History shows an RPE column only for an
+  exercise where some set has one.
+- **Rest timer.** It floats above the tabs, with its space always reserved.
+  Ticking a set no longer shifts the screen.
+- **Common exercises.** 90 common exercises ship in
+  `src/trainer/data/common_exercises.csv`, added by
+  `python -m trainer.manage seed-exercises` (see DEPLOY.md). It uses a
+  stricter "already there" rule than the near-duplicate prompt (`is_catalogued`).
+- **Data fix, outside git.** The owner's late-logged workout #23 was moved to
+  Sat 26 Sept, 11:45–12:15 BST. A backup was taken first.
 
 **Follow-up.** An unfinished workout lists in History like a finished one. It
 could show an "in progress" mark.

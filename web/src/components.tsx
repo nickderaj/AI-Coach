@@ -137,13 +137,15 @@ export function WorkoutCard({ workout }: { workout: WorkoutSummary }): ReactElem
 
 export function SetTable({ sets, measure }: { sets: SetEntry[]; measure: Measure }): ReactElement {
   const timed = measure === "seconds";
+  // A column of dashes says nothing: show RPE only where some set has one.
+  const rated = sets.some((set) => set.rpe !== null);
   return (
     <table className="set-table">
       <thead>
         <tr>
           <th scope="col">Set</th>
           <th scope="col">{timed ? "Time" : "Reps × kg"}</th>
-          <th scope="col">RPE</th>
+          {rated ? <th scope="col">RPE</th> : null}
         </tr>
       </thead>
       <tbody>
@@ -153,7 +155,7 @@ export function SetTable({ sets, measure }: { sets: SetEntry[]; measure: Measure
               <span className="set-number tint">{set.set_number}</span>
             </td>
             <td>{formatSet(set, measure)}</td>
-            <td className="muted">{set.rpe ?? "–"}</td>
+            {rated ? <td className="muted">{set.rpe ?? "–"}</td> : null}
           </tr>
         ))}
       </tbody>

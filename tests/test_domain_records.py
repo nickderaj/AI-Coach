@@ -4,16 +4,39 @@ from collections.abc import Sequence
 
 import pytest
 
-from trainer.domain.exercises import Measure
-from trainer.domain.records import set_rank, set_volume
+from trainer.domain.exercises import Equipment, Measure
+from trainer.domain.records import carried_load, set_rank, set_volume
 
 
 @pytest.mark.parametrize(
-    ("reps", "load", "volume"),
-    [(8, 60.0, 480.0), (0, 60.0, 0.0), (8, None, 0.0), (None, 60.0, 0.0), (3, 0.5, 1.5)],
+    ("reps", "load", "carried", "volume"),
+    [
+        (8, 60.0, 0.0, 480.0),
+        (0, 60.0, 0.0, 0.0),
+        (8, None, 0.0, 0.0),
+        (None, 60.0, 0.0, 0.0),
+        (3, 0.5, 0.0, 1.5),
+        (10, None, 65.0, 650.0),  # pull-ups at body weight
+        (8, 10.0, 65.0, 600.0),  # weighted dips: body weight plus the belt
+        (None, None, 65.0, 0.0),  # a timed hold moves nothing
+    ],
 )
-def test_set_volume(reps: int | None, load: float | None, volume: float) -> None:
-    assert set_volume(reps, load) == volume
+def test_set_volume(reps: int | None, load: float | None, carried: float, volume: float) -> None:
+    assert set_volume(reps, load, carried) == volume
+
+
+@pytest.mark.parametrize(
+    ("equipment", "bodyweight", "carried"),
+    [
+        (Equipment.BODYWEIGHT, 65.0, 65.0),
+        ("bodyweight", 72.5, 72.5),
+        (Equipment.BODYWEIGHT, None, 0.0),  # body weight not set
+        (Equipment.BARBELL, 65.0, 0.0),
+        (None, 65.0, 0.0),
+    ],
+)
+def test_carried_load(equipment: str | None, bodyweight: float | None, carried: float) -> None:
+    assert carried_load(equipment, bodyweight) == carried
 
 
 def best(measure: Measure, sets: Sequence[tuple[int | None, float | None, float | None]]) -> int:

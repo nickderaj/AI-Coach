@@ -42,6 +42,8 @@ const workoutDetailSchema = z.object({
       exercise_id: z.number().int(),
       name: z.string(),
       measure: measureSchema,
+      /** Body weight moved in each rep, on top of the load (bodyweight exercises). */
+      carried_kg: z.number(),
       sets: z.array(setSchema),
     }),
   ),
@@ -60,6 +62,7 @@ const exerciseSummarySchema = z.object({
 
 const exerciseHistorySchema = z.object({
   exercise: exerciseSummarySchema,
+  carried_kg: z.number(),
   sessions: z.array(
     z.object({
       workout_id: z.number().int(),
@@ -73,6 +76,7 @@ const exerciseHistorySchema = z.object({
 export const workoutListSchema = z.array(workoutSummarySchema);
 export const exerciseListSchema = z.array(exerciseSummarySchema);
 export const currentWorkoutSchema = workoutDetailSchema.nullable();
+export const profileSchema = z.object({ bodyweight_kg: z.number().nullable() });
 export { exerciseHistorySchema, workoutDetailSchema };
 
 export type Measure = z.infer<typeof measureSchema>;
@@ -80,6 +84,7 @@ export type SetEntry = z.infer<typeof setSchema>;
 export type WorkoutSummary = z.infer<typeof workoutSummarySchema>;
 export type ExerciseSummary = z.infer<typeof exerciseSummarySchema>;
 export type WorkoutDetail = z.infer<typeof workoutDetailSchema>;
+export type Profile = z.infer<typeof profileSchema>;
 
 /** @internal Exported for tests; the app only sees it through `useApi`. */
 export class ApiError extends Error {

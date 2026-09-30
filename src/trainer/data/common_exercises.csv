@@ -1,0 +1,91 @@
+name,equipment,measure,muscle_groups
+Barbell Back Squat,barbell,reps,"quads,glutes"
+Barbell Front Squat,barbell,reps,"quads,glutes,core"
+Barbell Deadlift,barbell,reps,"hamstrings,glutes,back"
+Sumo Deadlift,barbell,reps,"glutes,quads,back"
+Barbell Romanian Deadlift,barbell,reps,"hamstrings,glutes"
+Barbell Bench Press,barbell,reps,"chest,triceps"
+Incline Bench Press,barbell,reps,"chest,shoulders,triceps"
+Close-Grip Bench Press,barbell,reps,"triceps,chest"
+Overhead Press,barbell,reps,"shoulders,triceps"
+Barbell Row,barbell,reps,back
+Barbell Hip Thrust,barbell,reps,"glutes,hamstrings"
+Barbell Curl,barbell,reps,biceps
+Barbell Shrug,barbell,reps,traps
+Good Morning,barbell,reps,"hamstrings,lower back"
+Dumbbell Bench Press,dumbbell,reps,"chest,triceps"
+Incline Dumbbell Press,dumbbell,reps,"chest,shoulders"
+Dumbbell Fly,dumbbell,reps,chest
+Dumbbell Pullover,dumbbell,reps,"chest,back"
+Dumbbell Shoulder Press,dumbbell,reps,shoulders
+Arnold Press,dumbbell,reps,shoulders
+Lateral Raise,dumbbell,reps,shoulders
+Front Raise,dumbbell,reps,shoulders
+Rear Delt Fly,dumbbell,reps,shoulders
+Dumbbell Row,dumbbell,reps,back
+Dumbbell Curl,dumbbell,reps,biceps
+Hammer Curl,dumbbell,reps,"biceps,forearms"
+Incline Dumbbell Curl,dumbbell,reps,biceps
+Concentration Curl,dumbbell,reps,biceps
+Dumbbell Overhead Tricep Extension,dumbbell,reps,triceps
+Dumbbell Kickback,dumbbell,reps,triceps
+Goblet Squat,dumbbell,reps,"quads,glutes"
+Dumbbell Lunge,dumbbell,reps,"quads,glutes"
+Bulgarian Split Squat,dumbbell,reps,"quads,glutes"
+Dumbbell Romanian Deadlift,dumbbell,reps,"hamstrings,glutes"
+Dumbbell Step-up,dumbbell,reps,"quads,glutes"
+Dumbbell Shrug,dumbbell,reps,traps
+Farmer's Carry,dumbbell,seconds,"grip,core"
+Lat Pulldown,cable,reps,"back,biceps"
+Cable Row,cable,reps,back
+Straight-Arm Pulldown,cable,reps,back
+Face Pull,cable,reps,"shoulders,back"
+Cable Fly,cable,reps,chest
+Cable Lateral Raise,cable,reps,shoulders
+Cable Curl,cable,reps,biceps
+Cable Tricep Pushdown,cable,reps,triceps
+Cable Overhead Tricep Extension,cable,reps,triceps
+Cable Crunch,cable,reps,core
+Cable Woodchop,cable,reps,core
+Cable Pull-Through,cable,reps,"glutes,hamstrings"
+Leg Press,machine,reps,"quads,glutes"
+Hack Squat,machine,reps,"quads,glutes"
+Smith Machine Squat,machine,reps,"quads,glutes"
+Leg Extension,machine,reps,quads
+Leg Curl,machine,reps,hamstrings
+Calf Raise,machine,reps,calves
+Seated Calf Raise,machine,reps,calves
+Hip Abduction,machine,reps,glutes
+Machine Chest Press,machine,reps,"chest,triceps"
+Pec Deck,machine,reps,chest
+Machine Shoulder Press,machine,reps,"shoulders,triceps"
+Assisted Pull-up,machine,reps,"back,biceps"
+Back Extension,machine,reps,lower back
+Pull-up,bodyweight,reps,"back,biceps"
+Chin-up,bodyweight,reps,"back,biceps"
+Dip,bodyweight,reps,"chest,triceps"
+Push-up,bodyweight,reps,"chest,triceps"
+Bodyweight Squat,bodyweight,reps,"quads,glutes"
+Walking Lunge,bodyweight,reps,"quads,glutes"
+Glute Bridge,bodyweight,reps,glutes
+Inverted Row,bodyweight,reps,back
+Hanging Leg Raise,bodyweight,reps,core
+Crunch,bodyweight,reps,core
+Sit-up,bodyweight,reps,core
+Burpee,bodyweight,reps,full body
+Mountain Climber,bodyweight,reps,core
+Plank,bodyweight,seconds,core
+Side Plank,bodyweight,seconds,core
+Hollow Hold,bodyweight,seconds,core
+L-Sit,bodyweight,seconds,core
+Wall Sit,bodyweight,seconds,quads
+Dead Hang,bodyweight,seconds,grip
+Kettlebell Swing,kettlebell,reps,"glutes,hamstrings"
+Kettlebell Goblet Squat,kettlebell,reps,"quads,glutes"
+Kettlebell Deadlift,kettlebell,reps,"glutes,hamstrings"
+Kettlebell Snatch,kettlebell,reps,full body
+Turkish Get-up,kettlebell,reps,full body
+EZ Bar Curl,ez bar,reps,biceps
+Preacher Curl,ez bar,reps,biceps
+Skull Crusher,ez bar,reps,triceps
+Band Pull-Apart,band,reps,"shoulders,back"

@@ -4,6 +4,7 @@ import { useApi, workoutDetailSchema, workoutListSchema } from "../api";
 import { Load, SetTable, WorkoutCard, WorkoutMeta } from "../components";
 import { formatDate, formatTime, partOfDay } from "../format";
 import { href } from "../router";
+import { setVolume } from "../stats";
 
 export function History(): ReactElement {
   const state = useApi("/api/workouts?limit=500", workoutListSchema);
@@ -49,9 +50,11 @@ export function WorkoutDetail({ id }: { id: number }): ReactElement {
               workout={{
                 ...workout,
                 set_count: workout.exercises.reduce((sum, block) => sum + block.sets.length, 0),
-                volume_kg: workout.exercises
-                  .flatMap((block) => block.sets)
-                  .reduce((sum, set) => sum + (set.reps ?? 0) * (set.load_kg ?? 0), 0),
+                volume_kg: workout.exercises.reduce(
+                  (sum, block) =>
+                    sum + block.sets.reduce((s, set) => s + setVolume(set, block.carried_kg), 0),
+                  0,
+                ),
               }}
             />
             {workout.notes === null ? null : <p className="notes">{workout.notes}</p>}

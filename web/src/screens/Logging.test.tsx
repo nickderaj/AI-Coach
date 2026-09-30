@@ -50,7 +50,7 @@ function benchDraft(): Draft {
 
 /** The draft with set 1 of Bench Press logged as 8 × 60 kg. */
 function logged(draft: Draft): Draft {
-  return updateSet(draft, "b", "s1", { logged: { kg: "60", reps: "8", seconds: "" } });
+  return updateSet(draft, "b", "s1", { logged: { kg: "60", reps: "8", seconds: "", rpe: "" } });
 }
 
 async function go(hash: string): Promise<void> {
@@ -155,6 +155,7 @@ describe("Picker", () => {
       "GET /api/exercises/45/history": {
         body: {
           exercise: PULLDOWN,
+          carried_kg: 0,
           sessions: [
             {
               workout_id: 2,
@@ -197,7 +198,14 @@ describe("Picker", () => {
         exercise: { id: 45, name: "Lat Pulldown", measure: "reps", equipment: "cable" },
         previous: [{ reps: 10, load_kg: 55, duration_s: null }],
         sets: [
-          { id: expect.any(String) as string, kg: "55", reps: "10", seconds: "", logged: null },
+          {
+            id: expect.any(String) as string,
+            kg: "55",
+            reps: "10",
+            seconds: "",
+            rpe: "",
+            logged: null,
+          },
         ],
       },
     ]);
@@ -409,7 +417,11 @@ describe("Log", () => {
       "Started 20:30 · 30:00 · 0 sets",
     );
     const rows = within(table()).getAllByRole("row");
-    expect(rows.map((r) => r.textContent)).toEqual(["SetPreviouskgRepsDone", "18 × 60 kg✓", "2–✓"]);
+    expect(rows.map((r) => r.textContent)).toEqual([
+      "SetPreviouskgRepsRPEDone",
+      "18 × 60 kg✓",
+      "2–✓",
+    ]);
     expect(within(table()).getByLabelText("Set 2 kg")).toHaveValue("60");
     expect(screen.getByRole("link", { name: "+ Add exercise" })).toHaveAttribute(
       "href",
@@ -427,7 +439,14 @@ describe("Log", () => {
     expect(writes(outbox)).toEqual([
       [
         "PUT /api/sets/s1",
-        { workout_client_id: "w1", exercise_id: 7, reps: 8, load_kg: 60, duration_s: null },
+        {
+          workout_client_id: "w1",
+          exercise_id: 7,
+          reps: 8,
+          load_kg: 60,
+          duration_s: null,
+          rpe: null,
+        },
       ],
     ]);
     expect(screen.getByRole("button", { name: "Set 1 done" })).toHaveAttribute(
@@ -477,6 +496,7 @@ describe("Log", () => {
       kg: "62.5",
       reps: "10",
       seconds: "",
+      rpe: "",
     });
   });
 
@@ -489,7 +509,7 @@ describe("Log", () => {
 
     expect(reopened?.blocks[0]?.sets[0]).toMatchObject({
       reps: "9",
-      logged: { kg: "60", reps: "9", seconds: "" },
+      logged: { kg: "60", reps: "9", seconds: "", rpe: "" },
     });
     expect(writes(outbox)).toEqual([
       ["PUT /api/sets/s1", expect.objectContaining({ reps: 9, load_kg: 60 })],
@@ -509,7 +529,12 @@ describe("Log", () => {
 
     expect(reps).toHaveValue("8");
     expect(outbox.send).not.toHaveBeenCalled();
-    expect(drafts.get()?.blocks[0]?.sets[0]?.logged).toEqual({ kg: "60", reps: "8", seconds: "" });
+    expect(drafts.get()?.blocks[0]?.sets[0]?.logged).toEqual({
+      kg: "60",
+      reps: "8",
+      seconds: "",
+      rpe: "",
+    });
   });
 
   it("takes a set back off when it is unticked", () => {
@@ -569,7 +594,14 @@ describe("Log", () => {
     expect(writes(outbox)).toEqual([
       [
         "PUT /api/sets/h1",
-        { workout_client_id: "w1", exercise_id: 23, reps: null, load_kg: null, duration_s: 55 },
+        {
+          workout_client_id: "w1",
+          exercise_id: 23,
+          reps: null,
+          load_kg: null,
+          duration_s: 55,
+          rpe: null,
+        },
       ],
     ]);
   });
@@ -622,7 +654,9 @@ describe("Log", () => {
 
 describe("QuickLog", () => {
   const history = (exercise: { id: number }): Record<string, { body: unknown }> => ({
-    [`GET /api/exercises/${String(exercise.id)}/history`]: { body: { exercise, sessions: [] } },
+    [`GET /api/exercises/${String(exercise.id)}/history`]: {
+      body: { exercise, carried_kg: 0, sessions: [] },
+    },
   });
 
   it("logs one set as a workout of its own", async () => {
@@ -715,5 +749,52 @@ describe("QuickLog", () => {
       "#/log",
     );
     expect(screen.queryByRole("form", { name: "Log one set" })).not.toBeInTheDocument();
+  });
+});
+
+describe("Settings", () => {
+  it("saves the body weight through the outbox", async () => {
+    routeFetch({ "GET /api/profile": { body: { bodyweight_kg: 65 } } });
+    await go("#/settings");
+    const { outbox } = renderLogging();
+
+    const form = await screen.findByRole("form", { name: "Body weight" });
+    const kg = within(form).getByLabelText("kg");
+    expect(kg).toHaveValue("65");
+    fireEvent.change(kg, { target: { value: "64,5" } });
+    fireEvent.submit(form);
+
+    expect(writes(outbox)).toEqual([["PUT /api/profile", { bodyweight_kg: 64.5 }]]);
+    expect(within(form).getByRole("status")).toHaveTextContent("Saved.");
+    fireEvent.change(kg, { target: { value: "" } });
+    expect(within(form).queryByRole("status")).not.toBeInTheDocument();
+    fireEvent.submit(form);
+    expect(writes(outbox).at(-1)).toEqual(["PUT /api/profile", { bodyweight_kg: null }]);
+    expect(screen.getByRole("link", { name: "‹ Home" })).toHaveAttribute("href", "#/");
+  });
+
+  it.each(["0", "abc", "501"])("will not save %s kg", async (typed) => {
+    routeFetch({ "GET /api/profile": { body: { bodyweight_kg: null } } });
+    await go("#/settings");
+    renderLogging();
+
+    const form = await screen.findByRole("form", { name: "Body weight" });
+    expect(within(form).getByLabelText("kg")).toHaveValue("");
+    fireEvent.change(within(form).getByLabelText("kg"), { target: { value: typed } });
+
+    expect(within(form).getByRole("button", { name: "Save" })).toBeDisabled();
+  });
+
+  it("is reached from Home", async () => {
+    routeFetch({
+      "GET /api/workouts?limit=500": { body: [] },
+      "GET /api/workouts/current": { body: null },
+    });
+    renderLogging();
+
+    expect(await screen.findByRole("link", { name: "Settings" })).toHaveAttribute(
+      "href",
+      "#/settings",
+    );
   });
 });
