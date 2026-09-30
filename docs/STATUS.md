@@ -29,10 +29,14 @@ Last updated: 2026-09-30.
 | Phase 2a — idempotent write API; schema v2 | #11 | Deployed 2026-09-30. |
 | Phase 2b-1 — Catppuccin Latte redesign: dashboard, history cards, exercise charts and records | #12 | Deployed 2026-09-30. |
 | Phase 2c — offline write queue, service worker, installable app | #13 | Deployed 2026-09-30. |
+| Phase 2b-2 — logging screens: start/resume, set table, rest timer, picker, one-off sets | #14 | Deployed 2026-09-30. **Phase 2 built.** |
 
-## In progress: phase 2 — logging (2b-2 in this PR; the last of phase 2)
+## Phase 2 — logging: built, awaiting its exit criterion
 
-**2b-2: logging screens (this PR).** Every write goes through the outbox, so
+Everything in phase 2 is merged and deployed. The phase closes when the owner
+stops logging in the v1 bot. Until then, fixes from real use come first.
+
+**2b-2: logging screens (done, #14).** Every write goes through the outbox, so
 logging works without signal.
 - **Home.** "Start workout" creates the workout on the phone, queues its `PUT`
   and opens the picker. A workout in progress shows as "Resume". A workout the
@@ -73,13 +77,12 @@ logging works without signal.
   cached copy when offline, on a 5xx, or after 3 s.
 - A manifest, icons and iOS meta tags, so the app installs to the home screen.
 
-**Follow-ups.**
-- The near-duplicate rule does not know gym abbreviations: "Incline DB Press"
-  is not flagged as a duplicate of "Incline Dumbbell Press". Teach
-  `trainer.domain.exercises` that DB, BB and KB mean dumbbell, barbell and
-  kettlebell.
-- An unfinished workout lists in History like a finished one. It could show an
-  "in progress" mark.
+**In this PR.** The near-duplicate rule spells out gym shorthand before
+comparing names (`ABBREVIATIONS` in `trainer.domain.exercises`: DB, BB, KB,
+BW, OHP, RDL), so "Incline DB Press" is caught as "Incline Dumbbell Press".
+
+**Follow-up.** An unfinished workout lists in History like a finished one. It
+could show an "in progress" mark.
 
 **Next: phase 3, Hermes.**
 
@@ -87,7 +90,7 @@ logging works without signal.
 
 | Phase | Scope | Exit criterion |
 | --- | --- | --- |
-| 2 — Logging | 2a write API, 2b-1 visual design, 2c offline queue and PWA install (done); 2b-2 logging screens (in progress) | Owner stops logging in v1 |
+| 2 — Logging | 2a write API, 2b-1 visual design, 2c offline queue and PWA install, 2b-2 logging screens (all done) | Owner stops logging in v1 |
 | 3 — Hermes | `hermes-gateway` unit, `hermes/` profile templates (SOUL, config), MCP tool server, Coach tab on one durable session, **private local git repo** for memory/skills with a nightly commit (never this repo) | Coach remembers across turns and days |
 | 4 — Programs | Domain engine (`# coverage-critical`): double progression per D5, deload per D6, sequence-based "next day"; `propose_program` via Hermes; Today screen with blocks/supersets, targets, "last time", rest timer | A full week trained from the app |
 | 5 — Cut-over | Web Push + in-app inbox, retire the v1 bot | v1 retired |

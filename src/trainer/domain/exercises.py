@@ -14,6 +14,16 @@ SIMILARITY_THRESHOLD = 0.85
 # Plural "s" is folded only on words longer than this ("press" -> "pres" is harmless,
 # but "abs" must stay "abs").
 MIN_PLURAL_LENGTH = 3
+# Gym shorthand, spelled out before names are compared, so "Incline DB Press" is
+# caught as a duplicate of "Incline Dumbbell Press". Whole words only.
+ABBREVIATIONS: dict[str, str] = {
+    "db": "dumbbell",
+    "bb": "barbell",
+    "kb": "kettlebell",
+    "bw": "bodyweight",
+    "ohp": "overhead press",
+    "rdl": "romanian deadlift",
+}
 
 
 class Measure(StrEnum):
@@ -43,11 +53,20 @@ def normalise_name(text: str) -> str:
     return " ".join(text.lower().split())
 
 
+def _words(name: str) -> list[str]:
+    """Words of a name: hyphens split words and gym shorthand is spelled out."""
+    return [
+        part
+        for word in normalise_name(name).replace("-", " ").split()
+        for part in ABBREVIATIONS.get(word, word).split()
+    ]
+
+
 def _tokens(name: str) -> frozenset[str]:
     """Words of a name with a trailing plural "s" folded ("raises" == "raise")."""
     return frozenset(
         word[:-1] if len(word) > MIN_PLURAL_LENGTH and word.endswith("s") else word
-        for word in normalise_name(name).replace("-", " ").split()
+        for word in _words(name)
     )
 
 
@@ -57,11 +76,12 @@ def is_near_duplicate(candidate: str, existing: str) -> bool:
     True when the words match up to plurals and hyphens, when one name's words
     are all contained in the other's ("bench press" vs "barbell bench press"),
     or when the spellings are very close ("lat pulldown" vs "lat pull down").
+    Shorthand counts as the words it stands for ("DB press" vs "dumbbell press").
     """
     left, right = _tokens(candidate), _tokens(existing)
     if not left - right or not right - left:  # one name has no words the other lacks
         return True
-    ratio = SequenceMatcher(None, normalise_name(candidate), normalise_name(existing)).ratio()
+    ratio = SequenceMatcher(None, " ".join(_words(candidate)), " ".join(_words(existing))).ratio()
     return ratio >= SIMILARITY_THRESHOLD
 
 

@@ -54,6 +54,16 @@ def test_equipment_values() -> None:
         # Matched only by the word rules (their spellings are far apart):
         ("Curls Hammer", "Hammer Curl"),  # plural folded, same words in another order
         ("Pulldown-Lat", "Lat Pulldown"),  # hyphen splits words
+        # Gym shorthand, each spelled out:
+        ("Incline DB Press", "Incline Dumbbell Press"),
+        ("BB Row", "Barbell Row"),
+        ("KB Swing", "Kettlebell Swing"),
+        ("BW Squat", "Bodyweight Squat"),
+        ("Seated OHP", "Seated Overhead Press"),
+        ("RDL", "Romanian Deadlift"),
+        ("Single Leg RDL", "Single Leg Romanian Deadlift"),
+        ("Incline DB Press", "Incline Dumbell Press"),  # shorthand and a typo together
+        ("DB-Row", "Dumbbell Row"),
     ],
 )
 def test_near_duplicates_are_detected(candidate: str, existing: str) -> None:
@@ -68,6 +78,8 @@ def test_near_duplicates_are_detected(candidate: str, existing: str) -> None:
         ("Face Pull", "Lat Pulldown"),
         ("abs", "ab"),  # three-letter words keep their "s"
         ("Bench Curls", "Bench Crunches"),  # folding strips one trailing "s", nothing more
+        ("KB Row", "Barbell Row"),  # equipment is part of the identity
+        ("Dbl Crunch", "Dumbbell Crunch"),  # only whole words are shorthand
     ],
 )
 def test_different_exercises_are_not_flagged(candidate: str, existing: str) -> None:
