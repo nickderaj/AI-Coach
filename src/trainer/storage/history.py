@@ -23,6 +23,7 @@ class SetView:
     duration_s: float | None
     rpe: int | None
     notes: str | None
+    client_id: str | None
 
 
 @dataclass(frozen=True)
@@ -55,6 +56,7 @@ class WorkoutDetail:
     started_at: str
     ended_at: str | None
     notes: str | None
+    client_id: str | None
     exercises: list[ExerciseBlock]
 
 
@@ -99,8 +101,8 @@ class ExerciseHistory:
 
 
 def _set(row: Sequence[Any]) -> SetView:
-    """``row`` ends with: set_number, reps, load_kg, duration_s, rpe, notes."""
-    return SetView(*row[-6:])
+    """``row`` ends with: set_number, reps, load_kg, duration_s, rpe, notes, client_id."""
+    return SetView(*row[-7:])
 
 
 def list_workouts(conn: sqlite3.Connection, limit: int) -> list[WorkoutSummary]:
@@ -136,25 +138,46 @@ def _workout_summary(
     return WorkoutSummary(workout_id, started_at, ended_at, names, set_count)
 
 
-def get_workout(conn: sqlite3.Connection, workout_id: int) -> WorkoutDetail | None:
-    """One workout with every set, or ``None``."""
+class WorkoutNotFoundError(LookupError):
+    """No workout has the requested id."""
+
+
+def get_workout(conn: sqlite3.Connection, workout_id: int) -> WorkoutDetail:
+    """One workout with every set.
+
+    Raises:
+        WorkoutNotFoundError: if there is no such workout.
+    """
     workout = conn.execute(
-        """SELECT id, started_at, ended_at, notes FROM workouts WHERE id = ?""", (workout_id,)
+        """SELECT id, started_at, ended_at, notes, client_id FROM workouts WHERE id = ?""",
+        (workout_id,),
     ).fetchone()
     if workout is None:
-        return None
+        message = f"no workout {workout_id}"
+        raise WorkoutNotFoundError(message)
     rows = conn.execute(
         """
         SELECT s.exercise_position, s.exercise_id, e.display_name, e.measure, s.set_number,
-            s.reps, s.load_kg, s.duration_s, s.rpe, s.notes
+            s.reps, s.load_kg, s.duration_s, s.rpe, s.notes, s.client_id
         FROM workout_sets s JOIN exercises e ON e.id = s.exercise_id
         WHERE s.workout_id = ? ORDER BY s.exercise_position, s.set_number
         """,
         (workout_id,),
     ).fetchall()
     blocks = [_block(list(group)) for _, group in groupby(rows, key=lambda row: row[0])]
-    found_id, started_at, ended_at, notes = workout
-    return WorkoutDetail(found_id, started_at, ended_at, notes, blocks)
+    found_id, started_at, ended_at, notes, client_id = workout
+    return WorkoutDetail(found_id, started_at, ended_at, notes, client_id, blocks)
+
+
+def current_workout(conn: sqlite3.Connection) -> WorkoutDetail | None:
+    """The most recently started app workout that has not been finished, if any."""
+    row = conn.execute(
+        """
+        SELECT id FROM workouts WHERE client_id IS NOT NULL AND ended_at IS NULL
+        ORDER BY started_at DESC, id DESC LIMIT 1
+        """
+    ).fetchone()
+    return None if row is None else get_workout(conn, row[0])
 
 
 def _block(rows: list[sqlite3.Row]) -> ExerciseBlock:
@@ -203,7 +226,7 @@ def exercise_history(conn: sqlite3.Connection, exercise_id: int) -> ExerciseHist
     rows = conn.execute(
         """
         SELECT w.id, s.exercise_position, w.started_at, s.set_number, s.reps, s.load_kg,
-            s.duration_s, s.rpe, s.notes
+            s.duration_s, s.rpe, s.notes, s.client_id
         FROM workout_sets s JOIN workouts w ON w.id = s.workout_id
         WHERE s.exercise_id = ?
         ORDER BY w.started_at DESC, w.id DESC, s.exercise_position, s.set_number

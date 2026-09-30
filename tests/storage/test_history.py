@@ -2,6 +2,8 @@
 
 import sqlite3
 
+import pytest
+
 from trainer.domain.exercises import Measure
 from trainer.storage.catalogue import ExerciseSpec, upsert_exercise
 from trainer.storage.history import (
@@ -9,6 +11,7 @@ from trainer.storage.history import (
     ExerciseSession,
     ExerciseSummary,
     SetView,
+    WorkoutNotFoundError,
     WorkoutSummary,
     exercise_history,
     get_workout,
@@ -25,7 +28,7 @@ def ids(db: sqlite3.Connection) -> dict[str, int]:
 
 
 def set_view(number: int, reps: int | None = None, load: float | None = None) -> SetView:
-    return SetView(number, reps, load, None, None, None)
+    return SetView(number, reps, load, None, None, None, None)
 
 
 def test_list_workouts_newest_first(imported: sqlite3.Connection) -> None:
@@ -69,14 +72,14 @@ def test_get_workout_groups_sets_by_exercise(imported: sqlite3.Connection) -> No
             exercise["barbell bench press"],
             "Barbell Bench Press",
             Measure.REPS,
-            [set_view(1, 8, 60.0), SetView(2, 6, 70.0, None, 8, "grindy")],
+            [set_view(1, 8, 60.0), SetView(2, 6, 70.0, None, 8, "grindy", None)],
         ),
         ExerciseBlock(
             2,
             exercise["dead hang"],
             "Dead Hang",
             Measure.SECONDS,
-            [SetView(1, None, None, 50.0, None, None)],
+            [SetView(1, None, None, 50.0, None, None, None)],
         ),
     ]
 
@@ -95,7 +98,8 @@ def test_get_workout_carries_end_time_and_notes(imported: sqlite3.Connection) ->
 
 
 def test_get_workout_missing(imported: sqlite3.Connection) -> None:
-    assert get_workout(imported, 999) is None
+    with pytest.raises(WorkoutNotFoundError, match=r"^no workout 999$"):
+        get_workout(imported, 999)
 
 
 def test_list_exercises_recent_first_then_untrained_by_name(imported: sqlite3.Connection) -> None:
@@ -171,7 +175,7 @@ def test_exercise_history_newest_session_first(imported: sqlite3.Connection) -> 
     assert history.sessions == [
         ExerciseSession(later, 1, "2026-09-01T10:00:00+00:00", [set_view(1, 5, 80.0)]),
         ExerciseSession(
-            july, 1, JULY, [set_view(1, 8, 60.0), SetView(2, 6, 70.0, None, 8, "grindy")]
+            july, 1, JULY, [set_view(1, 8, 60.0), SetView(2, 6, 70.0, None, 8, "grindy", None)]
         ),
     ]
 

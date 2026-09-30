@@ -56,7 +56,9 @@ def test_migrate_is_idempotent(db: sqlite3.Connection) -> None:
 def test_newer_schema_is_refused(db: sqlite3.Connection) -> None:
     db.execute(f"PRAGMA user_version = {len(MIGRATIONS) + 1}")
 
-    with pytest.raises(SchemaError, match=r"^database schema v2 is newer than this app \(v1\)$"):
+    newer, current = len(MIGRATIONS) + 1, len(MIGRATIONS)
+    expected = rf"^database schema v{newer} is newer than this app \(v{current}\)$"
+    with pytest.raises(SchemaError, match=expected):
         migrate(db)
 
 

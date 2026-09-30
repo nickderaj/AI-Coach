@@ -73,6 +73,12 @@ MIGRATIONS: tuple[str, ...] = (
         source TEXT NOT NULL
     ) STRICT;
     """,
+    """
+    -- Workouts logged in the app carry the phone-generated id they were created
+    -- under, so offline replays update rather than duplicate them.
+    ALTER TABLE workouts ADD COLUMN client_id TEXT;
+    CREATE UNIQUE INDEX workouts_client_id ON workouts (client_id);
+    """,
 )
 
 
