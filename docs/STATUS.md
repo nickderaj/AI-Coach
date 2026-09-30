@@ -28,45 +28,62 @@ Last updated: 2026-09-30.
 | Dependabot: minor/patch only for Python and web | #7 | Majors are planned upgrades (Node 26 LTS from 2026-10-28; TypeScript 7 once typescript-eslint supports it). |
 | Phase 2a — idempotent write API; schema v2 | #11 | Deployed 2026-09-30. |
 | Phase 2b-1 — Catppuccin Latte redesign: dashboard, history cards, exercise charts and records | #12 | Deployed 2026-09-30. |
+| Phase 2c — offline write queue, service worker, installable app | #13 | Deployed 2026-09-30. |
 
-## In progress: phase 2 — logging (2c in this PR, before 2b-2)
+## In progress: phase 2 — logging (2b-2 in this PR; the last of phase 2)
 
-2c comes before the logging screens so that every write they make goes through
-the offline queue from the start, instead of being rewritten later.
+**2b-2: logging screens (this PR).** Every write goes through the outbox, so
+logging works without signal.
+- **Home.** "Start workout" creates the workout on the phone, queues its `PUT`
+  and opens the picker. A workout in progress shows as "Resume". A workout the
+  server has as unfinished, started on another device or with the phone's copy
+  lost, can be picked back up.
+- **Workout (`#/log`).** The workout in progress is kept in `localStorage`
+  (`web/src/log/`), so iOS closing the app loses nothing. Each exercise has a
+  Strong-style table (set | previous | kg | reps or secs | ✓). Rows are
+  prefilled from last time's matching set, else from the row above.
+  - Ticking a set queues its `PUT` and starts a 90 s rest timer (±15 s, skip).
+  - Editing a logged set re-sends it. Clearing it, or unticking it, queues a
+    `DELETE`.
+  - You can add or remove sets and remove an exercise with nothing logged.
+  - Finish refuses an empty workout. Discard asks first.
+- **Picker (`#/log/add`).** Most recently done exercises first, with search.
+  "New exercise" posts to the server, which is the one online-only step. It
+  handles the near-duplicate answer: use the existing exercise, or add it
+  anyway.
+- **One-off set.** "Log one set" on an exercise's page saves a workout of its
+  own that starts and ends when it is logged.
 
-**2c: offline and install (this PR).**
+**2c: offline and install (done, #13).**
 - `web/src/outbox/`: writes are saved in IndexedDB first, then replayed in
   order. Only one write per path is kept: a `PUT` replaces the queued one in
   place, so it keeps its turn; a `DELETE` drops it and goes to the back.
 - Network errors, 408, 429 and 5xx retry with backoff (2 s doubling to 60 s),
-  and again when the phone comes back online or the app is reopened. Any
-  other 4xx is kept as "refused" and shown in a banner until dismissed.
+  and again when the phone comes back online or the app is reopened. Any other
+  4xx is kept as "refused" and shown in a banner until dismissed.
 - Only one copy of the app delivers at a time (a Web Lock shared by Safari tabs
-  and the installed app), so an older in-flight write cannot overwrite a newer
-  one. Each delivery attempt gives up after 20 s and counts as retryable, so a
-  request that never answers cannot stall the queue.
-- A banner shows what is still waiting to sync.
+  and the installed app). Each attempt gives up after 20 s and counts as
+  retryable.
 - `web/src/sw/`: a service worker, built to `/sw.js`. Hashed `/assets/` are
   served cache-first. Everything else is network-first, falling back to the
-  cached copy when offline, on a 5xx, or after 3 s. It precaches the app shell
-  on install.
+  cached copy when offline, on a 5xx, or after 3 s.
 - A manifest, icons and iOS meta tags, so the app installs to the home screen.
 
-**Next, 2b-2: logging screens, all writing through the outbox.**
-- Start or resume a workout from Home.
-- A Strong-style set table (previous | kg | reps | ✓), prefilled from last
-  time.
-- An exercise picker: recent first, search, and add-exercise with the
-  near-duplicate prompt. Adding an exercise needs a connection, because the
-  server decides what counts as a duplicate.
-- Edit or delete sets, a rest timer, and finishing the workout.
-- One-off logging: a single set outside a planned workout.
+**Follow-ups.**
+- The near-duplicate rule does not know gym abbreviations: "Incline DB Press"
+  is not flagged as a duplicate of "Incline Dumbbell Press". Teach
+  `trainer.domain.exercises` that DB, BB and KB mean dumbbell, barbell and
+  kettlebell.
+- An unfinished workout lists in History like a finished one. It could show an
+  "in progress" mark.
+
+**Next: phase 3, Hermes.**
 
 ## Remaining phases
 
 | Phase | Scope | Exit criterion |
 | --- | --- | --- |
-| 2 — Logging | 2a write API (done); 2b-1 visual design (done); 2c offline queue and PWA install (in progress); 2b-2 logging screens | Owner stops logging in v1 |
+| 2 — Logging | 2a write API, 2b-1 visual design, 2c offline queue and PWA install (done); 2b-2 logging screens (in progress) | Owner stops logging in v1 |
 | 3 — Hermes | `hermes-gateway` unit, `hermes/` profile templates (SOUL, config), MCP tool server, Coach tab on one durable session, **private local git repo** for memory/skills with a nightly commit (never this repo) | Coach remembers across turns and days |
 | 4 — Programs | Domain engine (`# coverage-critical`): double progression per D5, deload per D6, sequence-based "next day"; `propose_program` via Hermes; Today screen with blocks/supersets, targets, "last time", rest timer | A full week trained from the app |
 | 5 — Cut-over | Web Push + in-app inbox, retire the v1 bot | v1 retired |

@@ -377,6 +377,219 @@ h2 {
   margin: 0.5rem 0;
 }
 
+/* ---------------------------------------------------------------- logging */
+
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  overflow: hidden;
+  clip-path: inset(50%);
+  white-space: nowrap;
+}
+
+.primary,
+.button {
+  display: inline-block;
+  border: 0;
+  border-radius: 999px;
+  padding: 0.65rem 1.2rem;
+  font-weight: 700;
+  text-align: center;
+  background: var(--accent);
+  color: var(--card);
+  box-shadow: var(--shadow);
+}
+
+.button {
+  background: var(--card);
+  color: var(--accent);
+}
+
+.primary:disabled {
+  background: var(--surface0);
+  color: var(--subtext0);
+  box-shadow: none;
+}
+
+.link {
+  border: 0;
+  background: none;
+  padding: 0.4rem 0;
+  color: var(--accent);
+  font-weight: 600;
+  text-align: left;
+}
+
+.danger,
+.link.danger {
+  color: var(--red);
+}
+
+.chip.danger {
+  background: var(--red);
+  color: var(--card);
+}
+
+.row-actions {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+}
+
+.notice {
+  margin: 0;
+  padding: 0.75rem 0.9rem;
+  border-radius: var(--radius);
+  font-weight: 600;
+}
+
+.notice p {
+  margin: 0 0 0.5rem;
+}
+
+.start {
+  display: grid;
+  gap: 0.5rem;
+  justify-items: start;
+}
+
+.start .go {
+  font-weight: 700;
+}
+
+.log-head {
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  gap: 1rem;
+}
+
+.elapsed {
+  font-variant-numeric: tabular-nums;
+}
+
+.log-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.log-table th {
+  text-align: left;
+  font-size: 0.72rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--subtext0);
+  padding: 0.2rem 0.25rem;
+}
+
+.log-table th:first-child,
+.log-table th:last-child {
+  width: 2.6rem;
+}
+
+.log-table th:nth-child(3),
+.log-table th:nth-child(4) {
+  width: 4.2rem;
+}
+
+.log-table td {
+  padding: 0.3rem 0.25rem;
+  font-size: 0.9rem;
+}
+
+.log-table tr.done td {
+  background: color-mix(in srgb, var(--green) 12%, var(--card));
+}
+
+.log-table input,
+.quick input,
+.field input,
+.field select {
+  width: 100%;
+  border: 0;
+  border-radius: 0.6rem;
+  padding: 0.45rem 0.5rem;
+  background: var(--mantle);
+  color: var(--text);
+  font-size: 1rem;
+  font-variant-numeric: tabular-nums;
+}
+
+.quick input {
+  width: 6rem;
+}
+
+.check {
+  width: 2.2rem;
+  height: 2.2rem;
+  border: 0;
+  border-radius: 0.6rem;
+  background: var(--mantle);
+  color: var(--overlay1);
+  font-weight: 800;
+}
+
+.check[aria-pressed="true"] {
+  background: var(--green);
+  color: var(--card);
+}
+
+.check:disabled {
+  opacity: 0.4;
+}
+
+.rest {
+  position: sticky;
+  top: calc(env(safe-area-inset-top) + 0.5rem);
+  z-index: 1;
+  display: flex;
+  flex-wrap: wrap;
+  align-items: center;
+  gap: 0.5rem;
+  padding: 0.6rem 0.8rem;
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+  font-variant-numeric: tabular-nums;
+}
+
+.rest strong {
+  flex: 1;
+  font-size: 1.1rem;
+}
+
+.field {
+  display: grid;
+  gap: 0.3rem;
+  font-weight: 600;
+  font-size: 0.9rem;
+}
+
+.field.inline {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  font-weight: normal;
+}
+
+.field.inline input {
+  width: auto;
+}
+
+.pick {
+  width: 100%;
+  border: 0;
+  text-align: left;
+  color: inherit;
+}
+
+.pick > span {
+  display: grid;
+}
+
 /* ---------------------------------------------------------------- tabs */
 
 .tabs {

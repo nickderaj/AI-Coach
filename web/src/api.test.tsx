@@ -3,7 +3,8 @@ import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
-import { ApiError, fetchJson, useApi } from "./api";
+import { ApiError, OFFLINE_CREATE, createExercise, fetchJson, useApi } from "./api";
+import type { NewExercise } from "./api";
 import { mockFetch } from "./test/fetch";
 
 const schema = z.object({ value: z.number() });
@@ -119,5 +120,76 @@ describe("mockFetch", () => {
     const { at } = await import("./test/fetch");
 
     expect(() => at([], 0)).toThrow("expected an item at index 0");
+  });
+});
+
+describe("createExercise", () => {
+  const request: NewExercise = {
+    name: "Zercher Squat",
+    equipment: "barbell",
+    measure: "reps",
+    allow_similar: false,
+  };
+  const created = {
+    id: 50,
+    name: "Zercher Squat",
+    equipment: "barbell",
+    muscle_groups: null,
+    measure: "reps",
+    workouts: 0,
+    last_done: null,
+    best_load_kg: null,
+  };
+
+  it("posts the new exercise and returns it", async () => {
+    const fetchMock = mockFetch({ "/api/exercises": { status: 201, body: created } });
+
+    expect(await createExercise(request)).toEqual({ kind: "created", exercise: created });
+    expect(fetchMock).toHaveBeenCalledWith("/api/exercises", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(request),
+    });
+  });
+
+  it("returns the exercises it would duplicate", async () => {
+    const matches = [{ id: 3, name: "Back Squat", equipment: "barbell" }];
+    mockFetch({
+      "/api/exercises": { status: 409, body: { detail: { reason: "similar", matches } } },
+    });
+
+    expect(await createExercise(request)).toEqual({
+      kind: "duplicate",
+      reason: "similar",
+      matches,
+    });
+  });
+
+  it.each([
+    [{ status: 409, body: { detail: "busy" } }, "The server answered 409"],
+    [{ status: 422, body: { detail: [] } }, "The server answered 422"],
+    [{ status: 201, body: { id: "x" } }, "The server answered 201"],
+  ])("reports anything else (%#)", async (reply, message) => {
+    mockFetch({ "/api/exercises": reply });
+
+    expect(await createExercise(request)).toEqual({ kind: "error", message });
+  });
+
+  it("reports a body that is not JSON", async () => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => Promise.resolve(new Response("Bad Gateway", { status: 502 }))),
+    );
+
+    expect(await createExercise(request)).toEqual({
+      kind: "error",
+      message: "The server answered 502",
+    });
+  });
+
+  it("explains that it needs a connection", async () => {
+    mockFetch({ "/api/exercises": new TypeError("offline") });
+
+    expect(await createExercise(request)).toEqual({ kind: "error", message: OFFLINE_CREATE });
   });
 });

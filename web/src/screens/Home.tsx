@@ -8,6 +8,7 @@ import { Load, StatTile, WorkoutCard } from "../components";
 import { formatVolume, formatWhole, partOfDay } from "../format";
 import { href } from "../router";
 import { thisWeek, weekStreak, weeklyTotals } from "../stats";
+import { StartCard } from "./StartCard";
 
 const WEEKS = 8;
 const WEEK_LABEL = new Intl.DateTimeFormat("en-GB", { day: "numeric", month: "numeric" });
@@ -69,6 +70,7 @@ export function Home(): ReactElement {
         <p className="muted">Good {partOfDay(now.toISOString()).toLowerCase()}</p>
         <h1>Your training</h1>
       </header>
+      <StartCard />
       <Load state={state}>{(workouts) => <Dashboard workouts={workouts} now={now} />}</Load>
     </>
   );

@@ -1,7 +1,7 @@
 import { useEffect, useState } from "react";
 import { z } from "zod";
 
-const measureSchema = z.enum(["reps", "seconds", "distance"]);
+export const measureSchema = z.enum(["reps", "seconds", "distance"]);
 
 const setSchema = z.object({
   set_number: z.number().int(),
@@ -72,12 +72,14 @@ const exerciseHistorySchema = z.object({
 
 export const workoutListSchema = z.array(workoutSummarySchema);
 export const exerciseListSchema = z.array(exerciseSummarySchema);
+export const currentWorkoutSchema = workoutDetailSchema.nullable();
 export { exerciseHistorySchema, workoutDetailSchema };
 
 export type Measure = z.infer<typeof measureSchema>;
 export type SetEntry = z.infer<typeof setSchema>;
 export type WorkoutSummary = z.infer<typeof workoutSummarySchema>;
 export type ExerciseSummary = z.infer<typeof exerciseSummarySchema>;
+export type WorkoutDetail = z.infer<typeof workoutDetailSchema>;
 
 /** @internal Exported for tests; the app only sees it through `useApi`. */
 export class ApiError extends Error {
@@ -92,8 +94,6 @@ export class ApiError extends Error {
 
 /**
  * GET a same-origin JSON endpoint and validate the body against `schema`.
- *
- * @internal Exported for tests; the app only uses it through `useApi`.
  */
 export async function fetchJson<T>(
   path: string,
@@ -144,4 +144,60 @@ export function useApi<T>(path: string, schema: z.ZodType<T>): Loadable<T> {
     };
   }, [path, schema]);
   return state;
+}
+
+const matchSchema = z.object({
+  id: z.number().int(),
+  name: z.string(),
+  equipment: z.string().nullable(),
+});
+
+const duplicateSchema = z.object({
+  detail: z.object({ reason: z.enum(["exists", "similar"]), matches: z.array(matchSchema) }),
+});
+
+export type ExerciseMatch = z.infer<typeof matchSchema>;
+
+export interface NewExercise {
+  name: string;
+  equipment: string | null;
+  measure: "reps" | "seconds";
+  /** Create it even though it looks like an existing exercise. */
+  allow_similar: boolean;
+}
+
+export type CreateResult =
+  | { kind: "created"; exercise: ExerciseSummary }
+  | { kind: "duplicate"; reason: "exists" | "similar"; matches: ExerciseMatch[] }
+  | { kind: "error"; message: string };
+
+/** @internal Exported for tests. */
+export const OFFLINE_CREATE =
+  "Adding a new exercise needs a connection. Pick an existing one for now.";
+
+/**
+ * Add an exercise to the catalogue. Unlike logging this is not queued offline:
+ * only the server can tell whether the name duplicates one it already has.
+ */
+export async function createExercise(exercise: NewExercise): Promise<CreateResult> {
+  let response: Response;
+  try {
+    response = await fetch("/api/exercises", {
+      method: "POST",
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+      body: JSON.stringify(exercise),
+    });
+  } catch {
+    return { kind: "error", message: OFFLINE_CREATE };
+  }
+  const body: unknown = await response.json().catch(() => null);
+  const created = exerciseSummarySchema.safeParse(body);
+  if (response.ok && created.success) {
+    return { kind: "created", exercise: created.data };
+  }
+  const duplicate = duplicateSchema.safeParse(body);
+  if (response.status === 409 && duplicate.success) {
+    return { kind: "duplicate", ...duplicate.data.detail };
+  }
+  return { kind: "error", message: new ApiError(response.status).message };
 }

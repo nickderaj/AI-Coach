@@ -7,7 +7,7 @@ import { Avatar, Load, equipmentTone, tone } from "../components";
 import { formatDay, formatLoad, plural } from "../format";
 import { href } from "../router";
 
-function facts(exercise: ExerciseSummary): string {
+export function facts(exercise: ExerciseSummary): string {
   const parts = [plural(exercise.workouts, "workout")];
   if (exercise.last_done !== null) {
     parts.push(`last ${formatDay(exercise.last_done)}`);
@@ -18,7 +18,7 @@ function facts(exercise: ExerciseSummary): string {
   return parts.join(" · ");
 }
 
-function matches(exercise: ExerciseSummary, query: string): boolean {
+export function matches(exercise: ExerciseSummary, query: string): boolean {
   const haystack = `${exercise.name} ${exercise.equipment ?? ""} ${exercise.muscle_groups ?? ""}`;
   return haystack.toLowerCase().includes(query.trim().toLowerCase());
 }

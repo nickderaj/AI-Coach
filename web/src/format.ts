@@ -27,7 +27,10 @@ function formatNumber(value: number): string {
 }
 
 /** One set as it would be written in a training log, e.g. "12 × 22.5 kg" or "50 s". */
-export function formatSet(set: SetEntry, measure: Measure): string {
+export function formatSet(
+  set: Pick<SetEntry, "reps" | "load_kg" | "duration_s">,
+  measure: Measure,
+): string {
   if (measure === "seconds" && set.duration_s !== null) {
     return `${formatNumber(set.duration_s)} s`;
   }
@@ -82,4 +85,15 @@ export function partOfDay(iso: string): string {
     return "Morning";
   }
   return hour < 17 ? "Afternoon" : "Evening";
+}
+
+/** A running clock: "0:05", "12:34", "1:02:03". Negative durations show as zero. */
+export function formatClock(ms: number): string {
+  const total = Math.max(0, Math.floor(ms / 1000));
+  const hours = Math.floor(total / 3600);
+  const minutes = Math.floor((total % 3600) / 60);
+  const seconds = String(total % 60).padStart(2, "0");
+  return hours === 0
+    ? `${String(minutes)}:${seconds}`
+    : `${String(hours)}:${String(minutes).padStart(2, "0")}:${seconds}`;
 }
