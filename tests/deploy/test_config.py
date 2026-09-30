@@ -4,7 +4,15 @@ from pathlib import PurePosixPath
 
 import pytest
 
-from trainer.deploy.config import ConfigError, DeployConfig, load, parse_env
+from trainer.deploy.config import (
+    DATA_ROOTS,
+    PREFIX_ROOTS,
+    ConfigError,
+    DeployConfig,
+    load,
+    parse_env,
+    to_env,
+)
 
 VALID = {
     "TRAINER_USER": "trainer",
@@ -74,18 +82,46 @@ class TestLoad:
             f"TRAINER_USER {user!r} is not a valid system user name"
         )
 
-    @pytest.mark.parametrize("path", ["/srv/x", "/a/b.c/d_e-f", "/a"])
-    def test_valid_paths(self, path: str) -> None:
+    @pytest.mark.parametrize("user", ["root", "nobody"])
+    def test_reserved_users(self, user: str) -> None:
+        assert error_for(TRAINER_USER=user) == (
+            f"TRAINER_USER {user!r} is reserved; use a dedicated service account"
+        )
+
+    @pytest.mark.parametrize("path", ["/srv/x", "/var/lib/a/b.c", "/mnt/media/gym", "/media/d_e-f"])
+    def test_valid_data_dirs(self, path: str) -> None:
         assert load(document(TRAINER_DATA_DIR=path)).data_dir == PurePosixPath(path)
 
+    @pytest.mark.parametrize("path", ["/opt/x", "/usr/local/lib/trainer"])
+    def test_valid_prefixes(self, path: str) -> None:
+        assert load(document(TRAINER_PREFIX=path)).prefix == PurePosixPath(path)
+
     @pytest.mark.parametrize(
-        "path", ["", "/", "relative/x", "/a/../b", "/a b", "/a/$(x)", "/a//b", "/a/"]
+        "path",
+        ["", "/", "relative/x", "/srv/../etc", "/srv/./x", "/a b", "/a/$(x)", "/a//b", "/a/"],
     )
-    def test_invalid_paths(self, path: str) -> None:
+    def test_malformed_paths(self, path: str) -> None:
         for key in ("TRAINER_DATA_DIR", "TRAINER_PREFIX"):
             assert error_for(**{key: path}) == (
                 f"{key} {path!r} must be an absolute path of plain segments"
             )
+
+    @pytest.mark.parametrize(
+        "path", ["/etc", "/usr", "/srv", "/var/lib", "/srvx/y", "/home/someone/data", "/opt/x"]
+    )
+    def test_data_dir_must_be_dedicated_under_a_data_root(self, path: str) -> None:
+        assert error_for(TRAINER_DATA_DIR=path) == (
+            f"TRAINER_DATA_DIR {path!r} must be a dedicated directory inside "
+            "/srv or /var/lib or /mnt or /media"
+        )
+
+    @pytest.mark.parametrize(
+        "path", ["/usr", "/opt", "/usr/local", "/etc/x", "/srv/x", "/srv/hermes-trainer/code"]
+    )
+    def test_prefix_must_be_dedicated_under_a_prefix_root(self, path: str) -> None:
+        assert error_for(TRAINER_PREFIX=path) == (
+            f"TRAINER_PREFIX {path!r} must be a dedicated directory inside /opt or /usr/local"
+        )
 
     @pytest.mark.parametrize("host", ["127.0.0.1", "127.8.9.1", "::1"])
     def test_loopback_hosts_are_accepted(self, host: str) -> None:
@@ -124,3 +160,18 @@ class TestLoad:
 )
 def test_upstream_brackets_ipv6(host: str, upstream: str) -> None:
     assert load(document(TRAINER_BIND_HOST=host)).upstream == upstream
+
+
+def test_data_and_prefix_roots_cannot_overlap() -> None:
+    """Disjoint roots mean the writable data dir can never contain (or be) the code."""
+    for data_root in map(PurePosixPath, DATA_ROOTS):
+        for prefix_root in map(PurePosixPath, PREFIX_ROOTS):
+            assert not data_root.is_relative_to(prefix_root)
+            assert not prefix_root.is_relative_to(data_root)
+
+
+def test_to_env_round_trips() -> None:
+    config = load(document())
+
+    assert to_env(config) == document()
+    assert load(to_env(config)) == config

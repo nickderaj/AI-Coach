@@ -31,7 +31,9 @@ uvicorn; `trainer.deploy` validates `deploy/local.env`, renders hardened systemd
 units (API on loopback; nightly SQLite backup with rotation and no network) and
 shell-quoted installer variables; `deploy/build.sh` (unprivileged),
 `deploy/install.sh` and `deploy/tailscale-serve.sh` (root, idempotent) do the
-rest. See [DEPLOY.md](DEPLOY.md). Rehearsed without root: the wheel installs from
+rest. The installer refuses to run on unsafe host state (`trainer.deploy
+preflight`: existing accounts must be dedicated system accounts; data and code
+directories and their ancestors must have safe owners and permissions). See [DEPLOY.md](DEPLOY.md). Rehearsed without root: the wheel installs from
 the hash-pinned requirements, `/healthz` answers, `systemd-analyze verify` passes.
 
 Exit criterion still open: the owner runs the root steps and opens the served

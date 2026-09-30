@@ -3,7 +3,7 @@
 import shlex
 from pathlib import Path, PurePosixPath
 
-from trainer.deploy.config import DeployConfig
+from trainer.deploy.config import DeployConfig, to_env
 from trainer.deploy.render import UNITS, install_env, render_units, substitutions, write_bundle
 
 CONFIG = DeployConfig(
@@ -105,8 +105,10 @@ def test_write_bundle(tmp_path: Path) -> None:
         "out/systemd/trainer-backup.service",
         "out/systemd/trainer-backup.timer",
         "out/install.env",
+        "out/config.env",
     ]
     assert (tmp_path / "out/install.env").read_text() == install_env(CONFIG)
+    assert (tmp_path / "out/config.env").read_text() == to_env(CONFIG)
     rendered = render_units(CONFIG)["trainer-api.service"]
     assert (tmp_path / "out/systemd/trainer-api.service").read_text() == rendered
 

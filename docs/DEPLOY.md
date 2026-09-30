@@ -21,10 +21,34 @@ sudo ./deploy/install.sh                       # user, data dir, venv, units, he
 sudo ./deploy/tailscale-serve.sh               # publish on https://<host>.<tailnet>.ts.net/
 ```
 
-`build.sh` validates `local.env` (`python -m trainer.deploy render`) and refuses
-unsafe values: a non-loopback bind address, relative or unusual paths, invalid
-user names, or unknown keys. `install.sh` and `tailscale-serve.sh` only read the
-validated, shell-quoted `build/deploy/install.env`.
+## Safety checks
+
+Two layers, both failing closed:
+
+1. **Configuration** (`build.sh` → `python -m trainer.deploy render`):
+   - the bind address must be loopback;
+   - `TRAINER_USER` must be a valid name other than `root` or `nobody`;
+   - `TRAINER_DATA_DIR` must be a dedicated directory inside `/srv`, `/var/lib`,
+     `/mnt` or `/media`, and `TRAINER_PREFIX` one inside `/opt` or `/usr/local`
+     (not the root itself, plain segments only). The two sets of roots are
+     disjoint, so the service-writable data can never contain or be the
+     root-owned code, and `/home` (hidden by `ProtectHome=yes`) is excluded;
+   - unknown or duplicate keys are rejected.
+2. **Host preflight** (`install.sh` → `python -m trainer.deploy preflight`, run
+   from the bundled wheel before anything is changed):
+   - an existing service account must be a dedicated system account (uid 1–999,
+     same-named primary group, home `/nonexistent`, nologin shell); a same-named
+     group without that user is refused;
+   - an existing data directory must be a real directory already owned by that
+     account; its existing ancestors must be real directories owned by root or by
+     the admin running `sudo` (a data drive mounted as your own user is fine), and
+     writable by nobody else;
+   - an existing prefix must be a real, root-owned directory writable by nobody
+     else, and either empty or already marked `.hermes-trainer`; its ancestors must
+     be root-owned and writable by nobody else.
+
+`install.sh` and `tailscale-serve.sh` only read the validated, shell-quoted
+`build/deploy/install.env`.
 
 ## Upgrade
 

@@ -12,6 +12,8 @@ if TYPE_CHECKING:
 
     from trainer.deploy.config import DeployConfig
 
+from trainer.deploy.config import to_env
+
 UNITS = ("trainer-api.service", "trainer-backup.service", "trainer-backup.timer")
 
 
@@ -49,7 +51,7 @@ def install_env(config: DeployConfig) -> str:
 
 
 def write_bundle(config: DeployConfig, out: Path) -> list[Path]:
-    """Write ``systemd/<unit>`` files and ``install.env`` under ``out``."""
+    """Write ``systemd/<unit>``, ``install.env`` and ``config.env`` under ``out``."""
     written: list[Path] = []
     (out / "systemd").mkdir(parents=True, exist_ok=True)
     for unit, content in render_units(config).items():
@@ -59,4 +61,7 @@ def write_bundle(config: DeployConfig, out: Path) -> list[Path]:
     env_path = out / "install.env"
     env_path.write_bytes(install_env(config).encode())
     written.append(env_path)
+    config_path = out / "config.env"
+    config_path.write_bytes(to_env(config).encode())
+    written.append(config_path)
     return written

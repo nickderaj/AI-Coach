@@ -2,16 +2,18 @@
 
 import runpy
 import sqlite3
+import stat
 import sys
 import time
 from collections.abc import Iterator
 from contextlib import closing
 from datetime import UTC, datetime, timedelta
-from pathlib import Path
+from pathlib import Path, PurePosixPath
 
 import pytest
 
 from trainer.deploy.__main__ import main
+from trainer.deploy.preflight import Entry
 
 EXAMPLE = Path(__file__).resolve().parents[2] / "deploy" / "local.env.example"
 
@@ -32,6 +34,7 @@ def test_render_writes_the_bundle(tmp_path: Path, capsys: pytest.CaptureFixture[
         f"rendered {out}/systemd/trainer-backup.service",
         f"rendered {out}/systemd/trainer-backup.timer",
         f"rendered {out}/install.env",
+        f"rendered {out}/config.env",
     ]
 
 
@@ -43,6 +46,63 @@ def test_render_reports_an_invalid_env(tmp_path: Path, capsys: pytest.CaptureFix
 
     assert capsys.readouterr().err.startswith(f"{env}: missing TRAINER_DATA_DIR, ")
     assert not (tmp_path / "out").exists()
+
+
+class RecordingHost:
+    """Stands in for SystemHost: only /srv exists, owned by uid 1000."""
+
+    owner_of_data_parent = 1000
+
+    def account(self, name: str) -> None:  # noqa: ARG002  # why: fake of the Host protocol
+        return None
+
+    def group_name(self, gid: int) -> None:  # noqa: ARG002  # why: fake of the Host protocol
+        return None
+
+    def group_exists(self, name: str) -> bool:  # noqa: ARG002  # why: fake of the Host protocol
+        return False
+
+    def entry(self, path: PurePosixPath) -> Entry | None:
+        if path == PurePosixPath("/srv"):
+            return Entry(self.owner_of_data_parent, stat.S_IFDIR | 0o755)
+        return None
+
+    def names(self, path: PurePosixPath) -> list[str]:  # noqa: ARG002  # why: fake of the Host protocol
+        return []
+
+
+@pytest.fixture
+def fake_host(monkeypatch: pytest.MonkeyPatch) -> RecordingHost:
+    host = RecordingHost()
+    monkeypatch.setattr("trainer.deploy.__main__.SystemHost", lambda: host)
+    return host
+
+
+@pytest.mark.usefixtures("fake_host")
+def test_preflight_passes_on_a_safe_host(capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["preflight", "--env", str(EXAMPLE), "--admin-uid", "1000"]) == 0
+
+    assert capsys.readouterr().err == ""
+
+
+@pytest.mark.usefixtures("fake_host")
+def test_preflight_reports_problems(capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["preflight", "--env", str(EXAMPLE), "--admin-uid", "1001"]) == 1
+
+    assert capsys.readouterr().err == (
+        "preflight: /srv is owned by uid 1000, expected one of [0, 1001]\n"
+    )
+
+
+def test_preflight_reports_an_invalid_env(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    env = tmp_path / "config.env"
+    env.write_text("TRAINER_USER=root\n")
+
+    assert main(["preflight", "--env", str(env), "--admin-uid", "0"]) == 1
+
+    assert capsys.readouterr().err.startswith(f"{env}: missing ")
 
 
 def test_backup_without_database(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
@@ -70,11 +130,12 @@ def test_help_describes_the_commands(
         main(["--help"])
 
     out = capsys.readouterr().out
-    assert out.startswith("usage: python -m trainer.deploy [-h] {render,backup} ...\n")
+    assert out.startswith("usage: python -m trainer.deploy [-h] {render,preflight,backup} ...\n")
     assert "render the install bundle, or run a backup." in out
-    lines = [line.strip() for line in out.splitlines()]
-    assert "render         validate local.env and render the bundle" in lines
-    assert "backup         back up the database and rotate" in lines
+    lines = [" ".join(line.split()) for line in out.splitlines()]
+    assert "render validate local.env and render the bundle" in lines
+    assert "preflight refuse unsafe host state before install" in lines
+    assert "backup back up the database and rotate" in lines
 
 
 @pytest.mark.parametrize(
@@ -82,6 +143,8 @@ def test_help_describes_the_commands(
     [
         (["render", "--out", "x"], "--env"),
         (["render", "--env", "x"], "--out"),
+        (["preflight", "--admin-uid", "0"], "--env"),
+        (["preflight", "--env", "x"], "--admin-uid"),
         (["backup", "--keep", "1"], "--data-dir"),
         (["backup", "--data-dir", "x"], "--keep"),
     ],

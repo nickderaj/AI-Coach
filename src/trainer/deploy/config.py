@@ -17,6 +17,11 @@ KEYS = (
 )
 USER_NAME = re.compile(r"^[a-z_][a-z0-9_-]{0,31}$")
 SAFE_PATH = re.compile(r"^(?:/[A-Za-z0-9._-]+)+$")
+# Dedicated locations only. The two sets are disjoint, so the service-writable
+# data directory and the root-owned code prefix can never be equal or nested.
+DATA_ROOTS = ("/srv", "/var/lib", "/mnt", "/media")
+PREFIX_ROOTS = ("/opt", "/usr/local")
+RESERVED_USERS = frozenset({"root", "nobody"})
 MIN_PORT = 1024
 MAX_PORT = 65535
 MAX_BACKUPS = 365
@@ -84,26 +89,46 @@ def load(text: str) -> DeployConfig:
         raise ConfigError(message)
     return DeployConfig(
         user=_user(values["TRAINER_USER"]),
-        data_dir=_path("TRAINER_DATA_DIR", values["TRAINER_DATA_DIR"]),
-        prefix=_path("TRAINER_PREFIX", values["TRAINER_PREFIX"]),
+        data_dir=_path("TRAINER_DATA_DIR", values["TRAINER_DATA_DIR"], DATA_ROOTS),
+        prefix=_path("TRAINER_PREFIX", values["TRAINER_PREFIX"], PREFIX_ROOTS),
         bind_host=_loopback(values["TRAINER_BIND_HOST"]),
         bind_port=_integer("TRAINER_BIND_PORT", values["TRAINER_BIND_PORT"], MIN_PORT, MAX_PORT),
         backup_keep=_integer("TRAINER_BACKUP_KEEP", values["TRAINER_BACKUP_KEEP"], 1, MAX_BACKUPS),
     )
 
 
+def to_env(config: DeployConfig) -> str:
+    """Serialise a validated config back to canonical ``local.env`` form."""
+    values = {
+        "TRAINER_USER": config.user,
+        "TRAINER_DATA_DIR": str(config.data_dir),
+        "TRAINER_PREFIX": str(config.prefix),
+        "TRAINER_BIND_HOST": config.bind_host,
+        "TRAINER_BIND_PORT": str(config.bind_port),
+        "TRAINER_BACKUP_KEEP": str(config.backup_keep),
+    }
+    return "".join(f"{key}={value}\n" for key, value in values.items())
+
+
 def _user(value: str) -> str:
     if not USER_NAME.match(value):
         message = f"TRAINER_USER {value!r} is not a valid system user name"
         raise ConfigError(message)
+    if value in RESERVED_USERS:
+        message = f"TRAINER_USER {value!r} is reserved; use a dedicated service account"
+        raise ConfigError(message)
     return value
 
 
-def _path(key: str, value: str) -> PurePosixPath:
-    if not SAFE_PATH.match(value) or ".." in value.split("/"):
+def _path(key: str, value: str, roots: tuple[str, ...]) -> PurePosixPath:
+    if not SAFE_PATH.match(value) or {".", ".."} & set(value.split("/")):
         message = f"{key} {value!r} must be an absolute path of plain segments"
         raise ConfigError(message)
-    return PurePosixPath(value)
+    path = PurePosixPath(value)
+    if not any(path.parent.is_relative_to(root) for root in roots):
+        message = f"{key} {value!r} must be a dedicated directory inside {' or '.join(roots)}"
+        raise ConfigError(message)
+    return path
 
 
 def _is_loopback(value: str) -> bool:

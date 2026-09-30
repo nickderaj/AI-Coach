@@ -2,6 +2,7 @@
 # Step 2 of a deploy, run as root: install the bundle from ./deploy/build.sh.
 # Idempotent; re-run it after every build to upgrade.
 #
+#  - refuses to proceed if the host is unsafe (python -m trainer.deploy preflight)
 #  - creates the unprivileged service user and its data directory (0750)
 #  - installs a fresh virtualenv under the root-owned prefix from hash-pinned
 #    requirements, then swaps it into place
@@ -24,6 +25,13 @@ fi
 # shellcheck source=/dev/null
 . "$bundle/install.env"
 
+# Nothing is changed until the host passes the preflight checks. It runs from the
+# bundled wheel with the system Python (the wheel is pure Python and the deploy
+# code needs only the standard library).
+wheels=("$bundle"/*.whl)
+PYTHONPATH="${wheels[0]}" python3 -m trainer.deploy preflight \
+  --env "$bundle/config.env" --admin-uid "${SUDO_UID:-0}"
+
 if ! id -u "$TRAINER_USER" >/dev/null 2>&1; then
   useradd --system --user-group --no-create-home --home-dir /nonexistent \
     --shell /usr/sbin/nologin "$TRAINER_USER"
@@ -32,6 +40,7 @@ fi
 install -d -o "$TRAINER_USER" -g "$TRAINER_USER" -m 0750 \
   "$TRAINER_DATA_DIR" "$TRAINER_DATA_DIR/backups"
 install -d -o root -g root -m 0755 "$TRAINER_PREFIX"
+touch "$TRAINER_PREFIX/.hermes-trainer"  # marks the prefix as ours for later preflights
 
 staging="$TRAINER_PREFIX/venv.new"
 rm -rf "$staging"
