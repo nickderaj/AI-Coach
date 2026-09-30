@@ -47,7 +47,11 @@ each a required status check:
 
 The nightly workflow re-audits `main`'s Python and web dependencies, because
 advisories appear without code changing. Dependabot opens weekly grouped
-update PRs (with a seven-day cooldown); they go through the same gate. pnpm
+update PRs (with a seven-day cooldown) for minor and patch versions only; they go
+through the same gate. **Major versions are never proposed**: they are planned
+upgrades, done deliberately in their own PR together with whatever moves in
+lockstep (for example TypeScript with typescript-eslint, `@types/node` with the
+Node version in `web/.nvmrc`). GitHub Actions majors are still proposed. pnpm
 itself refuses any package version published less than a day ago
 (`minimumReleaseAge` in `web/pnpm-workspace.yaml`).
 
