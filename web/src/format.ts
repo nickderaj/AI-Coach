@@ -45,3 +45,41 @@ export function plural(count: number, noun: string): string {
 export function formatLoad(kg: number): string {
   return `${formatNumber(kg)} kg`;
 }
+
+const WHOLE = new Intl.NumberFormat(LOCALE, { maximumFractionDigits: 0 });
+
+/** A whole number with separators, e.g. "9,860". */
+export function formatWhole(value: number): string {
+  return WHOLE.format(value);
+}
+
+/** A total volume, e.g. "9,860 kg". */
+export function formatVolume(kg: number): string {
+  return `${formatWhole(kg)} kg`;
+}
+
+/** A duration in minutes, e.g. "48 min" or "1 h 12 min". */
+export function formatMinutes(minutes: number): string {
+  if (minutes < 60) {
+    return `${String(minutes)} min`;
+  }
+  const rest = minutes % 60;
+  const hours = `${String(Math.floor(minutes / 60))} h`;
+  return rest === 0 ? hours : `${hours} ${String(rest)} min`;
+}
+
+const SHORT_DAY = new Intl.DateTimeFormat(LOCALE, { day: "numeric", month: "short" });
+
+/** A compact date for chart axes, e.g. "29 Sept". */
+export function formatShortDate(value: Date | string): string {
+  return SHORT_DAY.format(typeof value === "string" ? new Date(value) : value);
+}
+
+/** Part of the day a workout started in, for titles like "Morning workout". */
+export function partOfDay(iso: string): string {
+  const hour = new Date(iso).getHours();
+  if (hour < 12) {
+    return "Morning";
+  }
+  return hour < 17 ? "Afternoon" : "Evening";
+}

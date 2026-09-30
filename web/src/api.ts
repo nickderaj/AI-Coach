@@ -10,14 +10,24 @@ const setSchema = z.object({
   duration_s: z.number().nullable(),
   rpe: z.number().int().nullable(),
   notes: z.string().nullable(),
+  client_id: z.string().nullable(),
 });
 
 const workoutSummarySchema = z.object({
   id: z.number().int(),
   started_at: z.string(),
   ended_at: z.string().nullable(),
-  exercises: z.array(z.string()),
+  exercises: z.array(
+    z.object({
+      position: z.number().int(),
+      name: z.string(),
+      measure: measureSchema,
+      sets: z.number().int(),
+      best: setSchema,
+    }),
+  ),
   set_count: z.number().int(),
+  volume_kg: z.number(),
 });
 
 const workoutDetailSchema = z.object({
@@ -25,6 +35,7 @@ const workoutDetailSchema = z.object({
   started_at: z.string(),
   ended_at: z.string().nullable(),
   notes: z.string().nullable(),
+  client_id: z.string().nullable(),
   exercises: z.array(
     z.object({
       position: z.number().int(),

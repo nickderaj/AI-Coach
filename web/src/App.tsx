@@ -2,46 +2,62 @@ import type { ReactElement } from "react";
 
 import { href, useRoute } from "./router";
 import type { Route } from "./router";
-import { ExerciseHistory, ExerciseList, WorkoutDetail, WorkoutList } from "./screens";
+import { ExerciseDetail } from "./screens/ExerciseDetail";
+import { Exercises } from "./screens/Exercises";
+import { History, WorkoutDetail } from "./screens/History";
+import { Home } from "./screens/Home";
 
 function Screen({ route }: { route: Route }): ReactElement {
   switch (route.name) {
-    case "workouts":
-      return <WorkoutList />;
+    case "home":
+      return <Home />;
+    case "history":
+      return <History />;
     case "workout":
       return <WorkoutDetail key={route.id} id={route.id} />;
     case "exercises":
-      return <ExerciseList />;
+      return <Exercises />;
     case "exercise":
-      return <ExerciseHistory key={route.id} id={route.id} />;
+      return <ExerciseDetail key={route.id} id={route.id} />;
   }
 }
 
-function inSection(route: Route): "history" | "exercises" {
-  return route.name === "exercises" || route.name === "exercise" ? "exercises" : "history";
+type Tab = "home" | "history" | "exercises";
+
+const TABS: { tab: Tab; route: Route; icon: string; label: string }[] = [
+  { tab: "home", route: { name: "home" }, icon: "◉", label: "Home" },
+  { tab: "history", route: { name: "history" }, icon: "☰", label: "History" },
+  { tab: "exercises", route: { name: "exercises" }, icon: "✦", label: "Exercises" },
+];
+
+function tabOf(route: Route): Tab {
+  switch (route.name) {
+    case "home":
+      return "home";
+    case "history":
+    case "workout":
+      return "history";
+    case "exercises":
+    case "exercise":
+      return "exercises";
+  }
 }
 
 export function App(): ReactElement {
   const route = useRoute();
-  const section = inSection(route);
+  const current = tabOf(route);
   return (
     <div className="app">
       <main>
         <Screen route={route} />
       </main>
       <nav className="tabs" aria-label="Sections">
-        <a
-          href={href({ name: "workouts" })}
-          aria-current={section === "history" ? "page" : undefined}
-        >
-          History
-        </a>
-        <a
-          href={href({ name: "exercises" })}
-          aria-current={section === "exercises" ? "page" : undefined}
-        >
-          Exercises
-        </a>
+        {TABS.map(({ tab, route: target, icon, label }) => (
+          <a key={tab} href={href(target)} aria-current={tab === current ? "page" : undefined}>
+            <span aria-hidden="true">{icon}</span>
+            {label}
+          </a>
+        ))}
       </nav>
     </div>
   );

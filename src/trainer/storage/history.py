@@ -7,6 +7,7 @@ from itertools import groupby
 from typing import TYPE_CHECKING, Any
 
 from trainer.domain.exercises import Measure
+from trainer.domain.records import set_rank, set_volume
 
 if TYPE_CHECKING:
     import sqlite3
@@ -27,14 +28,26 @@ class SetView:
 
 
 @dataclass(frozen=True)
+class ExerciseLine:
+    """One exercise in a workout summary: how many sets, and the best of them."""
+
+    position: int
+    name: str
+    measure: Measure
+    sets: int
+    best: SetView
+
+
+@dataclass(frozen=True)
 class WorkoutSummary:
-    """A workout in a list: when, and what was trained."""
+    """A workout in a list: when, what was trained, and how much."""
 
     id: int
     started_at: str
     ended_at: str | None
-    exercises: list[str]
+    exercises: list[ExerciseLine]
     set_count: int
+    volume_kg: float
 
 
 @dataclass(frozen=True)
@@ -109,33 +122,35 @@ def list_workouts(conn: sqlite3.Connection, limit: int) -> list[WorkoutSummary]:
     """The ``limit`` most recent workouts, newest first."""
     workouts = conn.execute(
         """
-        SELECT id, started_at, ended_at FROM workouts
+        SELECT id FROM workouts
         ORDER BY started_at DESC, id DESC LIMIT ?
         """,
         (limit,),
     ).fetchall()
-    return [_workout_summary(conn, *workout) for workout in workouts]
+    return [_summary_of(get_workout(conn, workout[0])) for workout in workouts]
 
 
-def _workout_summary(
-    conn: sqlite3.Connection, workout_id: int, started_at: str, ended_at: str | None
-) -> WorkoutSummary:
-    names = [
-        row[0]
-        for row in conn.execute(
-            """
-            SELECT e.display_name FROM workout_sets s
-            JOIN exercises e ON e.id = s.exercise_id
-            WHERE s.workout_id = ?
-            GROUP BY s.exercise_position ORDER BY s.exercise_position
-            """,
-            (workout_id,),
-        )
-    ]
-    set_count: int = conn.execute(
-        """SELECT count(*) FROM workout_sets WHERE workout_id = ?""", (workout_id,)
-    ).fetchone()[0]
-    return WorkoutSummary(workout_id, started_at, ended_at, names, set_count)
+def _best(block: ExerciseBlock) -> SetView:
+    return max(
+        block.sets,
+        key=lambda s: set_rank(block.measure, s.reps, s.load_kg, s.duration_s),
+    )
+
+
+def _summary_of(detail: WorkoutDetail) -> WorkoutSummary:
+    """Summarise a workout from its full detail (one source of truth for both)."""
+    sets = [set_view for block in detail.exercises for set_view in block.sets]
+    return WorkoutSummary(
+        id=detail.id,
+        started_at=detail.started_at,
+        ended_at=detail.ended_at,
+        exercises=[
+            ExerciseLine(block.position, block.name, block.measure, len(block.sets), _best(block))
+            for block in detail.exercises
+        ],
+        set_count=len(sets),
+        volume_kg=sum(set_volume(s.reps, s.load_kg) for s in sets),
+    )
 
 
 class WorkoutNotFoundError(LookupError):

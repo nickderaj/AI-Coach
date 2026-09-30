@@ -113,11 +113,36 @@ class TestHistory:
     def test_workouts(self, client: TestClient) -> None:
         body = client.get("/api/workouts", headers=AS_OWNER).json()
 
-        assert [(w["started_at"], w["exercises"], w["set_count"]) for w in body] == [
-            ("2026-08-17T11:36:06+00:00", ["Lat Pulldown", "Pull-up"], 2),
-            ("2026-07-09T10:47:23+00:00", ["Barbell Bench Press", "Dead Hang"], 3),
+        assert [
+            (w["started_at"], [e["name"] for e in w["exercises"]], w["set_count"], w["volume_kg"])
+            for w in body
+        ] == [
+            ("2026-08-17T11:36:06+00:00", ["Lat Pulldown", "Pull-up"], 2, 600.0),
+            ("2026-07-09T10:47:23+00:00", ["Barbell Bench Press", "Dead Hang"], 3, 900.0),
         ]
-        assert set(body[0]) == {"id", "started_at", "ended_at", "exercises", "set_count"}
+        assert set(body[0]) == {
+            "id",
+            "started_at",
+            "ended_at",
+            "exercises",
+            "set_count",
+            "volume_kg",
+        }
+        assert body[1]["exercises"][0] == {
+            "position": 1,
+            "name": "Barbell Bench Press",
+            "measure": "reps",
+            "sets": 2,
+            "best": {
+                "set_number": 2,
+                "reps": 6,
+                "load_kg": 70.0,
+                "duration_s": None,
+                "rpe": 8,
+                "notes": "grindy",
+                "client_id": None,
+            },
+        }
 
     @pytest.mark.parametrize(("limit", "count"), [(1, 1), (500, 2)])
     def test_workouts_limit(self, client: TestClient, limit: int, count: int) -> None:

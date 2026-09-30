@@ -1,31 +1,52 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
-import { afterEach, describe, expect, it, vi } from "vitest";
+import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "./App";
 import { at, mockFetch, set } from "./test/fetch";
+
+// Tests run in Pacific/Auckland (UTC+13): 2026-09-28T11:30Z is Tue 29 Sept, 00:30.
+const NOW = new Date("2026-09-30T08:00:00Z"); // Wed 30 Sept, 21:00 local
 
 const WORKOUTS = [
   {
     id: 2,
     started_at: "2026-09-28T11:30:59+00:00",
-    ended_at: null,
-    exercises: ["Lat Pulldown", "Pull-up"],
-    set_count: 4,
+    ended_at: "2026-09-28T12:42:00+00:00",
+    exercises: [
+      {
+        position: 1,
+        name: "Lat Pulldown",
+        measure: "reps",
+        sets: 2,
+        best: set(2, 8, 60, { rpe: 9 }),
+      },
+      {
+        position: 2,
+        name: "Dead Hang",
+        measure: "seconds",
+        sets: 1,
+        best: set(1, null, null, { duration_s: 50 }),
+      },
+    ],
+    set_count: 3,
+    volume_kg: 1080,
   },
   {
     id: 1,
     started_at: "2026-07-09T10:47:23+00:00",
     ended_at: null,
-    exercises: ["Dead Hang"],
+    exercises: [{ position: 1, name: "Pull-up", measure: "reps", sets: 1, best: set(1, 8, null) }],
     set_count: 1,
+    volume_kg: 0,
   },
 ];
 
 const WORKOUT_2 = {
   id: 2,
   started_at: "2026-09-28T11:30:59+00:00",
-  ended_at: null,
+  ended_at: "2026-09-28T12:42:00+00:00",
   notes: "felt strong",
+  client_id: null,
   exercises: [
     {
       position: 1,
@@ -44,17 +65,19 @@ const WORKOUT_2 = {
   ],
 };
 
+const PULLDOWN = {
+  id: 45,
+  name: "Lat Pulldown",
+  equipment: "cable",
+  muscle_groups: "back,biceps",
+  measure: "reps",
+  workouts: 7,
+  last_done: "2026-09-28T11:30:59+00:00",
+  best_load_kg: 82.5,
+};
+
 const EXERCISES = [
-  {
-    id: 45,
-    name: "Lat Pulldown",
-    equipment: "cable",
-    muscle_groups: "back,biceps",
-    measure: "reps",
-    workouts: 7,
-    last_done: "2026-09-28T11:30:59+00:00",
-    best_load_kg: 82.5,
-  },
+  PULLDOWN,
   {
     id: 17,
     name: "Pull-up",
@@ -62,7 +85,7 @@ const EXERCISES = [
     muscle_groups: "back,biceps",
     measure: "reps",
     workouts: 1,
-    last_done: "2026-09-16T10:00:00+00:00",
+    last_done: "2026-07-09T10:47:23+00:00",
     best_load_kg: null,
   },
   {
@@ -78,19 +101,51 @@ const EXERCISES = [
 ];
 
 const HISTORY_45 = {
-  exercise: EXERCISES[0],
+  exercise: PULLDOWN,
   sessions: [
-    { workout_id: 2, position: 1, started_at: "2026-09-28T11:30:59+00:00", sets: [set(1, 12, 50)] },
+    {
+      workout_id: 2,
+      position: 1,
+      started_at: "2026-09-28T11:30:59+00:00",
+      sets: [set(1, 12, 50), set(2, 8, 60)],
+    },
+    {
+      workout_id: 3,
+      position: 1,
+      started_at: "2026-08-01T00:00:00+00:00",
+      sets: [set(1, 15, null)],
+    },
     { workout_id: 1, position: 1, started_at: "2026-07-09T10:47:23+00:00", sets: [set(1, 10, 40)] },
+  ],
+};
+
+const HISTORY_23 = {
+  exercise: {
+    ...PULLDOWN,
+    id: 23,
+    name: "Dead Hang",
+    equipment: "bodyweight",
+    measure: "seconds",
+    workouts: 1,
+    best_load_kg: null,
+  },
+  sessions: [
+    {
+      workout_id: 2,
+      position: 2,
+      started_at: "2026-09-28T11:30:59+00:00",
+      sets: [set(1, null, null, { duration_s: 50 })],
+    },
   ],
 };
 
 function standardApi(): void {
   mockFetch({
-    "/api/workouts": { body: WORKOUTS },
+    "/api/workouts?limit=500": { body: WORKOUTS },
     "/api/workouts/2": { body: WORKOUT_2 },
     "/api/exercises": { body: EXERCISES },
     "/api/exercises/45/history": { body: HISTORY_45 },
+    "/api/exercises/23/history": { body: HISTORY_23 },
   });
 }
 
@@ -101,71 +156,154 @@ async function go(hash: string): Promise<void> {
   });
 }
 
+const text = (elements: Element[]): (string | null)[] => elements.map((e) => e.textContent);
+
+beforeEach(() => {
+  vi.useFakeTimers({ toFake: ["Date"] });
+  vi.setSystemTime(NOW);
+});
+
 afterEach(() => {
+  vi.useRealTimers();
   window.location.hash = "";
 });
 
-describe("History", () => {
-  it("lists workouts newest first with a summary", async () => {
+describe("Home", () => {
+  it("shows this week's numbers, weekly volume and recent workouts", async () => {
     standardApi();
     render(<App />);
 
-    expect(screen.getByRole("heading", { level: 1, name: "History" })).toBeInTheDocument();
-    expect(screen.getByText("Loading…")).toBeInTheDocument();
-    const links = await screen.findAllByRole("link", { name: /exercise/ });
-    expect(links.map((link) => link.getAttribute("href"))).toEqual([
-      "#/workouts/2",
-      "#/workouts/1",
+    expect(screen.getByText("Good evening")).toBeInTheDocument();
+    expect(screen.getByRole("heading", { level: 1, name: "Your training" })).toBeInTheDocument();
+    expect(await screen.findByText("this week")).toBeInTheDocument();
+    const tiles = document.querySelectorAll(".tile");
+    expect(text([...tiles])).toEqual(["1this week", "1week streak", "1,080kg this week"]);
+    const chart = screen.getByRole("img", { name: "Volume lifted per week, last 8 weeks" });
+    expect(text([...chart.querySelectorAll(".bar text")])).toEqual([
+      "10/08",
+      "17/08",
+      "24/08",
+      "31/08",
+      "07/09",
+      "14/09",
+      "21/09",
+      "28/09",
     ]);
-    expect(links[0]).toHaveTextContent(
-      "Tue 29 Sept 00:302 exercises · 4 setsLat Pulldown · Pull-up",
+    expect(chart.querySelectorAll(".bar.current")).toHaveLength(1);
+    expect(document.querySelectorAll("a.card")).toHaveLength(2);
+    expect(screen.getByRole("link", { name: "All workouts ›" })).toHaveAttribute(
+      "href",
+      "#/history",
     );
-    expect(links[1]).toHaveTextContent("1 exercise · 1 set");
+  });
+
+  it("uses the plural for a longer streak", async () => {
+    mockFetch({
+      "/api/workouts?limit=500": {
+        body: [
+          { ...at(WORKOUTS, 0), id: 3 },
+          { ...at(WORKOUTS, 1), id: 4, started_at: "2026-09-21T00:00:00Z" },
+        ],
+      },
+    });
+    render(<App />);
+
+    expect(await screen.findByText("weeks streak")).toBeInTheDocument();
   });
 
   it("says when there are no workouts", async () => {
-    mockFetch({ "/api/workouts": { body: [] } });
+    mockFetch({ "/api/workouts?limit=500": { body: [] } });
+    render(<App />);
+
+    expect(await screen.findByText("No workouts yet.")).toBeInTheDocument();
+    expect(text([...document.querySelectorAll(".tile strong")])).toEqual(["0", "0", "0"]);
+  });
+
+  it("shows an error when loading fails", async () => {
+    mockFetch({ "/api/workouts?limit=500": { status: 500, body: {} } });
+    render(<App />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("The server answered 500");
+  });
+});
+
+describe("History", () => {
+  it("lists workout cards with duration, volume and best sets", async () => {
+    standardApi();
+    await go("#/history");
+    render(<App />);
+
+    const cards = await screen.findAllByRole("link", { name: /workout/ });
+    expect(cards.map((card) => card.getAttribute("href"))).toEqual([
+      "#/workouts/2",
+      "#/workouts/1",
+    ]);
+    const first = at(cards, 0);
+    expect(within(first).getByText("Morning workout")).toBeInTheDocument();
+    expect(within(first).getByText("Tue 29 Sept · 00:30")).toBeInTheDocument();
+    expect(text(within(first).getAllByRole("listitem"))).toEqual([
+      "⏱ 1 h 11 min",
+      "🏋 1,080 kg",
+      "3 sets",
+      "2 × Lat Pulldown8 × 60 kg",
+      "1 × Dead Hang50 s",
+    ]);
+    const second = at(cards, 1);
+    expect(within(second).getByText("Evening workout")).toBeInTheDocument();
+    expect(text(within(second).getAllByRole("listitem"))).toEqual([
+      "🏋 0 kg",
+      "1 set",
+      "1 × Pull-up8 reps",
+    ]);
+  });
+
+  it("says when there are no workouts", async () => {
+    mockFetch({ "/api/workouts?limit=500": { body: [] } });
+    await go("#/history");
     render(<App />);
 
     expect(await screen.findByText("No workouts yet.")).toBeInTheDocument();
   });
 
-  it("shows an error when loading fails", async () => {
-    mockFetch({ "/api/workouts": { status: 500, body: {} } });
-    render(<App />);
-
-    expect(await screen.findByRole("alert")).toHaveTextContent("The server answered 500");
-  });
-
-  it("shows a workout with its sets", async () => {
+  it("shows a workout with a table of sets per exercise", async () => {
     standardApi();
     await go("#/workouts/2");
     render(<App />);
 
-    expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent(
-      "29 Sept 2026 00:30",
-    );
+    expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent("Morning workout");
+    expect(screen.getByText("29 Sept 2026 · 00:30")).toBeInTheDocument();
     expect(screen.getByText("felt strong")).toBeInTheDocument();
-    const blocks = screen.getAllByRole("listitem").filter((item) => item.className === "block");
-    expect(blocks).toHaveLength(2);
-    const pulldown = at(blocks, 0);
-    const hang = at(blocks, 1);
-    expect(within(pulldown).getByRole("link")).toHaveAttribute("href", "#/exercises/45");
-    const chips = within(pulldown).getAllByRole("listitem");
-    expect(chips.map((chip) => chip.textContent)).toEqual(["12 × 50 kg", "8 × 60 kg @9"]);
-    expect(chips[1]).toHaveAttribute("title", "last rep slow");
-    expect(chips[0]).not.toHaveAttribute("title");
-    expect(within(hang).getByText("50 s")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "‹ History" })).toHaveAttribute("href", "#/");
+    expect(text([...document.querySelectorAll(".meta .pill")])).toEqual([
+      "⏱ 1 h 11 min",
+      "🏋 1,080 kg",
+      "3 sets",
+    ]);
+    const [pulldown, hang] = screen.getAllByRole("table");
+    expect(screen.getByRole("link", { name: "Lat Pulldown" })).toHaveAttribute(
+      "href",
+      "#/exercises/45",
+    );
+    const rows = within(pulldown ?? document.body).getAllByRole("row");
+    expect(text(rows)).toEqual(["SetReps × kgRPE", "112 × 50 kg–", "28 × 60 kg9"]);
+    expect(at(rows, 2)).toHaveAttribute("title", "last rep slow");
+    expect(at(rows, 1)).not.toHaveAttribute("title");
+    expect(text(within(hang ?? document.body).getAllByRole("row"))).toEqual([
+      "SetTimeRPE",
+      "150 s–",
+    ]);
+    expect(screen.getByRole("link", { name: "‹ History" })).toHaveAttribute("href", "#/history");
   });
 
-  it("omits notes when a workout has none", async () => {
-    mockFetch({ "/api/workouts/2": { body: { ...WORKOUT_2, notes: null } } });
+  it("omits notes and duration when there are none", async () => {
+    mockFetch({
+      "/api/workouts/2": { body: { ...WORKOUT_2, notes: null, ended_at: null } },
+    });
     await go("#/workouts/2");
     render(<App />);
 
     await screen.findByText("Lat Pulldown");
     expect(screen.queryByText("felt strong")).not.toBeInTheDocument();
+    expect(text([...document.querySelectorAll(".meta .pill")])).toEqual(["🏋 1,080 kg", "3 sets"]);
   });
 
   it("reports a missing workout", async () => {
@@ -178,108 +316,132 @@ describe("History", () => {
 });
 
 describe("Exercises", () => {
-  it("lists exercises with what is known about them", async () => {
+  it("lists exercises with avatars and what is known about them", async () => {
     standardApi();
     await go("#/exercises");
     render(<App />);
 
-    const cards = await screen.findAllByRole("link", { name: /workout/ });
-    expect(cards.map((card) => card.textContent)).toEqual([
-      "Lat Pulldown7 workouts · last Tue 29 Sept · best 82.5 kg",
-      "Pull-up1 workout · last Wed 16 Sept",
-      "Arnold Press0 workouts",
+    const rows = await screen.findAllByRole("link", { name: /workout/ });
+    expect(text(rows)).toEqual([
+      "LPLat Pulldown7 workouts · last Tue 29 Sept · best 82.5 kg",
+      "PPull-up1 workout · last Thu 9 Jul",
+      "APArnold Press0 workouts",
     ]);
   });
 
-  it("filters by name, equipment or muscle group", async () => {
+  it("filters by search text and by equipment", async () => {
     standardApi();
     await go("#/exercises");
     render(<App />);
     await screen.findByText("Pull-up");
-    const search = screen.getByRole("searchbox", { name: "Search exercises" });
+    const chips = within(screen.getByRole("group", { name: "Equipment" })).getAllByRole("button");
+    expect(text(chips)).toEqual(["bodyweight", "cable"]);
 
-    fireEvent.change(search, { target: { value: "  BODYWEIGHT " } });
+    fireEvent.change(screen.getByRole("searchbox", { name: "Search exercises" }), {
+      target: { value: "  BICEPS " },
+    });
+    expect(screen.queryByText("Arnold Press")).not.toBeInTheDocument();
+    expect(screen.getByText("Lat Pulldown")).toBeInTheDocument();
+
+    fireEvent.click(at(chips, 0));
+    expect(at(chips, 0)).toHaveAttribute("aria-pressed", "true");
     expect(screen.queryByText("Lat Pulldown")).not.toBeInTheDocument();
     expect(screen.getByText("Pull-up")).toBeInTheDocument();
 
-    fireEvent.change(search, { target: { value: "biceps" } });
+    fireEvent.click(at(chips, 0));
+    expect(at(chips, 0)).toHaveAttribute("aria-pressed", "false");
     expect(screen.getByText("Lat Pulldown")).toBeInTheDocument();
-    expect(screen.queryByText("Arnold Press")).not.toBeInTheDocument();
   });
 
-  it("shows an exercise's sessions linking back to workouts", async () => {
+  it("charts progress and shows personal records", async () => {
     standardApi();
     await go("#/exercises/45");
     render(<App />);
 
     expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent("Lat Pulldown");
-    expect(screen.getByText("7 workouts · last Tue 29 Sept · best 82.5 kg")).toBeInTheDocument();
-    expect(screen.getByRole("link", { name: "29 Sept 2026" })).toHaveAttribute(
-      "href",
-      "#/workouts/2",
+    expect(screen.getByText("cable · 7 workouts")).toBeInTheDocument();
+    const chart = screen.getByRole("img", { name: "Heaviest per session" });
+    expect(text([...chart.querySelectorAll("circle title")])).toEqual([
+      "9 Jul: 40 kg",
+      "29 Sept: 60 kg",
+    ]);
+
+    fireEvent.click(screen.getByRole("button", { name: "Est. 1RM" }));
+
+    expect(screen.getByRole("img", { name: "Est. 1RM per session" })).toBeInTheDocument();
+    expect(screen.getByRole("button", { name: "Est. 1RM" })).toHaveAttribute(
+      "aria-pressed",
+      "true",
     );
-    expect(screen.getByText("10 × 40 kg")).toBeInTheDocument();
+    expect(text([...document.querySelectorAll(".records .tile")])).toEqual([
+      "60 kgHeaviest",
+      "76 kgEst. 1RM",
+      "1,080 kgVolume",
+      "15 repsMost reps", // from the session without a load
+    ]);
+    expect(screen.getByRole("link", { name: "9 Jul 2026" })).toHaveAttribute(
+      "href",
+      "#/workouts/1",
+    );
     expect(screen.getByRole("link", { name: "‹ Exercises" })).toHaveAttribute(
       "href",
       "#/exercises",
     );
   });
-});
 
-describe("Repeated exercises", () => {
-  it("renders every block of an exercise done twice in one workout", async () => {
-    const errors = vi.spyOn(console, "error");
+  it("shows timed exercises in seconds", async () => {
+    standardApi();
+    await go("#/exercises/23");
+    render(<App />);
+
+    expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent("Dead Hang");
+    expect(screen.getByRole("button", { name: "Longest" })).toBeInTheDocument();
+    expect(screen.getByText("Log this exercise twice to see a trend.")).toBeInTheDocument();
+    expect(text([...document.querySelectorAll(".records .tile")])).toEqual(["50 sLongest"]);
+  });
+
+  it("shows a dash for records that do not exist yet", async () => {
     mockFetch({
       "/api/exercises/45/history": {
-        body: {
-          exercise: EXERCISES[0],
-          sessions: [
-            {
-              workout_id: 2,
-              position: 1,
-              started_at: "2026-09-28T11:30:59+00:00",
-              sets: [set(1, 12, 50)],
-            },
-            {
-              workout_id: 2,
-              position: 4,
-              started_at: "2026-09-28T11:30:59+00:00",
-              sets: [set(1, 10, 45), set(2, 8, 45)],
-            },
-          ],
-        },
+        body: { exercise: { ...PULLDOWN, equipment: null, workouts: 0 }, sessions: [] },
       },
     });
     await go("#/exercises/45");
     render(<App />);
 
-    expect(await screen.findByText("12 × 50 kg")).toBeInTheDocument();
-    expect(screen.getAllByRole("link", { name: "29 Sept 2026" })).toHaveLength(2);
-    expect(screen.getByText("10 × 45 kg")).toBeInTheDocument();
-    expect(screen.getByText("8 × 45 kg")).toBeInTheDocument();
-    expect(errors).not.toHaveBeenCalled();
+    expect(await screen.findByText("0 workouts")).toBeInTheDocument();
+    expect(text([...document.querySelectorAll(".records .tile strong")])).toEqual([
+      "–",
+      "–",
+      "0 kg",
+      "–",
+    ]);
   });
 });
 
 describe("Navigation", () => {
-  it("marks the current section and switches on hash change", async () => {
+  it("marks the current tab", async () => {
     standardApi();
     render(<App />);
     const nav = screen.getByRole("navigation", { name: "Sections" });
-    expect(within(nav).getByRole("link", { name: "History" })).toHaveAttribute(
-      "aria-current",
-      "page",
-    );
-    expect(within(nav).getByRole("link", { name: "Exercises" })).not.toHaveAttribute(
-      "aria-current",
-    );
+    const current = (): (string | null)[] =>
+      text(
+        within(nav)
+          .getAllByRole("link")
+          .filter((l) => l.getAttribute("aria-current") === "page"),
+      );
+    expect(current()).toEqual(["◉Home"]);
+
+    await go("#/workouts/2");
+    expect(current()).toEqual(["☰History"]);
 
     await go("#/exercises/45");
+    expect(current()).toEqual(["✦Exercises"]);
 
-    expect(within(nav).getByRole("link", { name: "Exercises" })).toHaveAttribute(
-      "aria-current",
-      "page",
-    );
-    expect(await screen.findByRole("heading", { level: 1 })).toHaveTextContent("Lat Pulldown");
+    await go("#/history");
+    expect(current()).toEqual(["☰History"]);
+
+    await go("#/exercises");
+    expect(current()).toEqual(["✦Exercises"]);
   });
 });
