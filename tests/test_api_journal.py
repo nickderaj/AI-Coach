@@ -309,6 +309,7 @@ class TestExercises:
             {"name": "   "},
             {"name": "Squat", "equipment": "trampoline"},
             {"name": "Squat", "measure": "laps"},
+            {"name": "Squat", "measure": "distance"},  # sets cannot record a distance yet
             {"name": "Squat", "muscle_groups": "x" * 201},
         ],
     )

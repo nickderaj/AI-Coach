@@ -1,7 +1,11 @@
 """Logging use cases."""
 
 import sqlite3
+import threading
+from contextlib import closing, suppress
 from datetime import UTC, datetime, timedelta, timezone
+from pathlib import Path
+from typing import Any
 
 import pytest
 
@@ -17,7 +21,9 @@ from trainer.services.journal import (
     remove_set,
     remove_workout,
 )
+from trainer.storage import journal as journal_storage
 from trainer.storage.catalogue import ExerciseSpec, add_alias, upsert_exercise
+from trainer.storage.database import connect, migrate
 from trainer.storage.journal import SetValues
 
 W1 = "11111111-1111-4111-8111-111111111111"
@@ -29,12 +35,14 @@ pytestmark = pytest.mark.usefixtures("far_east_timezone")
 
 
 def bench(db: sqlite3.Connection) -> int:
-    return upsert_exercise(
+    exercise_id = upsert_exercise(
         db,
         ExerciseSpec(
             "barbell bench press", "Barbell Bench Press", "barbell", "chest", Measure.REPS
         ),
     )
+    db.commit()  # services open their own write transaction
+    return exercise_id
 
 
 class TestWorkouts:
@@ -155,11 +163,13 @@ class TestExercises:
     ) -> None:
         existing = bench(db)
         add_alias(db, "bench", existing)
+        db.commit()
 
         with pytest.raises(DuplicateExerciseError) as caught:
             add_exercise(db, NewExercise(name, None, None, Measure.REPS), allow_similar=True)
 
         assert caught.value.exact is True
+        assert str(caught.value) == "exists"
         assert [match.id for match in caught.value.matches] == [existing]
 
     def test_a_similar_name_needs_confirmation(self, db: sqlite3.Connection) -> None:
@@ -171,6 +181,7 @@ class TestExercises:
             )
 
         assert caught.value.exact is False
+        assert str(caught.value) == "similar"
         assert [match.name for match in caught.value.matches] == ["Barbell Bench Press"]
         assert caught.value.matches[0].id == existing
 
@@ -184,3 +195,70 @@ def test_record_workout_accepts_utc_input(db: sqlite3.Connection) -> None:
     detail = record_workout(db, W1, (datetime(2026, 1, 1, tzinfo=UTC), None), None)
 
     assert detail.started_at == "2026-01-01T00:00:00+00:00"
+
+
+class TestConcurrency:
+    """Two request connections racing, synchronised right after slot allocation.
+
+    Without the write lock both would read the same state: distinct sets would be
+    given the same slot, and a replayed set would be inserted twice. With it the
+    second writer queues, so the barrier times out for the first and is already
+    broken for the second.
+    """
+
+    @pytest.fixture
+    def database(self, tmp_path: Path) -> tuple[Path, int]:
+        path = tmp_path / "trainer.db"
+        with closing(connect(path)) as conn:
+            migrate(conn)
+            exercise_id = bench(conn)
+            record_workout(conn, W1, (START, None), None)
+        return path, exercise_id
+
+    @pytest.fixture(autouse=True)
+    def synchronise_allocation(self, monkeypatch: pytest.MonkeyPatch) -> None:
+        barrier = threading.Barrier(2)
+        allocate = journal_storage._next_slot  # noqa: SLF001  # why: the race is inside it
+
+        def synchronised(*args: Any) -> tuple[int, int]:  # noqa: ANN401  # why: passthrough
+            slot = allocate(*args)
+            with suppress(threading.BrokenBarrierError):
+                barrier.wait(timeout=0.5)
+            return slot
+
+        monkeypatch.setattr(journal_storage, "_next_slot", synchronised)
+
+    @staticmethod
+    def race(database: tuple[Path, int], client_ids: tuple[str, str]) -> list[BaseException]:
+        path, exercise_id = database
+        errors: list[BaseException] = []
+
+        def log(client_id: str) -> None:
+            with closing(connect(path)) as conn:
+                try:
+                    record_set(conn, client_id, (W1, exercise_id), FIVE)
+                except Exception as error:  # noqa: BLE001  # why: collected and asserted on
+                    errors.append(error)
+
+        threads = [threading.Thread(target=log, args=(client_id,)) for client_id in client_ids]
+        for thread in threads:
+            thread.start()
+        for thread in threads:
+            thread.join()
+        return errors
+
+    def test_distinct_sets_get_distinct_slots(self, database: tuple[Path, int]) -> None:
+        assert self.race(database, ("s1", "s2")) == []
+
+        with closing(connect(database[0])) as conn:
+            slots = conn.execute(
+                "SELECT exercise_position, set_number FROM workout_sets ORDER BY set_number"
+            ).fetchall()
+        assert [tuple(slot) for slot in slots] == [(1, 1), (1, 2)]
+
+    def test_a_replayed_set_is_written_once(self, database: tuple[Path, int]) -> None:
+        assert self.race(database, ("s1", "s1")) == []
+
+        with closing(connect(database[0])) as conn:
+            count = conn.execute("SELECT count(*) FROM workout_sets").fetchone()[0]
+        assert count == 1

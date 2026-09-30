@@ -15,6 +15,7 @@ from trainer.storage.database import (
     connect_readonly,
     migrate,
     schema_version,
+    write_transaction,
 )
 
 
@@ -204,3 +205,55 @@ class TestReadonly:
 
         with closing(connect_readonly("v1.db")) as conn:
             assert conn.execute("SELECT x FROM t").fetchone()[0] == 42
+
+
+class TestWriteTransaction:
+    def test_commits_on_success(self, tmp_path: Path) -> None:
+        path = plain_database(tmp_path / "t.db")
+        with closing(connect(path)) as conn:
+            with write_transaction(conn):
+                inside = conn.in_transaction
+                conn.execute("INSERT INTO t VALUES (1)")
+            after = conn.in_transaction
+
+        assert (inside, after) == (True, False)
+        with closing(sqlite3.connect(path)) as other:
+            assert other.execute("SELECT count(*) FROM t").fetchone()[0] == 2
+
+    def test_rolls_back_and_reraises_on_error(self, tmp_path: Path) -> None:
+        path = plain_database(tmp_path / "t.db")
+
+        def insert_then_fail(conn: sqlite3.Connection) -> None:
+            with write_transaction(conn):
+                conn.execute("INSERT INTO t VALUES (1)")
+                message = "boom"
+                raise KeyError(message)
+
+        with closing(connect(path)) as conn:
+            with pytest.raises(KeyError, match="boom"):
+                insert_then_fail(conn)
+
+            assert not conn.in_transaction
+            assert conn.execute("SELECT count(*) FROM t").fetchone()[0] == 1
+
+    def test_holds_the_write_lock_from_the_start(self, tmp_path: Path) -> None:
+        path = plain_database(tmp_path / "t.db")
+        with (
+            closing(connect(path)) as conn,
+            closing(sqlite3.connect(path, timeout=0)) as other,
+            write_transaction(conn),
+            # Before any write in the transaction, another writer is already blocked.
+            pytest.raises(sqlite3.OperationalError, match="locked"),
+        ):
+            other.execute("BEGIN IMMEDIATE")
+
+    def test_refuses_to_nest_inside_an_open_transaction(self, tmp_path: Path) -> None:
+        path = plain_database(tmp_path / "t.db")
+        with closing(connect(path)) as conn:
+            conn.execute("INSERT INTO t VALUES (1)")  # opens an implicit transaction
+
+            with (
+                pytest.raises(sqlite3.OperationalError, match="within a transaction"),
+                write_transaction(conn),
+            ):
+                pass

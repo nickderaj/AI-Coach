@@ -8,7 +8,7 @@ from __future__ import annotations
 
 from contextlib import closing
 from datetime import datetime  # noqa: TC003  # why: FastAPI reads the annotation at runtime
-from typing import Annotated, Self
+from typing import Annotated, Literal, Self
 from uuid import UUID  # noqa: TC003  # why: FastAPI reads the annotation at runtime
 
 from fastapi import APIRouter, HTTPException, Request, Response
@@ -69,7 +69,8 @@ class ExerciseIn(BaseModel):
     name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=2, max_length=60)]
     equipment: Equipment | None = None
     muscle_groups: Annotated[str, StringConstraints(max_length=200)] | None = None
-    measure: Measure = Measure.REPS
+    # Distance is not creatable until sets can record a distance (cardio, later).
+    measure: Literal[Measure.REPS, Measure.SECONDS] = Measure.REPS
     allow_similar: bool = False
 
 
@@ -136,7 +137,7 @@ def post_exercise(request: Request, body: ExerciseIn) -> ExerciseSummary:
         raise HTTPException(
             status_code=409,
             detail={
-                "reason": "exists" if error.exact else "similar",
+                "reason": str(error),  # "exists" or "similar"
                 "matches": [
                     {"id": match.id, "name": match.name, "equipment": match.equipment}
                     for match in error.matches
