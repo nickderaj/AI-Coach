@@ -13,6 +13,7 @@ CONFIG = DeployConfig(
     bind_host="127.0.0.1",
     bind_port=8000,
     backup_keep=7,
+    owner_login="owner@example.com",
 )
 
 
@@ -24,6 +25,7 @@ def test_substitutions() -> None:
         "bind_host": "127.0.0.1",
         "bind_port": "8000",
         "backup_keep": "7",
+        "owner_login": "owner@example.com",
     }
 
 
@@ -42,6 +44,8 @@ def test_api_unit_runs_the_app_as_the_service_user_on_loopback() -> None:
         "User=trainer",
         "Group=trainer",
         "Environment=TRAINER_DATA_DIR=/srv/trainer",
+        "Environment=TRAINER_WEB_DIR=/opt/trainer/web",
+        "Environment=TRAINER_OWNER_LOGIN=owner@example.com",
         "ExecStart=/opt/trainer/venv/bin/python -m trainer.api --host 127.0.0.1 --port 8000",
         "ReadWritePaths=/srv/trainer",
         "ProtectSystem=strict",
@@ -85,6 +89,7 @@ def test_install_env_is_shell_quoted() -> None:
         bind_host="::1",
         bind_port=8000,
         backup_keep=7,
+        owner_login="owner@example.com",
     )
 
     text = install_env(config)

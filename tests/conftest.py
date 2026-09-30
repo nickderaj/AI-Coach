@@ -8,6 +8,7 @@ from pathlib import Path
 
 import pytest
 
+from trainer.services.import_v1 import import_v1
 from trainer.storage.database import connect, migrate
 
 # The subset of the v1 gym bot schema the importer reads.
@@ -84,3 +85,10 @@ def db(tmp_path: Path) -> Iterator[sqlite3.Connection]:
     with closing(connect(tmp_path / "trainer.db")) as conn:
         migrate(conn)
         yield conn
+
+
+@pytest.fixture
+def imported(v1: sqlite3.Connection, db: sqlite3.Connection) -> sqlite3.Connection:
+    """The trainer database after importing the v1 fixture."""
+    import_v1(v1, db)
+    return db

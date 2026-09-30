@@ -28,7 +28,7 @@ sessions, weights recovered from names) and is the import source for this app.
 | # | Decision |
 | --- | --- |
 | D1 | **No Telegram bot.** A React web app is the only interface. Notifications use Web Push to the home-screen app. |
-| D2 | **Private to the tailnet.** Served with `tailscale serve` (HTTPS, tailnet-only). The Tailscale identity header is the login; nothing is exposed to the internet. |
+| D2 | **Private to the tailnet.** Served with `tailscale serve` (HTTPS, tailnet-only). The `Tailscale-User-Login` identity header is the login: the API answers only the configured owner; nothing is exposed to the internet. |
 | D3 | **Stack:** Python 3.13 + FastAPI + SQLite on the server; React + Vite + TypeScript PWA on the client. |
 | D4 | **Programs** are fixed blocks: **6 training weeks + 1 deload week**, typically a 3–4 day split. |
 | D5 | **Progression is rule-based double progression**, computed when a day is opened — never pre-computed. If every working set of an exercise reached the top of its rep range at the current load, the next session's load rises by the exercise's increment **and the rep target resets to the bottom of the range** (owner's stated rule: 12 × 10 kg → next time 12.5 kg for 8–10). If the sets fell short of the bottom of the range (a failed session), the load drops one increment and is worked back up. Otherwise load and target repeat. |

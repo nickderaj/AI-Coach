@@ -31,6 +31,7 @@ CONFIG = DeployConfig(
     bind_host="127.0.0.1",
     bind_port=8000,
     backup_keep=7,
+    owner_login="owner@example.com",
 )
 GOOD_ACCOUNT = Account(
     uid=SERVICE, gid=SERVICE, home="/nonexistent", login_shell="/usr/sbin/nologin"

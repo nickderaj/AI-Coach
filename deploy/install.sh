@@ -5,7 +5,7 @@
 #  - refuses to proceed if the host is unsafe (python -m trainer.deploy preflight)
 #  - creates the unprivileged service user and its data directory (0750)
 #  - installs a fresh virtualenv under the root-owned prefix from hash-pinned
-#    requirements, then swaps it into place
+#    requirements, and the built web app, then swaps each into place
 #  - installs, verifies and (re)starts the systemd units
 #  - checks /healthz on the loopback address
 set -euo pipefail
@@ -54,6 +54,16 @@ if [ -d "$TRAINER_PREFIX/venv" ]; then
 fi
 mv "$staging" "$TRAINER_PREFIX/venv"
 rm -rf "$TRAINER_PREFIX/venv.old"
+
+rm -rf "$TRAINER_PREFIX/web.new" "$TRAINER_PREFIX/web.old"
+cp -r "$bundle/web" "$TRAINER_PREFIX/web.new"
+chown -R root:root "$TRAINER_PREFIX/web.new"
+chmod -R u=rwX,go=rX "$TRAINER_PREFIX/web.new"
+if [ -d "$TRAINER_PREFIX/web" ]; then
+  mv "$TRAINER_PREFIX/web" "$TRAINER_PREFIX/web.old"
+fi
+mv "$TRAINER_PREFIX/web.new" "$TRAINER_PREFIX/web"
+rm -rf "$TRAINER_PREFIX/web.old"
 
 units=()
 for unit in "$bundle"/systemd/*; do

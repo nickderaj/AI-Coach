@@ -8,6 +8,8 @@ Type=exec
 User=${user}
 Group=${user}
 Environment=TRAINER_DATA_DIR=${data_dir}
+Environment=TRAINER_WEB_DIR=${prefix}/web
+Environment=TRAINER_OWNER_LOGIN=${owner_login}
 ExecStart=${prefix}/venv/bin/python -m trainer.api --host ${bind_host} --port ${bind_port}
 Restart=on-failure
 RestartSec=5

@@ -23,31 +23,34 @@ Last updated: 2026-09-29.
 | Gate fix — Dependabot titles, `@types/node` major pinned to Node 24 | #3 | #2 (Dependabot) closed because of it. |
 | npm → pnpm; Apple Health dropped from scope; this status file | #4 | Single-document pnpm lockfile so GitHub's dependency graph and Dependabot can read it. |
 | Phase 0b — serve, deploy config, units, backups, scripts; fail-closed preflight | #6 | Deployed 2026-09-30; `/healthz` verified on the phone over the tailnet. |
+| Phase 1a — SQLite schema, migrations, re-runnable v1 import (read-only source) | #8 | Deployed and imported 2026-09-30: 35 exercises, 22 aliases, 22 workouts, 361 sets. |
 | Dependabot: minor/patch only for Python and web | #7 | Majors are planned upgrades (Node 26 LTS from 2026-10-28; TypeScript 7 once typescript-eslint supports it). |
 
-## In progress: phase 1 — data
+## In progress: phase 1 — data (1b in this PR)
 
-**1a (this PR): storage and v1 import.** `trainer.storage` opens SQLite with
-foreign keys and WAL, and applies append-only migrations on
-`PRAGMA user_version`; schema v1 holds exercises, aliases, workouts, sets,
-body metrics and cardio (STRICT tables, range checks). `trainer.domain.exercises`
-normalises names. `python -m trainer.manage import-v1` re-imports the v1 history
-in one transaction (UTC timestamps, historical names seeded as aliases), and
-`deploy/import-v1.sh` runs it on the host from an online backup of the v1
-database. Rehearsed against the real v1 data: 35 exercises, 22 aliases,
-22 workouts, 361 sets, idempotent on re-run.
+**1b: history API and screens.** The API opens and migrates
+`$TRAINER_DATA_DIR/trainer.db` at start-up and serves read-only
+`/api/workouts`, `/api/workouts/{id}`, `/api/exercises` and
+`/api/exercises/{id}/history`, plus the built web app at `/`. Everything except
+`/healthz` answers only the `Tailscale-User-Login` configured as
+`TRAINER_OWNER_LOGIN`. The web app has History (workouts → workout detail) and
+Exercises (searchable catalogue → per-exercise history) on hash routes, with
+every response validated by zod. `deploy/build.sh` builds the web app and
+`install.sh` installs it next to the virtualenv. Exit criterion: the imported
+history is visible on the phone.
 
-**Next, 1b: history API and screen.** Read-only endpoints (workouts list and
-detail, exercise catalogue with last-done, per-exercise history), the API opens
-and migrates `$TRAINER_DATA_DIR/trainer.db`, and a History screen in the web app
-(served by the API). Exit criterion for phase 1: imported history visible on the
-phone.
+## Next: phase 2 — logging
+
+Exercise picker (recents, search, structured "add exercise" with a
+near-duplicate warning), ad-hoc logging and workouts, an offline IndexedDB
+queue with idempotent `client_id`s, and the PWA manifest and service worker so
+the app installs to the home screen.
 
 ## Remaining phases
 
 | Phase | Scope | Exit criterion |
 | --- | --- | --- |
-| 1 — Data | 1a storage + v1 import (in progress); 1b history API + History screen | Imported history visible on the phone |
+| 1 — Data | 1a storage + v1 import (#8, done); 1b history API + screens (in progress) | Imported history visible on the phone |
 | 2 — Logging | Exercise picker (recents, search, structured "add exercise" with near-duplicate warning), ad-hoc logging, workouts, offline IndexedDB queue with idempotent `client_id`s, PWA manifest + service worker | Owner stops logging in v1 |
 | 3 — Hermes | `hermes-gateway` unit, `hermes/` profile templates (SOUL, config), MCP tool server, Coach tab on one durable session, **private local git repo** for memory/skills with a nightly commit (never this repo) | Coach remembers across turns and days |
 | 4 — Programs | Domain engine (`# coverage-critical`): double progression per D5, deload per D6, sequence-based "next day"; `propose_program` via Hermes; Today screen with blocks/supersets, targets, "last time", rest timer | A full week trained from the app |

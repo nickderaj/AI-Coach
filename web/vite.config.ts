@@ -6,8 +6,14 @@ export default defineConfig({
   build: {
     sourcemap: false,
   },
+  server: {
+    // `pnpm dev` against a local API (python -m trainer.api --port 8000).
+    proxy: { "/api": "http://127.0.0.1:8000" },
+  },
   test: {
     environment: "jsdom",
+    // A non-UTC zone, so date formatting that leaks the host's zone fails everywhere.
+    env: { TZ: "Pacific/Auckland" },
     setupFiles: ["./src/test/setup.ts"],
     restoreMocks: true,
     unstubGlobals: true,

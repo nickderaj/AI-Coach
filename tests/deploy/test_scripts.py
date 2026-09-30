@@ -44,3 +44,4 @@ def test_example_env_is_valid_and_generic() -> None:
 
     assert config.user == "trainer"
     assert config.bind_host == "127.0.0.1"
+    assert config.owner_login == "owner@example.com"
