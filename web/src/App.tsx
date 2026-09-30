@@ -1,5 +1,6 @@
 import type { ReactElement } from "react";
 
+import { SyncBanner } from "./outbox/Sync";
 import { href, useRoute } from "./router";
 import type { Route } from "./router";
 import { ExerciseDetail } from "./screens/ExerciseDetail";
@@ -49,6 +50,7 @@ export function App(): ReactElement {
   return (
     <div className="app">
       <main>
+        <SyncBanner />
         <Screen route={route} />
       </main>
       <nav className="tabs" aria-label="Sections">

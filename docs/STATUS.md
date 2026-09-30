@@ -27,40 +27,42 @@ Last updated: 2026-09-30.
 | Phase 1b — owner-only history API and screens; knip production entry (#10) | #9 | Deployed 2026-09-30; history visible on the phone. **Phase 1 complete.** |
 | Dependabot: minor/patch only for Python and web | #7 | Majors are planned upgrades (Node 26 LTS from 2026-10-28; TypeScript 7 once typescript-eslint supports it). |
 | Phase 2a — idempotent write API; schema v2 | #11 | Deployed 2026-09-30. |
+| Phase 2b-1 — Catppuccin Latte redesign: dashboard, history cards, exercise charts and records | #12 | Deployed 2026-09-30. |
 
-## In progress: phase 2 — logging (2b-1 in this PR)
+## In progress: phase 2 — logging (2c in this PR, before 2b-2)
 
-**2b-1: visual design (this PR).** Catppuccin Latte theme modelled on the
-common workout-app layout (Hevy/Strong): a Home dashboard (this week, week
-streak, weekly volume chart, recent workouts), History cards listing each
-exercise with its best set, per-workout set tables, and exercise pages with a
-progress chart (heaviest, estimated 1RM, volume, reps or time) and personal
-records. Workout summaries now carry per-exercise lines and total volume
-(`trainer.domain.records`).
+2c comes before the logging screens so that every write they make goes through
+the offline queue from the start, instead of being rewritten later.
 
-**2a: write API (done, #11).** Workouts and sets are addressed by phone-generated UUIDs and
-written with idempotent `PUT`/`DELETE`, so an offline queue can replay safely:
-`PUT /api/workouts/{client_id}` (start, update, finish), `DELETE` the same,
-`GET /api/workouts/current` (the unfinished app workout), `PUT /api/sets/{client_id}`
-(log or correct a set; the server places it in the current exercise block or
-starts a new one) and `DELETE` the same. `POST /api/exercises` adds an exercise,
-refusing a taken name or alias and, unless confirmed with `allow_similar`,
-anything the near-duplicate rule flags. Schema v2 adds `workouts.client_id`.
+**2c: offline and install (this PR).**
+- `web/src/outbox/`: writes are saved in IndexedDB first, then replayed in
+  order. Only one write per path is kept: a `PUT` replaces the queued one in
+  place, so it keeps its turn; a `DELETE` drops it and goes to the back.
+- Network errors, 408, 429 and 5xx retry with backoff (2 s doubling to 60 s),
+  and again when the phone comes back online or the app is reopened. Any
+  other 4xx is kept as "refused" and shown in a banner until dismissed.
+- A banner shows what is still waiting to sync.
+- `web/src/sw/`: a service worker, built to `/sw.js`. Hashed `/assets/` are
+  served cache-first. Everything else is network-first, falling back to the
+  cached copy when offline, on a 5xx, or after 3 s. It precaches the app shell
+  on install.
+- A manifest, icons and iOS meta tags, so the app installs to the home screen.
 
-**Next, 2b-2: logging screens.** Start/resume a workout from Home, a
-Strong-style set table (previous | kg | reps | ✓) prefilled from last time,
-exercise picker (recent first, search, add-exercise with the near-duplicate
-prompt), edit/delete sets, rest timer, finish; one-off logging (a single set
-outside a planned workout).
-
-**Then 2c: offline and install.** IndexedDB queue replaying the idempotent
-writes, PWA manifest and service worker so the app installs to the home screen.
+**Next, 2b-2: logging screens, all writing through the outbox.**
+- Start or resume a workout from Home.
+- A Strong-style set table (previous | kg | reps | ✓), prefilled from last
+  time.
+- An exercise picker: recent first, search, and add-exercise with the
+  near-duplicate prompt. Adding an exercise needs a connection, because the
+  server decides what counts as a duplicate.
+- Edit or delete sets, a rest timer, and finishing the workout.
+- One-off logging: a single set outside a planned workout.
 
 ## Remaining phases
 
 | Phase | Scope | Exit criterion |
 | --- | --- | --- |
-| 2 — Logging | 2a write API (done); 2b-1 visual design (in progress); 2b-2 logging screens; 2c offline queue and PWA install | Owner stops logging in v1 |
+| 2 — Logging | 2a write API (done); 2b-1 visual design (done); 2c offline queue and PWA install (in progress); 2b-2 logging screens | Owner stops logging in v1 |
 | 3 — Hermes | `hermes-gateway` unit, `hermes/` profile templates (SOUL, config), MCP tool server, Coach tab on one durable session, **private local git repo** for memory/skills with a nightly commit (never this repo) | Coach remembers across turns and days |
 | 4 — Programs | Domain engine (`# coverage-critical`): double progression per D5, deload per D6, sequence-based "next day"; `propose_program` via Hermes; Today screen with blocks/supersets, targets, "last time", rest timer | A full week trained from the app |
 | 5 — Cut-over | Web Push + in-app inbox, retire the v1 bot | v1 retired |

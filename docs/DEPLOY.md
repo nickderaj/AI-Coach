@@ -59,6 +59,13 @@ user-owned device on the tailnet. The API answers only when that header equals
 including requests from tagged devices (they carry no identity). This sits on top
 of the tailnet ACL, which already limits who can reach the host at all.
 
+## On the phone
+
+Open the served address in Safari, tap **Share → Add to Home Screen**. The app
+then opens full screen from its own icon, keeps working without signal
+(reads come from the last copy, writes wait on the phone and sync later), and
+picks up new versions on the next launch with a connection.
+
 ## Upgrade
 
 Pull, then run `./deploy/build.sh` and `sudo ./deploy/install.sh` again. The
