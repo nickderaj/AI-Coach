@@ -3,10 +3,7 @@
 from __future__ import annotations
 
 import sqlite3
-from typing import TYPE_CHECKING
-
-if TYPE_CHECKING:
-    from pathlib import Path
+from pathlib import Path
 
 DATABASE_FILE = "trainer.db"
 
@@ -89,6 +86,21 @@ def connect(path: str | Path) -> sqlite3.Connection:
     conn.row_factory = sqlite3.Row
     conn.execute("""PRAGMA foreign_keys = ON""")
     conn.execute("""PRAGMA journal_mode = WAL""")
+    return conn
+
+
+def connect_readonly(path: str | Path) -> sqlite3.Connection:
+    """Open an existing database strictly read-only.
+
+    A ``mode=ro`` URI makes SQLite itself refuse every write and never create the
+    file; unlike :func:`connect`, no setting (in particular the journal mode) is
+    changed on it, so the file is left byte-for-byte untouched.
+    """
+    uri = f"{Path(path).resolve().as_uri()}?mode=ro"
+    # SQLite builds with SQLITE_USE_URI (e.g. Debian) treat file: names as URIs even
+    # why: with uri=False, so a mutant dropping the flag is undetectable on such hosts.
+    conn = sqlite3.connect(uri, uri=True)  # pragma: no mutate
+    conn.row_factory = sqlite3.Row
     return conn
 
 

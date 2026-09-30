@@ -9,7 +9,7 @@ from dataclasses import asdict
 from pathlib import Path
 
 from trainer.services.import_v1 import import_v1
-from trainer.storage.database import connect, migrate
+from trainer.storage.database import connect, connect_readonly, migrate
 
 
 def _migrate(args: argparse.Namespace) -> int:
@@ -23,7 +23,14 @@ def _import_v1(args: argparse.Namespace) -> int:
     if not args.source.is_file():
         sys.stderr.write(f"v1 database not found: {args.source}\n")
         return 1
-    with closing(connect(args.source)) as source, closing(connect(args.database)) as target:
+    database = Path(args.database)
+    if database.exists() and args.source.samefile(database):
+        sys.stderr.write(f"refusing to import {args.source} into itself\n")
+        return 1
+    with (
+        closing(connect_readonly(args.source)) as source,
+        closing(connect(database)) as target,
+    ):
         migrate(target)
         summary = import_v1(source, target)
     counts = ", ".join(

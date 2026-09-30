@@ -1,6 +1,8 @@
 """``python -m trainer.manage`` command line."""
 
+import hashlib
 import runpy
+import sqlite3
 import sys
 from contextlib import closing
 from pathlib import Path
@@ -32,6 +34,40 @@ def test_import_v1(tmp_path: Path, v1_path: Path, capsys: pytest.CaptureFixture[
     )
     with closing(connect(database)) as conn:
         assert schema_version(conn) == len(MIGRATIONS)
+
+
+def test_import_v1_leaves_the_source_untouched(tmp_path: Path, v1_path: Path) -> None:
+    before = hashlib.sha256(v1_path.read_bytes()).hexdigest()
+    siblings = sorted(child.name for child in v1_path.parent.iterdir())
+
+    assert main(["import-v1", "--source", str(v1_path), "--database", str(tmp_path / "t.db")]) == 0
+
+    assert hashlib.sha256(v1_path.read_bytes()).hexdigest() == before
+    with closing(sqlite3.connect(f"{v1_path.as_uri()}?mode=ro", uri=True)) as conn:
+        assert conn.execute("PRAGMA journal_mode").fetchone()[0] == "delete"
+    assert sorted(child.name for child in v1_path.parent.iterdir()) == sorted([*siblings, "t.db"])
+
+
+def test_import_v1_accepts_a_read_only_source(tmp_path: Path, v1_path: Path) -> None:
+    v1_path.chmod(0o444)
+
+    assert main(["import-v1", "--source", str(v1_path), "--database", str(tmp_path / "t.db")]) == 0
+
+
+@pytest.mark.parametrize("via_symlink", [False, True])
+def test_import_v1_refuses_to_import_into_itself(
+    tmp_path: Path, v1_path: Path, capsys: pytest.CaptureFixture[str], *, via_symlink: bool
+) -> None:
+    target = v1_path
+    if via_symlink:
+        target = tmp_path / "alias.db"
+        target.symlink_to(v1_path)
+    before = hashlib.sha256(v1_path.read_bytes()).hexdigest()
+
+    assert main(["import-v1", "--source", str(v1_path), "--database", str(target)]) == 1
+
+    assert capsys.readouterr().err == f"refusing to import {v1_path} into itself\n"
+    assert hashlib.sha256(v1_path.read_bytes()).hexdigest() == before
 
 
 def test_import_v1_refuses_a_missing_source(

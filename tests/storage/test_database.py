@@ -1,5 +1,6 @@
 """Connection settings and schema migrations."""
 
+import hashlib
 import sqlite3
 from contextlib import closing
 from pathlib import Path
@@ -7,7 +8,14 @@ from pathlib import Path
 import pytest
 
 from trainer.storage import database
-from trainer.storage.database import MIGRATIONS, SchemaError, connect, migrate, schema_version
+from trainer.storage.database import (
+    MIGRATIONS,
+    SchemaError,
+    connect,
+    connect_readonly,
+    migrate,
+    schema_version,
+)
 
 
 def test_connection_enforces_foreign_keys_and_uses_wal(tmp_path: Path) -> None:
@@ -120,3 +128,77 @@ def test_set_values_are_range_checked(db: sqlite3.Connection, column: str, value
             f"VALUES (1, 1, {', '.join('?' * len(values))})",
             tuple(values.values()),
         )
+
+
+def plain_database(path: Path) -> Path:
+    """A rollback-journal (non-WAL) database with one row, like an offline v1 copy."""
+    with closing(sqlite3.connect(path)) as conn:
+        conn.execute("CREATE TABLE t (x INTEGER)")
+        conn.execute("INSERT INTO t VALUES (42)")
+        conn.commit()
+    return path
+
+
+def fingerprint(path: Path) -> tuple[str, str, list[str]]:
+    """File hash, journal mode (read without changing it) and sibling files."""
+    digest = hashlib.sha256(path.read_bytes()).hexdigest()
+    with closing(sqlite3.connect(f"{path.as_uri()}?mode=ro", uri=True)) as conn:
+        mode = conn.execute("PRAGMA journal_mode").fetchone()[0]
+    return digest, mode, sorted(child.name for child in path.parent.iterdir())
+
+
+class TestReadonly:
+    def test_reads_rows(self, tmp_path: Path) -> None:
+        path = plain_database(tmp_path / "v1.db")
+
+        with closing(connect_readonly(path)) as conn:
+            assert conn.execute("SELECT x FROM t").fetchone()["x"] == 42
+
+    def test_leaves_the_file_untouched(self, tmp_path: Path) -> None:
+        path = plain_database(tmp_path / "v1.db")
+        before = fingerprint(path)
+
+        with closing(connect_readonly(path)) as conn:
+            conn.execute("SELECT count(*) FROM t").fetchone()
+
+        assert fingerprint(path) == before
+        assert before[1] == "delete"
+
+    def test_refuses_writes(self, tmp_path: Path) -> None:
+        path = plain_database(tmp_path / "v1.db")
+
+        with (
+            closing(connect_readonly(path)) as conn,
+            pytest.raises(sqlite3.OperationalError, match="readonly database"),
+        ):
+            conn.execute("INSERT INTO t VALUES (1)")
+
+    def test_never_creates_a_missing_file(self, tmp_path: Path) -> None:
+        missing = tmp_path / "missing.db"
+
+        with pytest.raises(sqlite3.OperationalError, match="unable to open"):
+            connect_readonly(missing)
+
+        assert list(tmp_path.iterdir()) == []
+
+    def test_opens_a_read_only_file(self, tmp_path: Path) -> None:
+        path = plain_database(tmp_path / "v1.db")
+        path.chmod(0o444)
+
+        with closing(connect_readonly(path)) as conn:
+            assert conn.execute("SELECT x FROM t").fetchone()[0] == 42
+
+    def test_handles_characters_that_need_escaping(self, tmp_path: Path) -> None:
+        path = plain_database(tmp_path / "a b#?%.db")
+
+        with closing(connect_readonly(path)) as conn:
+            assert conn.execute("SELECT x FROM t").fetchone()[0] == 42
+
+    def test_relative_paths_resolve_against_the_working_directory(
+        self, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+    ) -> None:
+        plain_database(tmp_path / "v1.db")
+        monkeypatch.chdir(tmp_path)
+
+        with closing(connect_readonly("v1.db")) as conn:
+            assert conn.execute("SELECT x FROM t").fetchone()[0] == 42
