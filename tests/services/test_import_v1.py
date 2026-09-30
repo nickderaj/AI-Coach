@@ -12,6 +12,9 @@ from trainer.services.import_v1 import (
 )
 from trainer.storage.catalogue import resolve
 
+# Timestamps must not depend on the host's timezone (CI runs in UTC).
+pytestmark = pytest.mark.usefixtures("far_east_timezone")
+
 EXPECTED = ImportSummary(
     exercises=4, aliases=5, workouts=2, sets=5, body_metrics=1, cardio_sessions=1
 )

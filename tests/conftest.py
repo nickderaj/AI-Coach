@@ -1,6 +1,7 @@
 """Shared fixtures."""
 
 import sqlite3
+import time
 from collections.abc import Iterator
 from contextlib import closing
 from pathlib import Path
@@ -49,6 +50,16 @@ INSERT INTO efforts VALUES
     (300, 30, 1, NULL, NULL, 3600.0, 1200.0, NULL, NULL);
 INSERT INTO body_metrics VALUES (1, '2026-07-08 10:16:29', 'weight_kg', 64.25, 'kg');
 """
+
+
+@pytest.fixture
+def far_east_timezone(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
+    """Run with local time at UTC+14, so code that leaks local time fails on any host."""
+    monkeypatch.setenv("TZ", "Etc/GMT-14")
+    time.tzset()
+    yield
+    monkeypatch.undo()
+    time.tzset()
 
 
 @pytest.fixture

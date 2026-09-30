@@ -4,8 +4,6 @@ import runpy
 import sqlite3
 import stat
 import sys
-import time
-from collections.abc import Iterator
 from contextlib import closing
 from datetime import UTC, datetime, timedelta
 from pathlib import Path, PurePosixPath
@@ -157,15 +155,6 @@ def test_every_option_is_required(
 
     assert exited.value.code == 2
     assert f"the following arguments are required: {missing}" in capsys.readouterr().err
-
-
-@pytest.fixture
-def far_east_timezone(monkeypatch: pytest.MonkeyPatch) -> Iterator[None]:
-    monkeypatch.setenv("TZ", "Etc/GMT-14")  # UTC+14: local and UTC dates always differ
-    time.tzset()
-    yield
-    monkeypatch.undo()
-    time.tzset()
 
 
 @pytest.mark.usefixtures("far_east_timezone")
