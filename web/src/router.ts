@@ -1,10 +1,16 @@
 import { useSyncExternalStore } from "react";
 
 export type Route =
-  | { name: "workouts" }
+  | { name: "home" }
+  | { name: "history" }
   | { name: "workout"; id: number }
   | { name: "exercises" }
   | { name: "exercise"; id: number };
+
+const STATIC: Record<string, Route> = {
+  "#/history": { name: "history" },
+  "#/exercises": { name: "exercises" },
+};
 
 const PATTERNS: [RegExp, (id: number) => Route][] = [
   [/^#\/workouts\/(\d+)$/, (id): Route => ({ name: "workout", id })],
@@ -17,8 +23,9 @@ const PATTERNS: [RegExp, (id: number) => Route][] = [
  * @internal Exported for tests; the app only uses it through `useRoute`.
  */
 export function parseRoute(hash: string): Route {
-  if (hash === "#/exercises") {
-    return { name: "exercises" };
+  const fixed = STATIC[hash];
+  if (fixed !== undefined) {
+    return fixed;
   }
   for (const [pattern, build] of PATTERNS) {
     const match = pattern.exec(hash);
@@ -26,13 +33,15 @@ export function parseRoute(hash: string): Route {
       return build(Number(match[1]));
     }
   }
-  return { name: "workouts" };
+  return { name: "home" };
 }
 
 export function href(route: Route): string {
   switch (route.name) {
-    case "workouts":
+    case "home":
       return "#/";
+    case "history":
+      return "#/history";
     case "exercises":
       return "#/exercises";
     case "workout":
@@ -44,7 +53,7 @@ export function href(route: Route): string {
 
 function subscribe(onChange: () => void): () => void {
   window.addEventListener("hashchange", onChange);
-  return () => {
+  return (): void => {
     window.removeEventListener("hashchange", onChange);
   };
 }

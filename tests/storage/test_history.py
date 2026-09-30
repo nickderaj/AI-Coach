@@ -8,6 +8,7 @@ from trainer.domain.exercises import Measure
 from trainer.storage.catalogue import ExerciseSpec, upsert_exercise
 from trainer.storage.history import (
     ExerciseBlock,
+    ExerciseLine,
     ExerciseSession,
     ExerciseSummary,
     SetView,
@@ -35,8 +36,41 @@ def test_list_workouts_newest_first(imported: sqlite3.Connection) -> None:
     july, august = (row[0] for row in imported.execute("SELECT id FROM workouts ORDER BY id"))
 
     assert list_workouts(imported, 10) == [
-        WorkoutSummary(august, AUGUST, "2026-08-17T12:09:54+00:00", ["Lat Pulldown", "Pull-up"], 2),
-        WorkoutSummary(july, JULY, None, ["Barbell Bench Press", "Dead Hang"], 3),
+        WorkoutSummary(
+            august,
+            AUGUST,
+            "2026-08-17T12:09:54+00:00",
+            [
+                ExerciseLine(1, "Lat Pulldown", Measure.REPS, 1, set_view(1, 12, 50.0)),
+                ExerciseLine(2, "Pull-up", Measure.REPS, 1, set_view(1, 8)),
+            ],
+            2,
+            600.0,
+        ),
+        WorkoutSummary(
+            july,
+            JULY,
+            None,
+            [
+                # the heaviest set is the best, even with fewer reps
+                ExerciseLine(
+                    1,
+                    "Barbell Bench Press",
+                    Measure.REPS,
+                    2,
+                    SetView(2, 6, 70.0, None, 8, "grindy", None),
+                ),
+                ExerciseLine(
+                    2,
+                    "Dead Hang",
+                    Measure.SECONDS,
+                    1,
+                    SetView(1, None, None, 50.0, None, None, None),
+                ),
+            ],
+            3,
+            900.0,  # 8 x 60 + 6 x 70; bodyweight and timed sets add nothing
+        ),
     ]
 
 
@@ -265,4 +299,37 @@ def test_an_exercise_repeated_in_a_workout_is_one_session_per_block(
     assert history.sessions == [
         ExerciseSession(workout, 1, "2026-01-01T10:00:00+00:00", [set_view(1, 5)]),
         ExerciseSession(workout, 3, "2026-01-01T10:00:00+00:00", [set_view(1, 5), set_view(2, 3)]),
+    ]
+
+
+def test_summary_best_set_uses_reps_and_duration_for_ties(db: sqlite3.Connection) -> None:
+    pulldown = upsert_exercise(db, ExerciseSpec("pulldown", "Pulldown", None, None, Measure.REPS))
+    hang = upsert_exercise(db, ExerciseSpec("hang", "Hang", None, None, Measure.SECONDS))
+    carry = upsert_exercise(db, ExerciseSpec("carry", "Carry", None, None, Measure.SECONDS))
+    workout = db.execute(
+        "INSERT INTO workouts (started_at, source) VALUES ('t', 'test') RETURNING id"
+    ).fetchone()[0]
+    rows = [
+        (pulldown, 1, 1, 10, 50.0, None),
+        (pulldown, 1, 2, 12, 50.0, None),  # same load, more reps: best
+        (pulldown, 1, 3, 8, 50.0, None),
+        (hang, 2, 1, None, None, 30.0),
+        (hang, 2, 2, None, None, 50.0),  # longest: best
+        (hang, 2, 3, None, None, 40.0),
+        (carry, 3, 1, 5, 20.0, None),  # timed, but logged as reps without a duration
+        (carry, 3, 2, 10, 20.0, None),  # same load, more reps: best
+        (carry, 3, 3, 8, 20.0, None),
+    ]
+    db.executemany(
+        "INSERT INTO workout_sets (workout_id, exercise_id, exercise_position, set_number, "
+        "reps, load_kg, duration_s) VALUES (?, ?, ?, ?, ?, ?, ?)",
+        [(workout, *row) for row in rows],
+    )
+
+    (summary,) = list_workouts(db, 1)
+
+    assert [(line.position, line.name, line.best.set_number) for line in summary.exercises] == [
+        (1, "Pulldown", 2),
+        (2, "Hang", 2),
+        (3, "Carry", 2),
     ]

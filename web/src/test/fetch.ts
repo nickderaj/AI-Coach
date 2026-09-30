@@ -46,4 +46,5 @@ export const set = (
   duration_s: extra.duration_s ?? null,
   rpe: extra.rpe ?? null,
   notes: extra.notes ?? null,
+  client_id: null,
 });

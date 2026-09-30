@@ -1,13 +1,44 @@
+/*
+ * Catppuccin Latte (https://catppuccin.com/palette), light only.
+ * Accents are used as pastel tints (color-mix with the card colour) behind
+ * full-strength accent text and icons.
+ */
 :root {
-  color-scheme: light dark;
-  --bg: #f6f6f4;
-  --surface: #ffffff;
-  --text: #1b1c1e;
-  --muted: #6a6f76;
-  --accent: #2f6f4f;
-  --line: #e2e2de;
-  --error: #b3261e;
+  color-scheme: light;
+
+  --rosewater: #dc8a78;
+  --flamingo: #dd7878;
+  --pink: #ea76cb;
+  --mauve: #8839ef;
+  --red: #d20f39;
+  --maroon: #e64553;
+  --peach: #fe640b;
+  --yellow: #df8e1d;
+  --green: #40a02b;
+  --teal: #179299;
+  --sky: #04a5e5;
+  --sapphire: #209fb5;
+  --blue: #1e66f5;
+  --lavender: #7287fd;
+  --text: #4c4f69;
+  --subtext1: #5c5f77;
+  --subtext0: #6c6f85;
+  --overlay1: #8c8fa1;
+  --overlay0: #9ca0b0;
+  --surface1: #bcc0cc;
+  --surface0: #ccd0da;
+  --base: #eff1f5;
+  --mantle: #e6e9ef;
+  --crust: #dce0e8;
+  --card: #ffffff;
+
+  --accent: var(--mauve);
+  --radius: 1.1rem;
+  --shadow: 0 1px 2px rgb(76 79 105 / 6%), 0 4px 16px rgb(76 79 105 / 6%);
+
   font-family:
+    ui-rounded,
+    "SF Pro Rounded",
     system-ui,
     -apple-system,
     "Segoe UI",
@@ -17,51 +48,77 @@
   -webkit-text-size-adjust: 100%;
 }
 
-@media (prefers-color-scheme: dark) {
-  :root {
-    --bg: #111214;
-    --surface: #1b1d20;
-    --text: #ececea;
-    --muted: #9aa0a6;
-    --accent: #6fcf97;
-    --line: #2c2f33;
-    --error: #f2b8b5;
-  }
-}
-
 * {
   box-sizing: border-box;
 }
 
 body {
   margin: 0;
-  background: var(--bg);
+  background: var(--base);
   color: var(--text);
 }
 
 a {
-  color: var(--accent);
+  color: inherit;
   text-decoration: none;
 }
 
-.app main {
-  max-width: 40rem;
-  margin: 0 auto;
-  padding: calc(env(safe-area-inset-top) + 1rem) 1rem calc(env(safe-area-inset-bottom) + 5rem);
+button,
+input {
+  font: inherit;
 }
 
-h1 {
+.tint {
+  background: color-mix(in srgb, var(--tone, var(--accent)) 16%, var(--card));
+  color: var(--tone, var(--accent));
+}
+
+/* ---------------------------------------------------------------- layout */
+
+.app main {
+  max-width: 42rem;
+  margin: 0 auto;
+  padding: calc(env(safe-area-inset-top) + 1.25rem) 1rem calc(env(safe-area-inset-bottom) + 6rem);
+  display: grid;
+  gap: 1rem;
+}
+
+.page-head h1 {
+  font-size: 1.9rem;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+.page-head.exercise-row h1 {
   font-size: 1.5rem;
-  margin: 0.25rem 0 1rem;
+  line-height: 1.15;
+}
+
+.page-head p {
+  margin: 0.15rem 0 0;
+}
+
+h2 {
+  font-size: 1.05rem;
+  margin: 0.4rem 0 0.2rem;
 }
 
 .muted {
-  color: var(--muted);
+  color: var(--subtext0);
   font-weight: normal;
 }
 
 .error {
-  color: var(--error);
+  color: var(--red);
+}
+
+.card {
+  display: grid;
+  gap: 0.6rem;
+  padding: 1rem;
+  background: var(--card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
 }
 
 .list {
@@ -69,92 +126,269 @@ h1 {
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 0.5rem;
-}
-
-.card,
-.block {
-  display: grid;
-  gap: 0.15rem;
-  padding: 0.75rem 1rem;
-  background: var(--surface);
-  border: 1px solid var(--line);
-  border-radius: 0.75rem;
-  color: var(--text);
-}
-
-.card-title {
-  font-weight: 600;
-}
-
-.card-body {
-  font-size: 0.9rem;
-}
-
-.block > a {
-  font-weight: 600;
-}
-
-.chips {
-  list-style: none;
-  margin: 0.25rem 0 0;
-  padding: 0;
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.35rem;
-}
-
-.chip {
-  padding: 0.2rem 0.55rem;
-  border-radius: 999px;
-  background: var(--bg);
-  border: 1px solid var(--line);
-  font-variant-numeric: tabular-nums;
-  font-size: 0.9rem;
-}
-
-.rpe {
-  color: var(--muted);
-}
-
-.notes {
-  font-style: italic;
-  color: var(--muted);
+  gap: 0.75rem;
 }
 
 .back {
-  display: inline-block;
-  margin-bottom: 0.5rem;
+  color: var(--accent);
+  font-weight: 600;
 }
+
+/* ---------------------------------------------------------------- stats */
+
+.tiles {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 0.6rem;
+}
+
+.tile {
+  border-radius: var(--radius);
+  padding: 0.8rem;
+  display: grid;
+  gap: 0.1rem;
+}
+
+.tile strong {
+  font-size: 1.5rem;
+  font-variant-numeric: tabular-nums;
+  line-height: 1.1;
+}
+
+.tile span {
+  font-size: 0.78rem;
+  font-weight: 600;
+  opacity: 0.85;
+}
+
+.meta {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.4rem;
+  margin: 0;
+  padding: 0;
+  list-style: none;
+}
+
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  padding: 0.2rem 0.6rem;
+  border-radius: 999px;
+  font-size: 0.82rem;
+  font-weight: 600;
+  font-variant-numeric: tabular-nums;
+}
+
+/* ---------------------------------------------------------------- workouts */
+
+.workout-title {
+  display: grid;
+  gap: 0.05rem;
+}
+
+.workout-title strong {
+  font-size: 1.05rem;
+}
+
+.lines {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.3rem;
+}
+
+.lines li {
+  display: flex;
+  justify-content: space-between;
+  gap: 0.75rem;
+  font-size: 0.92rem;
+}
+
+.lines .best {
+  color: var(--subtext0);
+  font-variant-numeric: tabular-nums;
+  white-space: nowrap;
+}
+
+.set-table {
+  width: 100%;
+  table-layout: fixed;
+  border-collapse: collapse;
+  font-variant-numeric: tabular-nums;
+}
+
+.set-table th:first-child {
+  width: 3.5rem;
+}
+
+.set-table th:last-child {
+  width: 3.5rem;
+}
+
+.set-table th {
+  text-align: left;
+  font-size: 0.75rem;
+  letter-spacing: 0.04em;
+  text-transform: uppercase;
+  color: var(--subtext0);
+  padding: 0.2rem 0.4rem;
+}
+
+.set-table td {
+  padding: 0.45rem 0.4rem;
+  border-top: 1px solid var(--mantle);
+}
+
+.set-number {
+  display: inline-grid;
+  place-items: center;
+  width: 1.7rem;
+  height: 1.7rem;
+  border-radius: 0.55rem;
+  font-weight: 700;
+  font-size: 0.85rem;
+}
+
+.notes {
+  margin: 0;
+  font-style: italic;
+  color: var(--subtext0);
+}
+
+/* ---------------------------------------------------------------- exercises */
 
 .search {
   width: 100%;
-  font: inherit;
-  padding: 0.6rem 0.8rem;
-  margin-bottom: 0.75rem;
-  border-radius: 0.6rem;
-  border: 1px solid var(--line);
-  background: var(--surface);
+  padding: 0.75rem 1rem;
+  border-radius: var(--radius);
+  border: 0;
+  background: var(--card);
+  box-shadow: var(--shadow);
   color: var(--text);
 }
+
+.chips {
+  display: flex;
+  gap: 0.4rem;
+  overflow-x: auto;
+  padding-bottom: 0.2rem;
+  scrollbar-width: none;
+}
+
+.chip {
+  flex: none;
+  border: 0;
+  border-radius: 999px;
+  padding: 0.35rem 0.8rem;
+  font-weight: 600;
+  font-size: 0.85rem;
+  background: var(--card);
+  color: var(--subtext1);
+  box-shadow: var(--shadow);
+}
+
+.chip[aria-pressed="true"] {
+  background: var(--tone, var(--accent));
+  color: var(--card);
+}
+
+.exercise-row {
+  display: grid;
+  grid-template-columns: auto 1fr;
+  gap: 0.8rem;
+  align-items: center;
+}
+
+.avatar {
+  width: 2.6rem;
+  height: 2.6rem;
+  border-radius: 0.9rem;
+  display: grid;
+  place-items: center;
+  font-weight: 800;
+  font-size: 0.95rem;
+}
+
+.exercise-row strong {
+  display: block;
+}
+
+.records {
+  display: grid;
+  grid-template-columns: 1fr 1fr;
+  gap: 0.6rem;
+}
+
+/* ---------------------------------------------------------------- charts */
+
+.chart {
+  width: 100%;
+  height: auto;
+  display: block;
+}
+
+.chart .bar rect {
+  fill: color-mix(in srgb, var(--lavender) 45%, var(--card));
+}
+
+.chart .bar.current rect {
+  fill: var(--mauve);
+}
+
+.chart .axis {
+  font-size: 10px;
+  fill: var(--subtext0);
+}
+
+.chart .line {
+  fill: none;
+  stroke: var(--tone, var(--mauve));
+  stroke-width: 2.5;
+  stroke-linejoin: round;
+  stroke-linecap: round;
+}
+
+.chart .dot {
+  fill: var(--card);
+  stroke: var(--tone, var(--mauve));
+  stroke-width: 2;
+}
+
+.chart-empty {
+  margin: 0.5rem 0;
+}
+
+/* ---------------------------------------------------------------- tabs */
 
 .tabs {
   position: fixed;
   inset: auto 0 0 0;
   display: grid;
-  grid-template-columns: 1fr 1fr;
-  background: var(--surface);
-  border-top: 1px solid var(--line);
+  grid-template-columns: repeat(3, 1fr);
+  background: color-mix(in srgb, var(--card) 88%, transparent);
+  backdrop-filter: blur(12px);
+  border-top: 1px solid var(--crust);
   padding-bottom: env(safe-area-inset-bottom);
 }
 
 .tabs a {
-  padding: 0.9rem;
-  text-align: center;
-  color: var(--muted);
+  display: grid;
+  justify-items: center;
+  gap: 0.1rem;
+  padding: 0.55rem 0 0.65rem;
+  color: var(--overlay1);
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+
+.tabs a span[aria-hidden] {
+  font-size: 1.3rem;
+  line-height: 1;
 }
 
 .tabs a[aria-current="page"] {
   color: var(--accent);
-  font-weight: 600;
 }
