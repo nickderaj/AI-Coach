@@ -6,11 +6,12 @@ import sqlite3
 from contextlib import closing
 from typing import TYPE_CHECKING
 
+from trainer.storage.database import DATABASE_FILE
+
 if TYPE_CHECKING:
     from datetime import datetime
     from pathlib import Path
 
-DATABASE = "trainer.db"
 BACKUP_DIR = "backups"
 
 
@@ -20,7 +21,7 @@ def backup(data_dir: Path, keep: int, now: datetime) -> Path | None:
     Returns:
         The new backup's path, or ``None`` when there is no database yet.
     """
-    database = data_dir / DATABASE
+    database = data_dir / DATABASE_FILE
     if not database.exists():
         return None
     target_dir = data_dir / BACKUP_DIR

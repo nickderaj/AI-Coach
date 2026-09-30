@@ -22,42 +22,32 @@ Last updated: 2026-09-29.
 | Phase 0a — quality gate | #1 | Seven required checks; branch protection and squash-only merges applied by the owner. |
 | Gate fix — Dependabot titles, `@types/node` major pinned to Node 24 | #3 | #2 (Dependabot) closed because of it. |
 | npm → pnpm; Apple Health dropped from scope; this status file | #4 | Single-document pnpm lockfile so GitHub's dependency graph and Dependabot can read it. |
-| Phase 0b repository side — serve, deploy config, units, backups, scripts | this PR | Owner host steps pending (see In progress). |
+| Phase 0b — serve, deploy config, units, backups, scripts; fail-closed preflight | #6 | Deployed 2026-09-30; `/healthz` verified on the phone over the tailnet. |
+| Dependabot: minor/patch only for Python and web | #7 | Majors are planned upgrades (Node 26 LTS from 2026-10-28; TypeScript 7 once typescript-eslint supports it). |
 
-## In progress: phase 0b — runtime skeleton (repository side done)
+## In progress: phase 1 — data
 
-The repository side is complete: `python -m trainer.api` serves the app with
-uvicorn; `trainer.deploy` validates `deploy/local.env`, renders hardened systemd
-units (API on loopback; nightly SQLite backup with rotation and no network) and
-shell-quoted installer variables; `deploy/build.sh` (unprivileged),
-`deploy/install.sh` and `deploy/tailscale-serve.sh` (root, idempotent) do the
-rest. The installer refuses to run on unsafe host state (`trainer.deploy
-preflight`: existing accounts must be dedicated system accounts; data and code
-directories and their ancestors must have safe owners and permissions). See [DEPLOY.md](DEPLOY.md). Rehearsed without root: the wheel installs from
-the hash-pinned requirements, `/healthz` answers, `systemd-analyze verify` passes.
+**1a (this PR): storage and v1 import.** `trainer.storage` opens SQLite with
+foreign keys and WAL, and applies append-only migrations on
+`PRAGMA user_version`; schema v1 holds exercises, aliases, workouts, sets,
+body metrics and cardio (STRICT tables, range checks). `trainer.domain.exercises`
+normalises names. `python -m trainer.manage import-v1` re-imports the v1 history
+in one transaction (UTC timestamps, historical names seeded as aliases), and
+`deploy/import-v1.sh` runs it on the host from an online backup of the v1
+database. Rehearsed against the real v1 data: 35 exercises, 22 aliases,
+22 workouts, 361 sets, idempotent on re-run.
 
-Exit criterion still open: the owner runs the root steps and opens the served
-URL on the phone. `shellcheck` for `deploy/*.sh` is not in the gate yet (a
-separate `ci:` PR); the scripts are syntax-checked by the test suite.
-
-## Next: phase 1 — data
-
-One or more PRs:
-
-- `trainer.storage`: SQLite connection factory (WAL, foreign keys on) at
-  `$TRAINER_DATA_DIR/trainer.db`, migration runner on `PRAGMA user_version`, the
-  PLAN §4 schema for exercises, aliases, workouts and sets.
-- `trainer.domain`: exercise identity and alias normalisation (pure).
-- v1 importer as a one-off command reading the v1 database read-only (path
-  passed on the command line, never committed), seeding every historical name
-  listed below as an alias.
-- Read-only history API and a History screen in the web app.
+**Next, 1b: history API and screen.** Read-only endpoints (workouts list and
+detail, exercise catalogue with last-done, per-exercise history), the API opens
+and migrates `$TRAINER_DATA_DIR/trainer.db`, and a History screen in the web app
+(served by the API). Exit criterion for phase 1: imported history visible on the
+phone.
 
 ## Remaining phases
 
 | Phase | Scope | Exit criterion |
 | --- | --- | --- |
-| 1 — Data | SQLite schema + migration runner (`PRAGMA user_version`), exercise catalogue + aliases, **v1 importer** (read-only on the v1 database, path from config), read-only history API, History screen | Imported history visible on the phone |
+| 1 — Data | 1a storage + v1 import (in progress); 1b history API + History screen | Imported history visible on the phone |
 | 2 — Logging | Exercise picker (recents, search, structured "add exercise" with near-duplicate warning), ad-hoc logging, workouts, offline IndexedDB queue with idempotent `client_id`s, PWA manifest + service worker | Owner stops logging in v1 |
 | 3 — Hermes | `hermes-gateway` unit, `hermes/` profile templates (SOUL, config), MCP tool server, Coach tab on one durable session, **private local git repo** for memory/skills with a nightly commit (never this repo) | Coach remembers across turns and days |
 | 4 — Programs | Domain engine (`# coverage-critical`): double progression per D5, deload per D6, sequence-based "next day"; `propose_program` via Hermes; Today screen with blocks/supersets, targets, "last time", rest timer | A full week trained from the app |
@@ -79,21 +69,9 @@ exercise, one `efforts` row per set); dead hang stored as `duration_s`; two
 body-metric rows; one manually logged cardio session. Its location and read
 access are in the owner's private notes.
 
-**v1 names the importer must seed as aliases** (old name → v2 exercise):
-`bench`, `bench press` → Barbell Bench Press · `pull down`, `pulldown machine`
-(+ `40kg`/`45kg`/`50kg` variants) → Lat Pulldown · `tricep ohp`,
-`tricep overhead press` (+ `16kg`) → Dumbbell Overhead Tricep Extension ·
-`tricep cable overhead press` → Cable Overhead Tricep Extension ·
-`tricep press` → Cable Tricep Pushdown · `bulgarian` → Bulgarian Split Squat ·
-`romanian` → Barbell Romanian Deadlift · `romanian bosu` → Single-Leg Bosu
-Romanian Deadlift · `shoulder press` (+ `20kg`) → Dumbbell Shoulder Press ·
-`incline dumbbell bench`, `dumbbell incline press`, `incline bench`
-(+ `20kg`/`22.5kg`/`25kg`) → Incline Dumbbell Press · `barbell row`
-(+ `20kg`/`40kg`/`50kg`) → Barbell Row · `kettlebell swing` (+ `16kg`/`20kg`/`24kg`)
-→ Kettlebell Swing · `standing calf raise`, `calf raise` → Calf Raise ·
-`hang` → Dead Hang · `kettlebell twist` → Kettlebell Russian Twist ·
-`deadlift` → Barbell Deadlift · `decline bench` → Decline Barbell Bench Press ·
-`dumbbell clean press` / `kettlebell clean press` → the matching Clean & Press.
+**v1 names seeded as aliases** live in code:
+`trainer.services.import_v1.HISTORICAL_ALIASES` (weight-suffixed junk names from
+v1 are deliberately not carried over).
 
 **Personal data.** The owner's stated coaching preferences seed Hermes's memory
 in phase 3. They are personal data: they go into the private memory store,
