@@ -1,6 +1,6 @@
 # The coach's Hermes profile, installed as <data dir>/hermes/config.yaml by
 # deploy/install.sh on every install (edits on the host are overwritten).
-# ${...} values come from hermes-gateway.service, which takes them from
+# ${...} values come from trainer-coach.service, which takes them from
 # deploy/local.env; the two API keys come from the root-only secrets
 # (deploy/hermes-secrets.sh). Nothing here is host-specific or personal.
 

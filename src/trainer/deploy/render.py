@@ -18,7 +18,7 @@ UNITS = (
     "trainer-api.service",
     "trainer-backup.service",
     "trainer-backup.timer",
-    "hermes-gateway.service",
+    "trainer-coach.service",
     "trainer-memory.service",
     "trainer-memory.timer",
 )

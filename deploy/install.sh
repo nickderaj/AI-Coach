@@ -97,6 +97,15 @@ done
 install -o "$TRAINER_USER" -g "$TRAINER_USER" -m 0600 /dev/null \
   "$TRAINER_HERMES_HOME/.no-bundled-skills"
 
+# Before it was renamed trainer-coach, the coach's unit was hermes-gateway.service,
+# the name Hermes gives its own gateway: remove that file only if it is ours.
+legacy=/etc/systemd/system/hermes-gateway.service
+if [ -f "$legacy" ] && grep -q '^Description=hermes-trainer coach' "$legacy"; then
+  systemctl disable --now hermes-gateway.service 2>/dev/null || true
+  rm -f "$legacy"
+  echo "removed the coach's old unit, hermes-gateway.service"
+fi
+
 units=()
 for unit in "$bundle"/systemd/*; do
   install -m 0644 -o root -g root "$unit" /etc/systemd/system/
@@ -105,7 +114,7 @@ done
 systemd-analyze verify "${units[@]}"
 systemctl daemon-reload
 systemctl enable --now trainer-backup.timer trainer-memory.timer
-systemctl enable trainer-api.service hermes-gateway.service
+systemctl enable trainer-api.service trainer-coach.service
 systemctl restart trainer-api.service
 
 # wait_healthy <unit> <url> <seconds>: wait for a service to answer, else show its logs.
@@ -124,8 +133,8 @@ wait_healthy() {
 
 wait_healthy trainer-api.service "http://$TRAINER_UPSTREAM/healthz" 20
 if [ -f "$TRAINER_SECRETS_DIR/model.env" ] && [ -f "$TRAINER_SECRETS_DIR/gateway.env" ]; then
-  systemctl restart hermes-gateway.service
-  wait_healthy hermes-gateway.service "http://$TRAINER_HERMES_UPSTREAM/health" 60
+  systemctl restart trainer-coach.service
+  wait_healthy trainer-coach.service "http://$TRAINER_HERMES_UPSTREAM/health" 60
 else
-  echo "hermes-gateway not started: run sudo ./deploy/hermes-secrets.sh first" >&2
+  echo "trainer-coach not started: run sudo ./deploy/hermes-secrets.sh first" >&2
 fi

@@ -91,7 +91,7 @@ def test_timer_is_nightly_and_persistent() -> None:
 
 
 def test_gateway_unit_runs_hermes_with_root_only_secrets() -> None:
-    lines = render_units(CONFIG)["hermes-gateway.service"].splitlines()
+    lines = render_units(CONFIG)["trainer-coach.service"].splitlines()
 
     for expected in (
         "User=trainer",
@@ -106,7 +106,7 @@ def test_gateway_unit_runs_hermes_with_root_only_secrets() -> None:
         "Environment=HERMES_DISABLE_LAZY_INSTALLS=1",
         "EnvironmentFile=/etc/hermes-trainer/model.env",
         "EnvironmentFile=/etc/hermes-trainer/gateway.env",
-        "ExecStart=/opt/trainer/hermes/bin/hermes gateway run",
+        "ExecStart=/opt/trainer/hermes/bin/python -m hermes_cli.main gateway run",
         "ReadWritePaths=/srv/trainer/hermes",
         "ProtectSystem=strict",
         "ProtectHome=yes",
@@ -121,6 +121,21 @@ def test_gateway_unit_runs_hermes_with_root_only_secrets() -> None:
         assert expected in lines
     # The whole data directory (the training database) is not the gateway's to write.
     assert "ReadWritePaths=/srv/trainer" not in lines
+
+
+def test_no_unit_takes_the_name_hermes_installs_its_own_gateway_under() -> None:
+    # `hermes gateway install` creates hermes-gateway.service, and other Hermes
+    # installs on the host (with drop-ins of their own) may already use it.
+    assert "hermes-gateway.service" not in UNITS
+
+
+def test_every_unit_runs_python_from_its_venv_not_a_console_script() -> None:
+    # Venvs are built in a staging directory and moved, so console scripts' #!
+    # lines point at a path that no longer exists.
+    for content in render_units(CONFIG).values():
+        for line in content.splitlines():
+            if line.startswith("ExecStart="):
+                assert line.split()[0].endswith("/bin/python"), line
 
 
 def test_memory_unit_commits_offline() -> None:
@@ -183,7 +198,7 @@ def test_write_bundle(tmp_path: Path) -> None:
         "out/systemd/trainer-api.service",
         "out/systemd/trainer-backup.service",
         "out/systemd/trainer-backup.timer",
-        "out/systemd/hermes-gateway.service",
+        "out/systemd/trainer-coach.service",
         "out/systemd/trainer-memory.service",
         "out/systemd/trainer-memory.timer",
         "out/install.env",

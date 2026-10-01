@@ -69,7 +69,7 @@ of the tailnet ACL, which already limits who can reach the host at all.
 ## The coach (Hermes)
 
 The coach is a [Hermes](https://github.com/NousResearch/hermes-agent) gateway,
-`hermes-gateway.service`, running as the service user. Only the API talks to
+`trainer-coach.service`, running as the service user. Only the API talks to
 it, over loopback (`TRAINER_HERMES_PORT`); it is never published with
 `tailscale serve`.
 
@@ -151,7 +151,7 @@ build names any that are missing.
 | --- | --- | --- |
 | `trainer-api.service` | `python -m trainer.api` (JSON API under `/api`, the built web app at `/`) | Loopback only (`IPAddressAllow=localhost`), read-only system, writable data directory only, no capabilities, `@system-service` syscalls |
 | `trainer-backup.timer` → `trainer-backup.service` | `python -m trainer.deploy backup` nightly at 03:30 | SQLite online backup into `<data dir>/backups`, keeps `TRAINER_BACKUP_KEEP`; no network at all |
-| `hermes-gateway.service` | `hermes gateway run` (the coach; its API on loopback) | Writes only `<data dir>/hermes`; secrets from root-only `EnvironmentFile`s; outbound network for the model provider; read-only system, no capabilities, `@system-service` syscalls |
+| `trainer-coach.service` | `hermes gateway run` (the coach; its API on loopback) | Writes only `<data dir>/hermes`; secrets from root-only `EnvironmentFile`s; outbound network for the model provider; read-only system, no capabilities, `@system-service` syscalls |
 | `trainer-memory.timer` → `trainer-memory.service` | `python -m trainer.deploy memory-commit` nightly at 03:15 | Commits `memories/` and `skills/` to `<data dir>/hermes-memory.git`; writes only that repository; no network at all |
 
 Code is root-owned under `TRAINER_PREFIX`; the service user can write only
@@ -180,8 +180,8 @@ systemctl status trainer-api.service
 journalctl -u trainer-api.service -f
 systemctl list-timers trainer-backup.timer trainer-memory.timer
 sudo systemctl start trainer-backup.service     # back up now
-systemctl status hermes-gateway.service
-journalctl -u hermes-gateway.service -f
+systemctl status trainer-coach.service
+journalctl -u trainer-coach.service -f
 sudo systemctl start trainer-memory.service     # commit the coach's memory now
 tailscale serve status
 ```
