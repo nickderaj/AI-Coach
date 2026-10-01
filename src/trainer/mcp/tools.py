@@ -10,7 +10,7 @@ from typing import TYPE_CHECKING, Annotated, Any
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from trainer.mcp.protocol import Json, Tool, ToolError
-from trainer.services.programs import ProgramIn
+from trainer.services.programs import ProgramIn, programs
 from trainer.storage.database import connect_readonly
 from trainer.storage.history import (
     WorkoutNotFoundError,
@@ -68,6 +68,10 @@ class BodyWeight(_Arguments):
     """Arguments of ``body_weight``: none."""
 
 
+class CurrentProgram(_Arguments):
+    """Arguments of ``current_program``: none."""
+
+
 def _recent_workouts(conn: sqlite3.Connection, arguments: RecentWorkouts) -> object:
     return [asdict(summary) for summary in list_workouts(conn, arguments.limit)]
 
@@ -94,6 +98,10 @@ def _exercise_history(conn: sqlite3.Connection, arguments: History) -> object:
 
 def _body_weight(conn: sqlite3.Connection, _arguments: BodyWeight) -> object:
     return asdict(read_profile(conn))
+
+
+def _current_program(conn: sqlite3.Connection, _arguments: CurrentProgram) -> object:
+    return asdict(programs(conn))
 
 
 # Each tool's description, argument model and answer, by name.
@@ -135,6 +143,17 @@ _TOOLS: dict[str, tuple[str, type[_Arguments], Callable[[sqlite3.Connection, Any
         "The owner's body weight in kg, or null if not set.",
         BodyWeight,
         _body_weight,
+    ),
+    "current_program": (
+        (
+            "The program being trained (active), with every day, block and exercise: "
+            "exercise_id, sets, rep_min-rep_max (seconds if timed), start_load_kg; a block "
+            "of more than one exercise is a superset. Also the next week and day to train "
+            "(next; week 7 is the deload week), and any proposal still waiting for the owner "
+            "(proposed). Read it before proposing a change to a program."
+        ),
+        CurrentProgram,
+        _current_program,
     ),
 }
 

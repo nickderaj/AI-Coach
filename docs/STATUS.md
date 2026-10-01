@@ -506,6 +506,14 @@ between Home and History.
   the class of the logging screen's floating rest timer, and was drawn as a
   bar over the tabs. It is `.block-rest` now, and a test checks it.
 
+**The coach reads the program (this PR, from review of 4d).** The coach could
+propose programs but not read the one being trained, so "Change my program: …"
+from the Program tab left it guessing. A read-only `current_program` tool now
+returns `GET /api/programs`'s answer through the same service: the active
+program with every day, block and exercise, its next week and day, and any
+proposal waiting. `hermes/SOUL.md` tells the coach to read it before
+proposing.
+
 ## Remaining phases
 
 | Phase | Scope | Exit criterion |

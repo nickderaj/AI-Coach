@@ -3,12 +3,14 @@
 import json
 import sqlite3
 from contextlib import closing
+from datetime import UTC, datetime
 from pathlib import Path
 
 import pytest
 
 from trainer.mcp.protocol import Json, ToolError
 from trainer.mcp.tools import tools
+from trainer.services.programs import ProgramIn, accept_proposal, propose_program
 from trainer.storage.profile import Profile, save_profile
 
 AUGUST = "2026-08-17T11:36:06+00:00"
@@ -42,6 +44,7 @@ def test_the_tools_and_their_order(database: Path) -> None:
         "list_exercises",
         "exercise_history",
         "body_weight",
+        "current_program",
     ]
     for name, tool in tools(database).items():
         assert tool.name == name
@@ -209,3 +212,32 @@ def test_a_log_that_cannot_be_read_is_reported(tmp_path: Path) -> None:
         call(missing, "body_weight")
 
     assert not missing.exists()  # read-only: nothing is created
+
+
+def test_current_program_without_one(database: Path) -> None:
+    assert call(database, "current_program") == {"active": None, "proposed": None, "next": None}
+
+
+def test_current_program(imported: sqlite3.Connection, tmp_path: Path) -> None:
+    bench = imported.execute(
+        "SELECT id FROM exercises WHERE name = 'barbell bench press'"
+    ).fetchone()[0]
+    imported.commit()
+    day = {
+        "name": "Push",
+        "blocks": [{"exercises": [{"exercise_id": bench, "sets": 3, "rep_min": 8, "rep_max": 10}]}],
+    }
+    now = datetime(2026, 10, 1, tzinfo=UTC)
+    active = propose_program(
+        imported, ProgramIn.model_validate({"name": "Now", "days": [day]}), now
+    )
+    accept_proposal(imported, active.id, now)
+    propose_program(imported, ProgramIn.model_validate({"name": "Next", "days": [day, day]}), now)
+
+    answer = call(tmp_path / "trainer.db", "current_program")
+
+    assert isinstance(answer, dict)
+    assert answer["active"]["name"] == "Now"
+    assert answer["active"]["days"][0]["blocks"][0]["exercises"][0]["exercise_id"] == bench
+    assert answer["proposed"]["name"] == "Next"
+    assert answer["next"] == {"week": 1, "day": 1}
