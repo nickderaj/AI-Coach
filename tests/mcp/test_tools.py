@@ -56,6 +56,9 @@ def test_argument_schemas(database: Path) -> None:
     limit = schemas["recent_workouts"]["properties"]["limit"]
     assert (limit["minimum"], limit["maximum"], limit["default"]) == (1, 50, 10)
     assert schemas["get_workout"]["required"] == ["workout_id"]
+    for name, argument in (("get_workout", "workout_id"), ("exercise_history", "exercise_id")):
+        row_id = schemas[name]["properties"][argument]
+        assert (row_id["type"], row_id["minimum"], row_id["maximum"]) == ("integer", 1, 2**63 - 1)
     sessions = schemas["exercise_history"]["properties"]["sessions"]
     assert (sessions["minimum"], sessions["maximum"], sessions["default"]) == (1, 100, 20)
     assert schemas["exercise_history"]["required"] == ["exercise_id"]
@@ -171,6 +174,14 @@ def test_body_weight(database: Path) -> None:
         ("recent_workouts", {"limit": 0}, "limit: Input should be greater than or equal to 1"),
         ("recent_workouts", {"limit": 51}, "limit: Input should be less than or equal to 50"),
         ("get_workout", {}, "workout_id: Field required"),
+        (
+            "get_workout",
+            {"workout_id": 0},
+            "workout_id: Input should be greater than or equal to 1",
+        ),
+        ("get_workout", {"workout_id": 2**63}, "workout_id: Input should be less than or equal to"),
+        ("exercise_history", {"exercise_id": 0}, "exercise_id: Input should be greater than or"),
+        ("exercise_history", {"exercise_id": 2**63}, "exercise_id: Input should be less than or"),
         ("exercise_history", {"exercise_id": 1, "sessions": 101}, "sessions: Input should be"),
         ("body_weight", {"anything": 1}, "anything: Extra inputs are not permitted"),
     ],

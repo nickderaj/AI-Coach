@@ -45,6 +45,29 @@ def test_serve_answers_each_request_on_its_own_line(data_dir: Path) -> None:
     assert len(json.loads(answer["content"][0]["text"])) == 2
 
 
+def test_an_id_too_large_for_sqlite_does_not_stop_the_server(data_dir: Path) -> None:
+    too_large = 2**63  # one past SQLite's largest INTEGER
+    calls = [
+        {"name": "get_workout", "arguments": {"workout_id": too_large}},
+        {"name": "exercise_history", "arguments": {"exercise_id": too_large}},
+    ]
+    lines = [
+        json.dumps({"jsonrpc": "2.0", "id": i, "method": "tools/call", "params": params})
+        for i, params in enumerate(calls, start=1)
+    ]
+    out = io.StringIO()
+
+    serve([*lines, '{"jsonrpc":"2.0","id":3,"method":"ping"}'], out, data_dir / "trainer.db")
+
+    first, second, third = (json.loads(line) for line in out.getvalue().splitlines())
+    for answer, name in ((first, "workout_id"), (second, "exercise_id")):
+        assert answer["result"]["isError"] is True
+        assert answer["result"]["content"][0]["text"] == (
+            f"invalid arguments: {name}: Input should be less than or equal to {too_large - 1}"
+        )
+    assert third == {"jsonrpc": "2.0", "id": 3, "result": {}}
+
+
 class FlushCounter(io.StringIO):
     flushes = 0
 

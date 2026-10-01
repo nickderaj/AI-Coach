@@ -25,6 +25,13 @@ if TYPE_CHECKING:
     from pathlib import Path
 
 
+# SQLite's INTEGER is signed 64-bit, and row ids start at 1. A larger Python int
+# would raise OverflowError in the query instead of finding nothing.
+MAX_ROW_ID = 2**63 - 1
+# A plain alias, not a `type` statement, so the schema shows the bounds inline.
+RowId = Annotated[int, Field(ge=1, le=MAX_ROW_ID)]
+
+
 class _Arguments(BaseModel):
     model_config = ConfigDict(extra="forbid", frozen=True)
 
@@ -38,7 +45,7 @@ class RecentWorkouts(_Arguments):
 class Workout(_Arguments):
     """Arguments of ``get_workout``."""
 
-    workout_id: Annotated[int, Field(description="A workout id from recent_workouts.")]
+    workout_id: Annotated[RowId, Field(description="A workout id from recent_workouts.")]
 
 
 class Catalogue(_Arguments):
@@ -48,7 +55,7 @@ class Catalogue(_Arguments):
 class History(_Arguments):
     """Arguments of ``exercise_history``."""
 
-    exercise_id: Annotated[int, Field(description="An exercise id from list_exercises.")]
+    exercise_id: Annotated[RowId, Field(description="An exercise id from list_exercises.")]
     sessions: Annotated[
         int, Field(ge=1, le=100, description="How many sessions, newest first.")
     ] = 20
