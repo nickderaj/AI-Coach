@@ -18,6 +18,8 @@ def home(tmp_path: Path) -> Path:
     (home / "memories" / "USER.md.lock").write_text("")
     (home / "skills" / "deload").mkdir(parents=True)
     (home / "skills" / "deload" / "SKILL.md").write_text("# Deload\n")
+    (home / "skills" / ".curator_state").write_text("{}")  # Hermes's own bookkeeping
+    (home / "skills" / ".bundled_manifest").write_text("")
     (home / "sessions").mkdir()
     (home / "sessions" / "s1.json").write_text("{}")
     (home / "state.db").write_bytes(b"sqlite")
@@ -85,6 +87,37 @@ def test_edits_additions_and_deletions_are_recorded(home: Path, tmp_path: Path) 
     assert git(repo, "rev-list", "--count", "HEAD").strip() == "2"
 
 
+def test_files_tracked_before_they_were_excluded_are_dropped(home: Path, tmp_path: Path) -> None:
+    """An older repository may hold Hermes's state files; they leave it, not the disk."""
+    repo = tmp_path / "memory.git"
+    commit_memory(home, repo)
+    (repo / "info" / "exclude").write_text("/*\n!/skills/\n")  # an older, looser exclude
+    git(repo, f"--work-tree={home}", "add", "--force", "skills/.curator_state")
+    git(
+        repo,
+        f"--work-tree={home}",
+        "-c",
+        "user.name=old",
+        "-c",
+        "user.email=old@localhost",
+        "commit",
+        "--quiet",
+        "--message",
+        "old",
+    )
+    assert "skills/.curator_state" in git(repo, "ls-tree", "-r", "--name-only", "HEAD")
+
+    commit = commit_memory(home, repo)
+
+    assert commit is not None
+    assert git(repo, "ls-tree", "-r", "--name-only", "HEAD").split() == [
+        "memories/USER.md",
+        "skills/deload/SKILL.md",
+    ]
+    assert (home / "skills" / ".curator_state").exists()
+    assert commit_memory(home, repo) is None  # and it stays out
+
+
 def test_a_home_with_nothing_learned_yet_commits_nothing(tmp_path: Path) -> None:
     home = tmp_path / "hermes"
     home.mkdir()
@@ -149,7 +182,7 @@ def test_the_failing_git_command_is_named(home: Path, tmp_path: Path) -> None:
     commit_memory(home, repo)
     (repo / "index").write_bytes(b"corrupt")
 
-    with pytest.raises(MemoryRepoError, match=r"^git add failed: .+"):
+    with pytest.raises(MemoryRepoError, match=r"^git rm failed: .+"):
         commit_memory(home, repo)
 
 
