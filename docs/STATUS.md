@@ -39,6 +39,7 @@ Last updated: 2026-10-01.
 | Phase 3d — Coach tab in the web app | #21 | Deployed 2026-10-01. **Phase 3 built.** |
 | Phase 4a — program engine (progression, deload, next day); schema v6 | #24 | Deployed 2026-10-01 (backup first); schema v6 live, existing workouts untouched. |
 | Phase 4b — programs through the API: proposals, the active program, today's day | #25 | Deployed 2026-10-01 (backup first); `/api/programs` and `/api/today` answer the owner, 403 otherwise. |
+| Phase 4c — `propose_program`: the coach proposes through the API with the gateway's key | #26 | Deployed 2026-10-01 (backup first). A live turn in a throwaway session proposed through the API (200); session deleted, test proposal turned down, no memory written. |
 
 ## Phase 2 — logging: built, awaiting its exit criterion
 
@@ -322,8 +323,8 @@ updates this section.
 | --- | --- | --- |
 | 4a | Schema v6 (programs, days, blocks, block exercises; program links on workouts and sets; an exercise's own load step) and the pure engine: double progression (D5), deload (D6), next day by sequence | #24 |
 | 4b | Programs in storage and services. API: the active and the proposed program, accept a proposal, today's program day with each exercise's target and last time, workouts and sets linked to the program | #25 |
-| 4c | `propose_program`, the coach's MCP tool: exercise ids only, validated, written through the API as a proposal (see below); the coach's profile learns to use it | this PR |
-| 4d | Web: the Program screen. The whole block, the current week, the deload week marked; a proposal to accept; generate or refine through the coach | |
+| 4c | `propose_program`, the coach's MCP tool: exercise ids only, validated, written through the API as a proposal (see below); the coach's profile learns to use it | #26 |
+| 4d | Web: the Program screen. The whole block, the current week, the deload week marked; a proposal to accept; generate or refine through the coach | this PR |
 | 4e | Web: the Today screen. The next program day, supersets side by side, sets prefilled with targets, last time, a rest timer per block | |
 | 4f | Exit criterion, by the owner: a full week trained from the app | |
 
@@ -390,9 +391,9 @@ active program by itself, and the model never works out loads (D12).
   - unknown fields are refused. Exercises are ids from the catalogue; an
     unknown id, or one measured in distance, is refused with the ids named.
 - `PUT /api/programs/proposal` saves a program as the proposal, replacing the
-  last one. `DELETE` turns it down. `POST /api/programs/{id}/accept` makes it
-  the active program and archives the old one; 409 if it is no longer the
-  proposal.
+  last one. `POST /api/programs/{id}/accept` makes it the active program and
+  archives the old one; 409 if it is no longer the proposal. (Turning one down
+  is `POST /api/programs/{id}/decline`, from review of 4d.)
 - `GET /api/programs`: the active program with its next week and day, and the
   proposal. A program lists its days in order, each with its blocks in order,
   and each exercise with its catalogue name, measure and load step.
@@ -421,7 +422,7 @@ active program by itself, and the model never works out loads (D12).
   later week of the same day, or a new day before any program set is logged,
   is still allowed.
 
-**4c: the coach proposes programs (this PR).**
+**4c: the coach proposes programs (done, #26).**
 - `propose_program` is a sixth tool on `trainer.mcp`, offered only when the
   tool server has `TRAINER_API_URL` and `TRAINER_COACH_KEY`. Its arguments are
   `ProgramIn` (4b), so the coach writes exercise ids, sets, rep ranges, rest
@@ -456,6 +457,54 @@ active program by itself, and the model never works out loads (D12).
   log; nothing active changed. The provider accepted the nested schema.
   (Hermes also refused to start on a short test key: its API server wants at
   least 16 characters, as the real generated key has.)
+
+**4d: the Program screen (this PR).** A fifth tab, **Program** (`#/program`),
+between Home and History.
+- **The block.** The active program's name, when it started, and a strip of
+  its weeks: 1–6 and D for the deload week. Weeks done are green, the current
+  one is filled, and the deload week is teal.
+  - One line says where training is: "Week 3 of 6. Next: Lower.", or "Deload
+    week: the same days, fewer sets and lighter. Next: …", or "Block
+    complete. Ask the coach for your next program."
+  - Then each day in order, the next one outlined and marked "Next".
+  - Within a day, blocks are lettered A, B, C. A superset is labelled and its
+    exercises are A1, A2 on a shared rail.
+  - Each exercise shows sets × range ("3 × 8–12", "2 × 30–45 s"), and each
+    block its rest.
+- **A proposal** sits on top in its own card ("Proposed by your coach"), with
+  the coach's notes and each exercise's starting load.
+  - "Start this program" accepts it at once if nothing is active. Otherwise it
+    asks first: "It replaces …".
+  - "Turn down" always asks first.
+  - Both need a connection; a failure says why ("Changing your program needs a
+    connection.", or the server's reason) and leaves the buttons ready to try
+    again.
+- **Asking the coach.** A box under the program: "Plan one with the coach"
+  without a program, "Change it with the coach" with one. The text is sent as
+  "Plan a program for me: …" or "Change my program: …" in the coach's one
+  conversation, so it shows in the Coach tab too.
+  - "The coach is working on it…" while it answers. The reply is shown
+    there, and the programs load again, so a new proposal appears.
+  - On a failure the request stays in the box with the reason.
+  - The request and the reply live with the screen, so the reload does not
+    lose them.
+- **From review:**
+  - Turning a proposal down names it: `POST /api/programs/{id}/decline`, 409
+    if another has replaced it. The old `DELETE /api/programs/proposal`
+    removed whichever was current, which a stale screen could do to one never
+    seen.
+  - A replaced or declined proposal is now archived, not deleted. Otherwise
+    SQLite could give its id to the next program, and a stale screen's accept
+    or decline would act on that one.
+  - While a change is on its way, every proposal button, confirmations
+    included, is disabled, and a second change cannot start.
+  - The box to ask the coach appears only once the programs are known.
+    While they load or cannot be read, it can't tell "plan one" from "change
+    it".
+- Checked on a phone-size render (390 px, this branch's API on a copy of
+  the latest backup). That caught a clash: a block's rest line used `.rest`,
+  the class of the logging screen's floating rest timer, and was drawn as a
+  bar over the tabs. It is `.block-rest` now, and a test checks it.
 
 ## Remaining phases
 

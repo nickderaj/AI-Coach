@@ -50,11 +50,14 @@ def put_proposal(request: Request, body: ProgramIn) -> Program:
         raise HTTPException(status_code=422, detail=str(error)) from error
 
 
-@router.delete("/programs/proposal", status_code=204)
-def delete_proposal(request: Request) -> Response:
-    """Turn the proposal down."""
-    with closing(connect(_database(request))) as conn:
-        decline_proposal(conn)
+@router.post("/programs/{program_id}/decline", status_code=204)
+def decline(request: Request, program_id: Annotated[int, Path(ge=1, le=MAX_ROW_ID)]) -> Response:
+    """Turn down the proposal the owner was shown; 409 if it is no longer the proposal."""
+    try:
+        with closing(connect(_database(request))) as conn:
+            decline_proposal(conn, program_id)
+    except NoProposalError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
     return Response(status_code=204)
 
 

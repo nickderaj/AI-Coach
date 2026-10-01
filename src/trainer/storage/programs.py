@@ -165,9 +165,13 @@ def program_with_status(conn: sqlite3.Connection, status: ProgramStatus) -> int 
     return None if row is None else int(row[0])
 
 
-def delete_program(conn: sqlite3.Connection, program_id: int) -> None:
-    """Delete a program that was never trained from, with its days."""
-    conn.execute("""DELETE FROM programs WHERE id = ?""", (program_id,))
+def archive_program(conn: sqlite3.Connection, program_id: int) -> None:
+    """Set a program aside: replaced, or turned down.
+
+    Archived, not deleted, so its id is never given to another program: a
+    screen still showing it can never accept or turn down a newer one by it.
+    """
+    conn.execute("""UPDATE programs SET status = 'archived' WHERE id = ?""", (program_id,))
 
 
 def activate_program(conn: sqlite3.Connection, program_id: int, started_at: str) -> None:

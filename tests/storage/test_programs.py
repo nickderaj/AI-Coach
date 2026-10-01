@@ -22,8 +22,8 @@ from trainer.storage.programs import (
     SlotSet,
     SlotSpec,
     activate_program,
+    archive_program,
     day_weeks,
-    delete_program,
     get_program,
     insert_program,
     last_position,
@@ -215,15 +215,16 @@ def test_an_unknown_program(db: sqlite3.Connection) -> None:
         get_program(db, 7)
 
 
-def test_delete_program_removes_its_days(db: sqlite3.Connection, ids: dict[str, int]) -> None:
+def test_archive_program_keeps_it_and_its_days(db: sqlite3.Connection, ids: dict[str, int]) -> None:
     kept = insert_program(db, spec(ids, "Kept"), ProgramStatus.ACTIVE, "t")
     gone = insert_program(db, spec(ids, "Gone"), ProgramStatus.PROPOSED, "t")
 
-    delete_program(db, gone)
+    archive_program(db, gone)
 
     assert program_with_status(db, ProgramStatus.PROPOSED) is None
-    assert db.execute("SELECT count(*) FROM block_exercises").fetchone()[0] == 4
-    assert get_program(db, kept).name == "Kept"
+    assert get_program(db, gone).status is ProgramStatus.ARCHIVED
+    assert get_program(db, kept).status is ProgramStatus.ACTIVE
+    assert len(get_program(db, gone).days) == 2
 
 
 def test_activate_archives_the_active_program(db: sqlite3.Connection, ids: dict[str, int]) -> None:

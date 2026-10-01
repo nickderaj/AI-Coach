@@ -97,7 +97,7 @@ def accept(client: TestClient, program_id: int) -> dict[str, Any]:
     [
         ("GET", "/api/programs"),
         ("PUT", "/api/programs/proposal"),
-        ("DELETE", "/api/programs/proposal"),
+        ("POST", "/api/programs/1/decline"),
         ("POST", "/api/programs/1/accept"),
         ("GET", "/api/today"),
     ],
@@ -173,11 +173,30 @@ def test_accepting_a_bad_id(client: TestClient, program_id: str) -> None:
 
 
 def test_decline(client: TestClient, ids: tuple[int, int]) -> None:
-    propose(client, ids)
+    shown = propose(client, ids)
 
-    assert client.delete("/api/programs/proposal", headers=OWNER).status_code == 204
-    assert client.delete("/api/programs/proposal", headers=OWNER).status_code == 204
+    declined = client.post(f"/api/programs/{shown['id']}/decline", headers=OWNER)
+    again = client.post(f"/api/programs/{shown['id']}/decline", headers=OWNER)
+
+    assert declined.status_code == 204
+    assert again.status_code == 409
+    assert again.json() == {"detail": f"program {shown['id']} is not the proposal"}
     assert client.get("/api/programs", headers=OWNER).json()["proposed"] is None
+
+
+def test_decline_only_the_proposal_shown(client: TestClient, ids: tuple[int, int]) -> None:
+    shown = propose(client, ids)
+    newer = propose(client, ids)  # the coach replaced it meanwhile
+
+    response = client.post(f"/api/programs/{shown['id']}/decline", headers=OWNER)
+
+    assert response.status_code == 409
+    assert client.get("/api/programs", headers=OWNER).json()["proposed"] == newer
+
+
+@pytest.mark.parametrize("program_id", ["0", str(2**63), "x"])
+def test_declining_a_bad_id(client: TestClient, program_id: str) -> None:
+    assert client.post(f"/api/programs/{program_id}/decline", headers=OWNER).status_code == 422
 
 
 def test_a_proposal_of_unknown_exercises(client: TestClient, ids: tuple[int, int]) -> None:
@@ -356,7 +375,7 @@ class TestTheCoachsKey:
         ("method", "path"),
         [
             ("GET", "/api/programs"),
-            ("DELETE", "/api/programs/proposal"),
+            ("POST", "/api/programs/1/decline"),
             ("POST", "/api/programs/1/accept"),
             ("GET", "/api/today"),
             ("GET", "/api/workouts"),
