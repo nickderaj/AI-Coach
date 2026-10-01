@@ -191,8 +191,6 @@ class TestDeload:
             (12.5, 2.5, 10.0),  # 11.25 is halfway: the lighter one
             (37.5, 2.5, 32.5),  # 33.75 is halfway: the lighter one, not the even one
             (40.0, 5.0, 35.0),  # 36 is nearer 35 than 40
-            (20.0, None, 18.0),
-            (12.5, None, 11.0),  # 11.25 to the nearest 0.5, a tie going lighter
         ],
     )
     def test_about_ninety_percent_of_the_load(
@@ -203,6 +201,16 @@ class TestDeload:
         target = deload(prescription, sets((10, load), (10, load), (10, load)))
 
         assert target == Target(Decision.DELOAD, deloaded, (8, 8))
+
+    @pytest.mark.parametrize("load", [20.0, 12.5])
+    def test_without_an_increment_the_load_stays(self, load: float) -> None:
+        # A band or "other" has no known steps: 90% may not be a load it has.
+        # Fewer sets still make it a deload.
+        band = Prescription(3, 15, 20, None, None)
+
+        target = deload(band, sets((20, load), (20, load), (20, load)))
+
+        assert target == Target(Decision.DELOAD, load, (15, 15))
 
     def test_from_the_last_working_load_not_the_start(self) -> None:
         target = deload(BENCH, sets((10, 5.0), (8, 20.0)))

@@ -33,8 +33,6 @@ LOAD_INCREMENTS: dict[str, float] = {
     Equipment.KETTLEBELL: 4.0,
     Equipment.BODYWEIGHT: 2.5,  # added load: a dip belt or a weight vest
 }
-# A deload load is rounded to this step when the exercise has no increment.
-DELOAD_ROUNDING_KG = 0.5
 
 
 class Decision(StrEnum):
@@ -144,14 +142,16 @@ def deload(prescription: Prescription, last: Sequence[SetDone]) -> Target:
 
     The load is 90% of the last session's working load (or of the starting
     load, if there was none), to the nearest increment, a tie going lighter.
-    Sets are 60% of the prescribed, to the nearest whole set and at least one.
+    Without an increment the loads on offer are unknown (a band), so the load
+    stays and the fewer sets do the deloading. Sets are 60% of the prescribed,
+    to the nearest whole set and at least one.
     """
     load = working_load(last) if last else prescription.start_load_kg
     sets = (prescription.sets * 3 + 2) // 5
     reps = (prescription.rep_min,) * sets
-    if load is None:
-        return Target(Decision.DELOAD, None, reps)
-    step = prescription.increment_kg or DELOAD_ROUNDING_KG
+    step = prescription.increment_kg
+    if load is None or step is None:
+        return Target(Decision.DELOAD, load, reps)
     return Target(Decision.DELOAD, math.ceil(load * 9 / 10 / step - 0.5) * step, reps)
 
 

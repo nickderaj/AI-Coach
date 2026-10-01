@@ -363,7 +363,9 @@ active program by itself, and the model never works out loads (D12).
   (`exercises.load_increment_kg`; no screen sets it yet).
 - **Deload (D6).** 60% of the sets, rounded and at least one. The load is 90%
   of the last session's working load, to the nearest increment, a tie going
-  lighter: 12.5 kg becomes 10 kg, 60 kg becomes 55 kg.
+  lighter: 12.5 kg becomes 10 kg, 60 kg becomes 55 kg. An exercise without an
+  increment keeps its load, since 90% may not be a load it has (a band); the
+  fewer sets are its deload.
 - **Schema v6.** `programs` (name, notes, training weeks, status `proposed`,
   `active` or `archived`; at most one proposed and one active),
   `program_days`, `program_blocks` (rest in seconds), `block_exercises` (sets,
