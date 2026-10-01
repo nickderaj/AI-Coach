@@ -67,7 +67,7 @@ class ExerciseIn(BaseModel):
     """A new exercise for the catalogue."""
 
     name: Annotated[str, StringConstraints(strip_whitespace=True, min_length=2, max_length=60)]
-    equipment: Equipment | None = None
+    equipment: Equipment
     muscle_groups: Annotated[str, StringConstraints(max_length=200)] | None = None
     # Distance is not creatable until sets can record a distance (cardio, later).
     measure: Literal[Measure.REPS, Measure.SECONDS] = Measure.REPS

@@ -227,16 +227,16 @@ class TestHistory:
         assert saved.json() == {"bodyweight_kg": 65.0}
         assert client.get("/api/profile", headers=AS_OWNER).json() == {"bodyweight_kg": 65.0}
         newest = client.get("/api/workouts", headers=AS_OWNER).json()[0]
-        assert newest["volume_kg"] == 12 * 50 + 8 * 65
+        assert newest["volume_kg"] == 12 * 50 + 8 * 60.5  # pull-ups lift 93% of 65 kg
         detail = client.get(f"/api/workouts/{newest['id']}", headers=AS_OWNER).json()
-        assert [e["carried_kg"] for e in detail["exercises"]] == [0.0, 65.0]
+        assert [e["carried_kg"] for e in detail["exercises"]] == [0.0, 60.5]
         pull_up = next(
             e["id"]
             for e in client.get("/api/exercises", headers=AS_OWNER).json()
             if e["name"] == "Pull-up"
         )
         history = client.get(f"/api/exercises/{pull_up}/history", headers=AS_OWNER).json()
-        assert history["carried_kg"] == 65.0
+        assert history["carried_kg"] == 60.5
 
     @pytest.mark.parametrize("weight", [0, -1, 501, "heavy"])
     def test_profile_rejects_impossible_body_weights(

@@ -56,7 +56,7 @@ class NewExercise:
     """An exercise the owner wants to add to the catalogue."""
 
     name: str
-    equipment: Equipment | None
+    equipment: Equipment
     muscle_groups: str | None
     measure: Measure
 
@@ -137,7 +137,7 @@ def spec_for(exercise: NewExercise) -> ExerciseSpec:
     return ExerciseSpec(
         name=normalise_name(exercise.name),
         display_name=" ".join(exercise.name.split()),
-        equipment=None if exercise.equipment is None else exercise.equipment.value,
+        equipment=exercise.equipment.value,
         muscle_groups=exercise.muscle_groups,
         measure=exercise.measure,
     )

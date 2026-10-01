@@ -29,7 +29,7 @@ def parse_exercises(text: str) -> list[NewExercise]:
     return [
         NewExercise(
             name=row["name"],
-            equipment=Equipment(row["equipment"]) if row["equipment"] else None,
+            equipment=Equipment(row["equipment"]),
             muscle_groups=row["muscle_groups"] or None,
             measure=Measure(row["measure"]),
         )
@@ -39,8 +39,7 @@ def parse_exercises(text: str) -> list[NewExercise]:
 
 def describe(exercise: NewExercise) -> str:
     """One line for a listing: "Goblet Squat (dumbbell)"."""
-    equipment = "no equipment" if exercise.equipment is None else exercise.equipment.value
-    return f"{exercise.name} ({equipment})"
+    return f"{exercise.name} ({exercise.equipment.value})"
 
 
 def missing_exercises(
@@ -55,7 +54,7 @@ def missing_exercises(
     entries = catalogue_entries(conn)
     missing: list[NewExercise] = []
     for exercise in exercises:
-        equipment = None if exercise.equipment is None else exercise.equipment.value
+        equipment = exercise.equipment.value
         if not is_catalogued(exercise.name, equipment, entries):
             missing.append(exercise)
             entries.append((exercise.name, equipment))

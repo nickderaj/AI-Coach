@@ -59,7 +59,7 @@ class ExerciseBlock:
     exercise_id: int
     name: str
     measure: Measure
-    # Body weight moved in each rep, on top of the load (bodyweight exercises).
+    # Share of body weight moved in each rep, on top of the load (bodyweight exercises).
     carried_kg: float
     sets: list[SetView]
 
@@ -109,7 +109,7 @@ class ExerciseHistory:
     """An exercise and its sessions, newest first."""
 
     exercise: ExerciseSummary
-    # Body weight moved in each rep, on top of the load (bodyweight exercises).
+    # Share of body weight moved in each rep, on top of the load (bodyweight exercises).
     carried_kg: float
     sessions: list[ExerciseSession]
 
@@ -214,7 +214,7 @@ def _block(rows: list[sqlite3.Row], bodyweight: float | None) -> ExerciseBlock:
         exercise_id,
         name,
         Measure(measure),
-        carried_load(equipment, bodyweight),
+        carried_load(name, equipment, bodyweight),
         [_set(r) for r in rows],
     )
 
@@ -268,7 +268,7 @@ def exercise_history(conn: sqlite3.Connection, exercise_id: int) -> ExerciseHist
     ).fetchall()
     sessions = [_session(list(block)) for _, block in groupby(rows, key=lambda r: (r[0], r[1]))]
     summary = _summary(row)
-    carried = carried_load(summary.equipment, read_profile(conn).bodyweight_kg)
+    carried = carried_load(summary.name, summary.equipment, read_profile(conn).bodyweight_kg)
     return ExerciseHistory(summary, carried, sessions)
 
 

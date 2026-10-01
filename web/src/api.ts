@@ -165,7 +165,7 @@ export type ExerciseMatch = z.infer<typeof matchSchema>;
 
 export interface NewExercise {
   name: string;
-  equipment: string | null;
+  equipment: string;
   measure: "reps" | "seconds";
   /** Create it even though it looks like an existing exercise. */
   allow_similar: boolean;

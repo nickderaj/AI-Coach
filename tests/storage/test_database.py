@@ -91,6 +91,23 @@ def test_migrations_apply_in_order_from_the_current_version(
         assert conn.execute("SELECT count(*) FROM b").fetchone()[0] == 0
 
 
+def test_v4_gives_exercises_without_equipment_bodyweight(tmp_path: Path) -> None:
+    with closing(connect(tmp_path / "t.db")) as conn:
+        for sql in MIGRATIONS[:3]:
+            conn.executescript(sql)
+        conn.execute("PRAGMA user_version = 3")
+        conn.executemany(
+            "INSERT INTO exercises (name, display_name, equipment, measure) VALUES (?, ?, ?, ?)",
+            [("plank", "Plank", None, "seconds"), ("row", "Row", "cable", "reps")],
+        )
+        conn.commit()
+
+        assert migrate(conn) == len(MIGRATIONS)
+
+        rows = conn.execute("SELECT name, equipment FROM exercises ORDER BY name").fetchall()
+        assert [tuple(row) for row in rows] == [("plank", "bodyweight"), ("row", "cable")]
+
+
 @pytest.mark.parametrize(
     "statement",
     [

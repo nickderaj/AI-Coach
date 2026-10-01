@@ -92,6 +92,11 @@ MIGRATIONS: tuple[str, ...] = (
         bodyweight_kg REAL CHECK (bodyweight_kg > 0)
     ) STRICT;
     """,
+    """
+    -- "No equipment" was a second name for bodyweight: every exercise now has
+    -- equipment, and one without any is a bodyweight exercise.
+    UPDATE exercises SET equipment = 'bodyweight' WHERE equipment IS NULL;
+    """,
 )
 
 

@@ -5,7 +5,14 @@ from collections.abc import Sequence
 import pytest
 
 from trainer.domain.exercises import Equipment, Measure
-from trainer.domain.records import carried_load, set_rank, set_volume
+from trainer.domain.records import (
+    BODYWEIGHT_SHARES,
+    DEFAULT_BODYWEIGHT_SHARE,
+    bodyweight_share,
+    carried_load,
+    set_rank,
+    set_volume,
+)
 
 
 @pytest.mark.parametrize(
@@ -26,17 +33,74 @@ def test_set_volume(reps: int | None, load: float | None, carried: float, volume
 
 
 @pytest.mark.parametrize(
-    ("equipment", "bodyweight", "carried"),
+    ("name", "share"),
     [
-        (Equipment.BODYWEIGHT, 65.0, 65.0),
-        ("bodyweight", 72.5, 72.5),
-        (Equipment.BODYWEIGHT, None, 0.0),  # body weight not set
-        (Equipment.BARBELL, 65.0, 0.0),
-        (None, 65.0, 0.0),
+        # Every listed exercise, by the name it is listed under.
+        ("Pull-up", 0.93),
+        ("Chin-up", 0.93),
+        ("Dip", 0.93),
+        ("Dead Hang", 0.93),
+        ("Push-up", 0.64),
+        ("Knee Push-up", 0.49),
+        ("Incline Push-up", 0.55),
+        ("Decline Push-up", 0.70),
+        ("Squat", 0.77),
+        ("Split Squat", 0.74),
+        ("Lunge", 0.74),
+        ("Step-up", 0.80),
+        ("Pistol Squat", 0.80),
+        ("Leg Raise", 0.33),
+        ("Knee Raise", 0.33),
+        ("Inverted Row", 0.60),
+        ("Sit-up", 0.50),
+        ("Crunch", 0.30),
+        ("Glute Bridge", 0.50),
+        ("Mountain Climber", 0.25),
+        # Spellings, plurals, equipment words and extra words still match.
+        ("Dips", 0.93),
+        ("pull ups", 0.93),
+        ("Bodyweight Squat", 0.77),
+        ("BW Squats", 0.77),
+        ("Weighted Pull-up", 0.93),
+        ("Walking Lunge", 0.74),
+        ("Hanging Leg Raise", 0.33),
+        ("Hanging Knee Raises", 0.33),
+        # The most specific entry wins over one it contains.
+        ("Bulgarian Split Squat", 0.74),
+        ("Decline Push-ups", 0.70),
+        ("Single Leg Pistol Squat", 0.80),
+        # ...and over a shorter, unrelated one listed earlier.
+        ("Dip Bar Leg Raise", 0.33),
+        # Not listed: about a push-up.
+        ("Burpee", 0.65),
+        ("Plank", 0.65),
+        ("Pull", 0.65),  # only part of a listed name
     ],
 )
-def test_carried_load(equipment: str | None, bodyweight: float | None, carried: float) -> None:
-    assert carried_load(equipment, bodyweight) == carried
+def test_bodyweight_share(name: str, share: float) -> None:
+    assert bodyweight_share(name) == share
+
+
+def test_every_listed_exercise_is_found_by_its_own_name() -> None:
+    assert {name: bodyweight_share(name) for name in BODYWEIGHT_SHARES} == BODYWEIGHT_SHARES
+    assert DEFAULT_BODYWEIGHT_SHARE == 0.65
+
+
+@pytest.mark.parametrize(
+    ("name", "equipment", "bodyweight", "carried"),
+    [
+        ("Pull-up", Equipment.BODYWEIGHT, 80.0, 74.4),
+        ("Push-up", "bodyweight", 70.3, 45.0),  # 44.992, to 0.1 kg
+        ("Burpee", Equipment.BODYWEIGHT, 70.0, 45.5),
+        ("Pull-up", Equipment.BODYWEIGHT, None, 0.0),  # body weight not set
+        ("Squat", Equipment.BARBELL, 65.0, 0.0),
+        ("Squat", None, 65.0, 0.0),
+    ],
+)
+def test_carried_load(
+    name: str, equipment: str | None, bodyweight: float | None, carried: float
+) -> None:
+    assert carried_load(name, equipment, bodyweight) == carried
 
 
 def best(measure: Measure, sets: Sequence[tuple[int | None, float | None, float | None]]) -> int:

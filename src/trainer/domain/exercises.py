@@ -26,6 +26,7 @@ ABBREVIATIONS: dict[str, str] = {
     "bw": "bodyweight",
     "ohp": "overhead press",
     "rdl": "romanian deadlift",
+    "ups": "up",  # a plural too short for the plural rule ("Push-ups")
 }
 # Words that name equipment. Between exercises with the same equipment they say
 # nothing ("Bodyweight Squat" is the bodyweight "Squat").
@@ -78,6 +79,15 @@ def _tokens(name: str) -> frozenset[str]:
     )
 
 
+def exercise_key(name: str) -> frozenset[str]:
+    """The words that identify an exercise within its equipment.
+
+    Plurals folded, shorthand spelled out, equipment words dropped: "Bodyweight
+    Squats" and "Squat" share the key ``{"squat"}``.
+    """
+    return _tokens(name) - EQUIPMENT_WORDS
+
+
 def is_near_duplicate(candidate: str, existing: str) -> bool:
     """Whether ``candidate`` probably names the same exercise as ``existing``.
 
@@ -104,7 +114,7 @@ def is_same_exercise(candidate: str, existing: str) -> bool:
     other's words is not enough ("Incline Bench Press" is not "Bench Press"),
     and nor is a near-duplicate spelling ("Clean Press" is not "Bench Press").
     """
-    if _tokens(candidate) - EQUIPMENT_WORDS == _tokens(existing) - EQUIPMENT_WORDS:
+    if exercise_key(candidate) == exercise_key(existing):
         return True
     return _similarity(candidate, existing) >= SAME_SPELLING_THRESHOLD
 

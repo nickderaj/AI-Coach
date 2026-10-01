@@ -15,7 +15,7 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
-from trainer.domain.exercises import Measure
+from trainer.domain.exercises import Equipment, Measure
 from trainer.storage.catalogue import ExerciseSpec, add_alias, resolve, upsert_exercise
 from trainer.storage.log import (
     BodyMetricRecord,
@@ -106,7 +106,7 @@ def _import_exercises(source: sqlite3.Connection, target: sqlite3.Connection) ->
         spec = ExerciseSpec(
             name=row[1],
             display_name=row[2],
-            equipment=row[3],
+            equipment=row[3] or Equipment.BODYWEIGHT.value,  # none means bodyweight
             muscle_groups=row[4],
             measure=Measure.SECONDS if row[5] == "s" else Measure.REPS,
         )

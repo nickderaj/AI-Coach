@@ -25,7 +25,8 @@ def client(tmp_path: Path) -> TestClient:
 
 
 def new_exercise(client: TestClient, name: str = "Goblet Squat", **extra: object) -> int:
-    response = client.post("/api/exercises", json={"name": name, **extra}, headers=OWNER)
+    body = {"name": name, "equipment": "dumbbell", **extra}
+    response = client.post("/api/exercises", json=body, headers=OWNER)
     assert response.status_code == 201, response.text
     exercise_id: int = response.json()["id"]
     return exercise_id
@@ -275,7 +276,9 @@ class TestExercises:
         existing = new_exercise(client, equipment="kettlebell")
 
         response = client.post(
-            "/api/exercises", json={"name": "goblet squat", "allow_similar": True}, headers=OWNER
+            "/api/exercises",
+            json={"name": "goblet squat", "equipment": "dumbbell", "allow_similar": True},
+            headers=OWNER,
         )
 
         assert response.status_code == 409
@@ -289,9 +292,13 @@ class TestExercises:
     def test_similar_needs_confirmation(self, client: TestClient) -> None:
         existing = new_exercise(client, "Barbell Bench Press", equipment="barbell")
 
-        refused = client.post("/api/exercises", json={"name": "Bench Press"}, headers=OWNER)
+        refused = client.post(
+            "/api/exercises", json={"name": "Bench Press", "equipment": "barbell"}, headers=OWNER
+        )
         confirmed = client.post(
-            "/api/exercises", json={"name": "Bench Press", "allow_similar": True}, headers=OWNER
+            "/api/exercises",
+            json={"name": "Bench Press", "equipment": "barbell", "allow_similar": True},
+            headers=OWNER,
         )
 
         assert refused.status_code == 409
@@ -304,13 +311,16 @@ class TestExercises:
     @pytest.mark.parametrize(
         "body",
         [
-            {"name": "x"},
-            {"name": "x" * 61},
-            {"name": "   "},
+            {"name": "x", "equipment": "bodyweight"},
+            {"name": "x" * 61, "equipment": "bodyweight"},
+            {"name": "   ", "equipment": "bodyweight"},
             {"name": "Squat", "equipment": "trampoline"},
-            {"name": "Squat", "measure": "laps"},
-            {"name": "Squat", "measure": "distance"},  # sets cannot record a distance yet
-            {"name": "Squat", "muscle_groups": "x" * 201},
+            {"name": "Squat"},  # equipment is required: none is "bodyweight"
+            {"name": "Squat", "equipment": None},
+            {"name": "Squat", "equipment": "bodyweight", "measure": "laps"},
+            # Sets cannot record a distance yet.
+            {"name": "Squat", "equipment": "bodyweight", "measure": "distance"},
+            {"name": "Squat", "equipment": "bodyweight", "muscle_groups": "x" * 201},
         ],
     )
     def test_invalid_exercises(self, client: TestClient, body: dict[str, object]) -> None:
