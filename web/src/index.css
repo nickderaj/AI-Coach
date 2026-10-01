@@ -650,13 +650,83 @@ h2 {
   display: grid;
 }
 
+/* ---------------------------------------------------------------- coach */
+
+.chat {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.bubble {
+  max-width: 85%;
+  padding: 0.6rem 0.85rem;
+  border-radius: var(--radius);
+  white-space: pre-wrap;
+  overflow-wrap: anywhere;
+  box-shadow: var(--shadow);
+}
+
+.bubble.user {
+  justify-self: end;
+  background: var(--accent);
+  color: var(--card);
+  border-bottom-right-radius: 0.3rem;
+}
+
+.bubble.assistant {
+  justify-self: start;
+  background: var(--card);
+  border-bottom-left-radius: 0.3rem;
+}
+
+.bubble.thinking {
+  color: var(--subtext0);
+  font-style: italic;
+}
+
+.chat-end {
+  height: 0;
+}
+
+/* Stays above the tab bar while the conversation scrolls. */
+.composer {
+  position: sticky;
+  bottom: calc(env(safe-area-inset-bottom) + 4.5rem);
+  display: flex;
+  gap: 0.5rem;
+  align-items: end;
+  padding: 0.5rem;
+  background: var(--card);
+  border-radius: var(--radius);
+  box-shadow: var(--shadow);
+}
+
+.composer textarea {
+  flex: 1;
+  min-height: 2.6rem;
+  border: 0;
+  resize: none;
+  font: inherit;
+  /* 16px or more, so iOS does not zoom into the field. */
+  font-size: max(1rem, 16px);
+  color: inherit;
+  background: transparent;
+}
+
+.composer textarea:focus {
+  outline: none;
+}
+
 /* ---------------------------------------------------------------- tabs */
 
 .tabs {
   position: fixed;
   inset: auto 0 0 0;
   display: grid;
-  grid-template-columns: repeat(3, 1fr);
+  grid-template-columns: repeat(4, 1fr);
   background: color-mix(in srgb, var(--card) 88%, transparent);
   backdrop-filter: blur(12px);
   border-top: 1px solid var(--crust);

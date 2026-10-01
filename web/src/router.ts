@@ -8,7 +8,8 @@ export type Route =
   | { name: "exercise"; id: number }
   | { name: "log" }
   | { name: "pick" }
-  | { name: "settings" };
+  | { name: "settings" }
+  | { name: "coach" };
 
 const STATIC: Record<string, Route> = {
   "#/history": { name: "history" },
@@ -16,6 +17,7 @@ const STATIC: Record<string, Route> = {
   "#/log": { name: "log" },
   "#/log/add": { name: "pick" },
   "#/settings": { name: "settings" },
+  "#/coach": { name: "coach" },
 };
 
 const PATTERNS: [RegExp, (id: number) => Route][] = [
@@ -52,6 +54,7 @@ const FIXED: Record<FixedRouteName, string> = {
   log: "#/log",
   pick: "#/log/add",
   settings: "#/settings",
+  coach: "#/coach",
 };
 
 export function href(route: Route): string {
