@@ -76,7 +76,7 @@ class DeployConfig:
 
     @property
     def hermes_upstream(self) -> str:
-        """``host:port`` for the Hermes gateway, on the API's loopback address."""
+        """``host:port`` for the Hermes gateway, which binds the API's loopback address."""
         return f"{self._url_host}:{self.hermes_port}"
 
     @property

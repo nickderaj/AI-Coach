@@ -101,6 +101,7 @@ def test_gateway_unit_runs_hermes_with_root_only_secrets() -> None:
         "Environment=TRAINER_DATA_DIR=/srv/trainer",
         "Environment=TRAINER_MODEL=model-1",
         "Environment=TRAINER_MODEL_URL=https://api.example.com/v1",
+        "Environment=TRAINER_HERMES_HOST=127.0.0.1",
         "Environment=TRAINER_HERMES_PORT=8642",
         "Environment=HERMES_DISABLE_LAZY_INSTALLS=1",
         "EnvironmentFile=/etc/hermes-trainer/model.env",

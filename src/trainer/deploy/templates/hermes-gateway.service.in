@@ -13,6 +13,7 @@ Environment=HOME=${hermes_home}
 Environment=TRAINER_DATA_DIR=${data_dir}
 Environment=TRAINER_MODEL=${model}
 Environment=TRAINER_MODEL_URL=${model_url}
+Environment=TRAINER_HERMES_HOST=${bind_host}
 Environment=TRAINER_HERMES_PORT=${hermes_port}
 Environment=HERMES_DISABLE_LAZY_INSTALLS=1
 # Root-only secrets (deploy/hermes-secrets.sh): the model provider's API key, and

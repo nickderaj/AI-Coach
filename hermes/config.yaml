@@ -44,9 +44,11 @@ security:
   # The installed Hermes is fixed and root-owned: never pip-install at runtime.
   allow_lazy_installs: false
 
-# The web app's Coach tab talks to this, through the API, on loopback only.
+# The web app's Coach tab talks to this, through the API, on loopback only: the
+# API's own address (TRAINER_BIND_HOST, validated as loopback), so the API and
+# the installer find the gateway where it listens.
 gateway:
   api_server:
     enabled: true
-    host: 127.0.0.1
+    host: ${TRAINER_HERMES_HOST}
     port: ${TRAINER_HERMES_PORT}
