@@ -1,4 +1,4 @@
-"""The coach's read-only tools over the training log (D10: SQLite owns facts)."""
+"""The coach's tools: reading the training log (D10), and proposing a program (D12)."""
 
 from __future__ import annotations
 
@@ -10,6 +10,7 @@ from typing import TYPE_CHECKING, Annotated, Any
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
 from trainer.mcp.protocol import Json, Tool, ToolError
+from trainer.services.programs import ProgramIn
 from trainer.storage.database import connect_readonly
 from trainer.storage.history import (
     WorkoutNotFoundError,
@@ -23,6 +24,8 @@ from trainer.storage.profile import read_profile
 if TYPE_CHECKING:
     from collections.abc import Callable
     from pathlib import Path
+
+    from trainer.mcp.proposals import ProgramsApi
 
 
 # SQLite's INTEGER is signed 64-bit, and row ids start at 1. A larger Python int
@@ -136,12 +139,69 @@ _TOOLS: dict[str, tuple[str, type[_Arguments], Callable[[sqlite3.Connection, Any
 }
 
 
-def tools(database: Path) -> dict[str, Tool]:
-    """The tool set over the database at ``database``, opened read-only per call."""
-    return {
+PROPOSE_DESCRIPTION = (
+    "Propose a training program for the owner to accept in the app's Program screen. It "
+    "replaces any earlier proposal and never changes the program being trained. A program "
+    "is six training weeks then a deload week; its days repeat every week in order. A day "
+    "is blocks in order: one exercise, or two or three done as a superset. Use exercise ids "
+    "from list_exercises. Give each exercise its sets and a rep range (seconds for a timed "
+    "exercise). The app sets every load after the first session from the log, by double "
+    "progression, so give start_load_kg only for the first session, from exercise_history. "
+    "To refine a proposal, propose it again in full."
+)
+
+
+def tools(database: Path, programs_api: ProgramsApi | None = None) -> dict[str, Tool]:
+    """The tool set over the database at ``database``, opened read-only per call.
+
+    ``propose_program`` is offered only with ``programs_api``, the way to save one.
+    """
+    found = {
         name: Tool(name, description, model.model_json_schema(), _caller(database, model, answer))
         for name, (description, model, answer) in _TOOLS.items()
     }
+    if programs_api is not None:
+        schema = inline_refs(ProgramIn.model_json_schema())
+        found["propose_program"] = Tool(
+            "propose_program", PROPOSE_DESCRIPTION, schema, _proposer(programs_api)
+        )
+    return found
+
+
+def inline_refs(schema: Json) -> Json:
+    """``schema``, which has ``$defs``, with each ``$ref`` replaced by its definition.
+
+    Model providers differ in how much JSON Schema they take; a plain nested
+    schema is the most widely understood.
+    """
+    definitions: Json = schema["$defs"]
+    return {key: _resolve(value, definitions) for key, value in schema.items() if key != "$defs"}
+
+
+def _resolve(node: object, definitions: Json) -> object:
+    if isinstance(node, list):
+        return [_resolve(item, definitions) for item in node]
+    if not isinstance(node, dict):
+        return node
+    reference = node.get("$ref")
+    if isinstance(reference, str):
+        return _resolve(definitions[reference.removeprefix("#/$defs/")], definitions)
+    return {key: _resolve(value, definitions) for key, value in node.items()}
+
+
+def _proposer(programs_api: ProgramsApi) -> Callable[[Json], object]:
+    def call(arguments: Json) -> object:
+        try:
+            program = ProgramIn.model_validate(arguments)
+        except ValidationError as error:
+            raise ToolError(_describe(error)) from error
+        saved = programs_api.propose(program)
+        return {
+            "proposed": saved,
+            "next": "The owner reviews it in the app's Program screen and accepts it there.",
+        }
+
+    return call
 
 
 def _caller(
@@ -166,8 +226,8 @@ def _caller(
 
 def _describe(error: ValidationError) -> str:
     problems = "; ".join(
-        # Arguments are flat, so each problem names one argument.
-        f"{problem['loc'][0]}: {problem['msg']}"
+        # Each problem names where it is: "days.0.blocks.1.exercises.0.rep_max".
+        f"{'.'.join(map(str, problem['loc']))}: {problem['msg']}"
         for problem in error.errors()
     )
     return f"invalid arguments: {problems}"

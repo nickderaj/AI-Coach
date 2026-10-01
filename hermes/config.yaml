@@ -47,12 +47,18 @@ security:
 # The trainer's tool server (python -m trainer.mcp): Hermes starts it as a child
 # process and talks to it over stdin and stdout. It reads the training log
 # read-only. Tools only: no resources, prompts or sampling.
+# It proposes programs through the API on loopback, with the gateway's own key
+# (the API accepts it for that alone). Hermes gives a stdio server only this env
+# and a safe baseline, and writes the ${...} names, never their values, back to
+# this file.
 mcp_servers:
   trainer:
     command: ${TRAINER_PREFIX}/venv/bin/python
     args: [-m, trainer.mcp]
     env:
       TRAINER_DATA_DIR: ${TRAINER_DATA_DIR}
+      TRAINER_API_URL: ${TRAINER_API_URL}
+      TRAINER_COACH_KEY: ${API_SERVER_KEY}
     timeout: 30
     tools:
       resources: false

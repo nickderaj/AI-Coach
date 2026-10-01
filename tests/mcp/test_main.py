@@ -102,6 +102,26 @@ def test_main_serves_stdin(data_dir: Path, monkeypatch: pytest.MonkeyPatch) -> N
     assert json.loads(out.getvalue())["id"] == 2
 
 
+@pytest.mark.parametrize(
+    ("env", "offered"),
+    [
+        ({"TRAINER_API_URL": "http://127.0.0.1:8000", "TRAINER_COACH_KEY": "k"}, True),
+        ({"TRAINER_API_URL": "http://127.0.0.1:8000"}, False),
+    ],
+)
+def test_main_offers_proposing_with_the_api_and_key(
+    data_dir: Path, monkeypatch: pytest.MonkeyPatch, env: dict[str, str], *, offered: bool
+) -> None:
+    out = io.StringIO()
+    monkeypatch.setattr(sys, "stdin", io.StringIO('{"jsonrpc":"2.0","id":1,"method":"tools/list"}'))
+    monkeypatch.setattr(sys, "stdout", out)
+
+    assert main({"TRAINER_DATA_DIR": str(data_dir)} | env) == 0
+
+    names = [tool["name"] for tool in json.loads(out.getvalue())["result"]["tools"]]
+    assert ("propose_program" in names) is offered
+
+
 def test_main_reads_the_process_environment(
     data_dir: Path, monkeypatch: pytest.MonkeyPatch
 ) -> None:

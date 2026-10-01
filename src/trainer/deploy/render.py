@@ -32,6 +32,7 @@ def substitutions(config: DeployConfig) -> dict[str, str]:
         "prefix": str(config.prefix),
         "bind_host": config.bind_host,
         "bind_port": str(config.bind_port),
+        "upstream": config.upstream,
         "backup_keep": str(config.backup_keep),
         "owner_login": config.owner_login,
         "hermes_port": str(config.hermes_port),
