@@ -16,6 +16,7 @@ from trainer.storage.history import (
     WorkoutSummary,
     exercise_history,
     get_workout,
+    last_session,
     list_exercises,
     list_workouts,
 )
@@ -128,6 +129,7 @@ def test_get_workout_groups_sets_by_exercise(imported: sqlite3.Connection) -> No
             Measure.REPS,
             0.0,
             [set_view(1, 8, 60.0), SetView(2, 6, 70.0, None, 8, "grindy", None)],
+            None,
         ),
         ExerciseBlock(
             2,
@@ -136,8 +138,10 @@ def test_get_workout_groups_sets_by_exercise(imported: sqlite3.Connection) -> No
             Measure.SECONDS,
             60.5,  # 93% of body weight, though a hold adds no volume
             [SetView(1, None, None, 50.0, None, None, None)],
+            None,
         ),
     ]
+    assert (detail.program_day_id, detail.program_week) == (None, None)
 
 
 def test_get_workout_carries_end_time_and_notes(imported: sqlite3.Connection) -> None:
@@ -355,3 +359,54 @@ def test_summary_best_set_uses_reps_and_duration_for_ties(db: sqlite3.Connection
         (2, "Hang", 2),
         (3, "Carry", 2),
     ]
+
+
+def test_last_session_leaves_out_one_workout(imported: sqlite3.Connection) -> None:
+    bench = ids(imported)["barbell bench press"]
+    later = imported.execute(
+        "INSERT INTO workouts (started_at, source) "
+        "VALUES ('2026-09-01T10:00:00+00:00', 't') RETURNING id"
+    ).fetchone()[0]
+    imported.execute(
+        "INSERT INTO workout_sets (workout_id, exercise_id, exercise_position, set_number, "
+        "reps, load_kg) VALUES (?, ?, 1, 1, 5, 80.0)",
+        (later, bench),
+    )
+    july = imported.execute("SELECT id FROM workouts WHERE started_at = ?", (JULY,)).fetchone()[0]
+
+    assert last_session(imported, bench, None) == ExerciseSession(
+        later, 1, "2026-09-01T10:00:00+00:00", [set_view(1, 5, 80.0)]
+    )
+    last = last_session(imported, bench, later)
+    assert last is not None
+    assert (last.workout_id, len(last.sets)) == (july, 2)
+    assert last_session(imported, bench, july) == last_session(imported, bench, None)
+
+
+def test_last_session_of_an_untrained_exercise(db: sqlite3.Connection) -> None:
+    exercise_id = upsert_exercise(db, ExerciseSpec("x", "X", None, None, Measure.REPS))
+
+    assert last_session(db, exercise_id, None) is None
+
+
+def test_a_workout_shows_its_program_day_and_exercises(db: sqlite3.Connection) -> None:
+    db.executescript(
+        """
+        INSERT INTO exercises (id, name, display_name, measure) VALUES (1, 'x', 'X', 'reps');
+        INSERT INTO programs (id, name, training_weeks, status, created_at)
+            VALUES (1, 'P', 6, 'active', 't');
+        INSERT INTO program_days (id, program_id, position, name) VALUES (1, 1, 1, 'Day');
+        INSERT INTO program_blocks (id, day_id, position, rest_s) VALUES (1, 1, 1, 90);
+        INSERT INTO block_exercises (id, block_id, position, exercise_id, sets, rep_min, rep_max)
+            VALUES (5, 1, 1, 1, 3, 8, 10);
+        INSERT INTO workouts (id, started_at, source, program_day_id, program_week)
+            VALUES (1, 't', 'app', 1, 2);
+        INSERT INTO workout_sets (workout_id, exercise_id, exercise_position, set_number,
+            block_exercise_id) VALUES (1, 1, 1, 1, 5), (1, 1, 2, 1, NULL);
+        """
+    )
+
+    detail = get_workout(db, 1)
+
+    assert (detail.program_day_id, detail.program_week) == (1, 2)
+    assert [block.block_exercise_id for block in detail.exercises] == [5, None]

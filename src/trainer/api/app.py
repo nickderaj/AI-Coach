@@ -15,6 +15,7 @@ from trainer.api.coach import router as coach_router
 from trainer.api.history import router as history_router
 from trainer.api.journal import router as journal_router
 from trainer.api.profile import router as profile_router
+from trainer.api.programs import router as programs_router
 from trainer.api.settings import Settings, settings_from_env
 from trainer.services.hermes import HermesGateway
 from trainer.storage.database import connect, migrate
@@ -83,6 +84,7 @@ def create_app(settings: Settings | None = None, coach_gateway: Gateway | None =
     app.include_router(history_router)
     app.include_router(profile_router)
     app.include_router(coach_router)
+    app.include_router(programs_router)
     if settings.web_dir is not None:
         app.mount("/", StaticFiles(directory=settings.web_dir, html=True))
     return app

@@ -37,6 +37,7 @@ Last updated: 2026-10-01.
 | Phase 3b — `trainer.mcp`, the coach's read-only tools; the API holds the log open | #19 | Deployed 2026-10-01; the live coach answers from the owner's log. |
 | Phase 3c — Coach endpoints on one durable Hermes session; schema v5 | #20 | Deployed 2026-10-01. |
 | Phase 3d — Coach tab in the web app | #21 | Deployed 2026-10-01. **Phase 3 built.** |
+| Phase 4a — program engine (progression, deload, next day); schema v6 | #24 | Deployed 2026-10-01 (backup first); schema v6 live, existing workouts untouched. |
 
 ## Phase 2 — logging: built, awaiting its exit criterion
 
@@ -318,8 +319,8 @@ updates this section.
 
 | Step | Scope | PR |
 | --- | --- | --- |
-| 4a | Schema v6 (programs, days, blocks, block exercises; program links on workouts and sets; an exercise's own load step) and the pure engine: double progression (D5), deload (D6), next day by sequence | this PR |
-| 4b | Programs in storage and services. API: the active and the proposed program, accept a proposal, today's program day with each exercise's target and last time, workouts and sets linked to the program | |
+| 4a | Schema v6 (programs, days, blocks, block exercises; program links on workouts and sets; an exercise's own load step) and the pure engine: double progression (D5), deload (D6), next day by sequence | #24 |
+| 4b | Programs in storage and services. API: the active and the proposed program, accept a proposal, today's program day with each exercise's target and last time, workouts and sets linked to the program | this PR |
 | 4c | `propose_program`, the coach's MCP tool: exercise ids only, validated, written through the API as a proposal (see below); the coach's profile learns to use it | |
 | 4d | Web: the Program screen. The whole block, the current week, the deload week marked; a proposal to accept; generate or refine through the coach | |
 | 4e | Web: the Today screen. The next program day, supersets side by side, sets prefilled with targets, last time, a rest timer per block | |
@@ -335,7 +336,7 @@ owner's login. The API checks the program again and saves it as a *proposal*.
 The owner accepts it on the Program screen. The coach never replaces the
 active program by itself, and the model never works out loads (D12).
 
-**4a: the engine and schema v6 (this PR).**
+**4a: the engine and schema v6 (done, #24).**
 - `trainer.domain.programs` is pure and every rule in it is
   `# coverage-critical`.
 - **Next day.** Position is the day after the last completed one
@@ -374,6 +375,50 @@ active program by itself, and the model never works out loads (D12).
   the sets of a superset (A1, A2, A1, A2…) still belong to their program
   exercise. A program that has been trained from cannot be deleted. Existing
   rows are untouched.
+- **From review:** an exercise without an increment keeps its load in the
+  deload week (see above), rather than rounding to an invented step.
+
+**4b: programs through the API (this PR).** Every endpoint is owner-only.
+- **The program's shape** is one pydantic model in `trainer.services.programs`
+  (`ProgramIn`), so the API and the coach's tool (4c) check it the same way:
+  - 1–7 days, each with 1–12 blocks;
+  - a block holds 1 exercise, or 2–3 as a superset, with rest 0–600 s
+    (default 90);
+  - an exercise has 1–10 sets, a range within 1–600 (reps, or seconds),
+    an optional starting load and notes;
+  - unknown fields are refused. Exercises are ids from the catalogue; an
+    unknown id, or one measured in distance, is refused with the ids named.
+- `PUT /api/programs/proposal` saves a program as the proposal, replacing the
+  last one. `DELETE` turns it down. `POST /api/programs/{id}/accept` makes it
+  the active program and archives the old one; 409 if it is no longer the
+  proposal.
+- `GET /api/programs`: the active program with its next week and day, and the
+  proposal. A program lists its days in order, each with its blocks in order,
+  and each exercise with its catalogue name, measure and load step.
+- `GET /api/today` (null without an active program) plans the next day:
+  - the week, whether it is the deload week, and each block's rest;
+  - each exercise's target (decision, load, reps per set) from its last
+    finished training-week session;
+  - last time: the exercise's most recent session anywhere, outside today's
+    workout;
+  - the body weight a bodyweight exercise carries.
+
+  An unfinished workout that trains a day of the program makes that day
+  today, and its id comes back as `workout_client_id`; it counts neither for
+  targets nor as last time. Once the deload week is done, `day` is null.
+- **Workouts and sets.** `PUT /api/workouts/{id}` takes an optional
+  `program: {day_id, week}`; the day must exist and the week be within the
+  program, deload included. `PUT /api/sets/{id}` takes an optional
+  `block_exercise_id`, which must be on that workout's day and for the same
+  exercise (422 otherwise). A program exercise's sets share one block in the
+  log, whatever order a superset is done in; a set outside the program never
+  joins it. A workout shows its `program_day_id` and `program_week`, and each
+  block its `block_exercise_id`.
+- **From review:** once a workout has sets for a day's program exercises, it
+  keeps that day. A `PUT` that drops the day or names another is refused
+  (422), so a workout's day and its sets' program exercises always agree. A
+  later week of the same day, or a new day before any program set is logged,
+  is still allowed.
 
 ## Remaining phases
 

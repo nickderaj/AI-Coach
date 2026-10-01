@@ -62,11 +62,13 @@ class ExerciseBlock:
     # Share of body weight moved in each rep, on top of the load (bodyweight exercises).
     carried_kg: float
     sets: list[SetView]
+    # The program exercise these sets were for, if any.
+    block_exercise_id: int | None
 
 
 @dataclass(frozen=True)
 class WorkoutDetail:
-    """A whole workout."""
+    """A whole workout, and the program day and week it trained, if any."""
 
     id: int
     started_at: str
@@ -74,6 +76,8 @@ class WorkoutDetail:
     notes: str | None
     client_id: str | None
     exercises: list[ExerciseBlock]
+    program_day_id: int | None
+    program_week: int | None
 
 
 @dataclass(frozen=True)
@@ -174,7 +178,10 @@ def get_workout(conn: sqlite3.Connection, workout_id: int) -> WorkoutDetail:
         WorkoutNotFoundError: if there is no such workout.
     """
     workout = conn.execute(
-        """SELECT id, started_at, ended_at, notes, client_id FROM workouts WHERE id = ?""",
+        """
+        SELECT id, started_at, ended_at, notes, client_id, program_day_id, program_week
+        FROM workouts WHERE id = ?
+        """,
         (workout_id,),
     ).fetchone()
     if workout is None:
@@ -183,7 +190,8 @@ def get_workout(conn: sqlite3.Connection, workout_id: int) -> WorkoutDetail:
     rows = conn.execute(
         """
         SELECT s.exercise_position, s.exercise_id, e.display_name, e.measure, e.equipment,
-            s.set_number, s.reps, s.load_kg, s.duration_s, s.rpe, s.notes, s.client_id
+            s.block_exercise_id, s.set_number, s.reps, s.load_kg, s.duration_s, s.rpe, s.notes,
+            s.client_id
         FROM workout_sets s JOIN exercises e ON e.id = s.exercise_id
         WHERE s.workout_id = ? ORDER BY s.exercise_position, s.set_number
         """,
@@ -191,8 +199,8 @@ def get_workout(conn: sqlite3.Connection, workout_id: int) -> WorkoutDetail:
     ).fetchall()
     bodyweight = read_profile(conn).bodyweight_kg
     blocks = [_block(list(group), bodyweight) for _, group in groupby(rows, key=lambda row: row[0])]
-    found_id, started_at, ended_at, notes, client_id = workout
-    return WorkoutDetail(found_id, started_at, ended_at, notes, client_id, blocks)
+    found_id, started_at, ended_at, notes, client_id, day_id, week = workout
+    return WorkoutDetail(found_id, started_at, ended_at, notes, client_id, blocks, day_id, week)
 
 
 def current_workout(conn: sqlite3.Connection) -> WorkoutDetail | None:
@@ -207,8 +215,8 @@ def current_workout(conn: sqlite3.Connection) -> WorkoutDetail | None:
 
 
 def _block(rows: list[sqlite3.Row], bodyweight: float | None) -> ExerciseBlock:
-    """``rows`` start with: exercise_position, exercise_id, display_name, measure, equipment."""
-    position, exercise_id, name, measure, equipment = rows[0][:5]
+    """``rows`` start: position, exercise id, name, measure, equipment, program exercise."""
+    position, exercise_id, name, measure, equipment, slot = rows[0][:6]
     return ExerciseBlock(
         position,
         exercise_id,
@@ -216,6 +224,7 @@ def _block(rows: list[sqlite3.Row], bodyweight: float | None) -> ExerciseBlock:
         Measure(measure),
         carried_load(name, equipment, bodyweight),
         [_set(r) for r in rows],
+        slot,
     )
 
 
@@ -256,20 +265,33 @@ def exercise_history(conn: sqlite3.Connection, exercise_id: int) -> ExerciseHist
     ).fetchone()
     if row is None:
         return None
+    summary = _summary(row)
+    carried = carried_load(summary.name, summary.equipment, read_profile(conn).bodyweight_kg)
+    return ExerciseHistory(summary, carried, _sessions(conn, exercise_id, None))
+
+
+def last_session(
+    conn: sqlite3.Connection, exercise_id: int, excluding_workout: int | None
+) -> ExerciseSession | None:
+    """The most recent session of an exercise, outside ``excluding_workout`` (today's)."""
+    return next(iter(_sessions(conn, exercise_id, excluding_workout)), None)
+
+
+def _sessions(
+    conn: sqlite3.Connection, exercise_id: int, excluding_workout: int | None
+) -> list[ExerciseSession]:
+    """Every session of an exercise, newest first, outside one workout if given."""
     rows = conn.execute(
         """
         SELECT w.id, s.exercise_position, w.started_at, s.set_number, s.reps, s.load_kg,
             s.duration_s, s.rpe, s.notes, s.client_id
         FROM workout_sets s JOIN workouts w ON w.id = s.workout_id
-        WHERE s.exercise_id = ?
+        WHERE s.exercise_id = ? AND w.id IS NOT ?
         ORDER BY w.started_at DESC, w.id DESC, s.exercise_position, s.set_number
         """,
-        (exercise_id,),
+        (exercise_id, excluding_workout),
     ).fetchall()
-    sessions = [_session(list(block)) for _, block in groupby(rows, key=lambda r: (r[0], r[1]))]
-    summary = _summary(row)
-    carried = carried_load(summary.name, summary.equipment, read_profile(conn).bodyweight_kg)
-    return ExerciseHistory(summary, carried, sessions)
+    return [_session(list(block)) for _, block in groupby(rows, key=lambda r: (r[0], r[1]))]
 
 
 def _session(rows: list[sqlite3.Row]) -> ExerciseSession:

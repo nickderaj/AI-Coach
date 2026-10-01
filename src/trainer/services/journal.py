@@ -16,6 +16,7 @@ from trainer.storage.history import (
     get_workout,
 )
 from trainer.storage.journal import (
+    ProgramLink,
     SetValues,
     delete_set,
     delete_workout,
@@ -23,6 +24,7 @@ from trainer.storage.journal import (
     save_workout,
     workout_id_for,
 )
+from trainer.storage.programs import day_weeks, set_days, slot_place
 
 if TYPE_CHECKING:
     import sqlite3
@@ -34,7 +36,11 @@ class NotFoundError(LookupError):
 
 
 class InvalidWorkoutError(ValueError):
-    """A workout's times are inconsistent."""
+    """A workout's times, or its program day and week, are inconsistent."""
+
+
+class InvalidSetError(ValueError):
+    """A set's program exercise does not fit its workout or exercise."""
 
 
 class DuplicateExerciseError(Exception):
@@ -66,21 +72,41 @@ def record_workout(
     client_id: str,
     times: tuple[datetime, datetime | None],
     notes: str | None,
+    program: ProgramLink | None = None,
 ) -> WorkoutDetail:
     """Start, update or finish the app workout ``client_id``.
 
+    ``program`` is the program day and week it trains, if any. Once it has
+    sets for that day's program exercises, it keeps that day (in any week).
+
     Raises:
-        InvalidWorkoutError: if it ends before it starts.
+        InvalidWorkoutError: if it ends before it starts, the program day does
+            not exist or has no such week, or the workout has program sets for
+            another day than ``program``'s.
     """
     started, ended = times
     if ended is not None and ended < started:
         message = "a workout cannot end before it starts"
         raise InvalidWorkoutError(message)
+    stored = (utc_iso(started), None if ended is None else utc_iso(ended))
     with write_transaction(conn):
-        workout_id = save_workout(
-            conn, client_id, (utc_iso(started), None if ended is None else utc_iso(ended)), notes
-        )
+        if program is not None:
+            _check_link(conn, program)
+        if set_days(conn, client_id) - {None if program is None else program.day_id}:
+            message = "the workout has sets for another program day"
+            raise InvalidWorkoutError(message)
+        workout_id = save_workout(conn, client_id, stored, notes, program)
     return get_workout(conn, workout_id)
+
+
+def _check_link(conn: sqlite3.Connection, program: ProgramLink) -> None:
+    weeks = day_weeks(conn, program.day_id)
+    if weeks is None:
+        message = "program day not found"
+        raise InvalidWorkoutError(message)
+    if program.week > weeks:
+        message = f"the program has {weeks} weeks"
+        raise InvalidWorkoutError(message)
 
 
 def remove_workout(conn: sqlite3.Connection, client_id: str) -> None:
@@ -94,14 +120,20 @@ def record_set(
     client_id: str,
     placement: tuple[str, int],
     values: SetValues,
+    slot: int | None = None,
 ) -> WorkoutDetail:
     """Log or correct set ``client_id``; ``placement`` is (workout client id, exercise id).
+
+    ``slot`` is the program exercise the set is for, if any: one of the
+    workout's program day, for the same exercise.
 
     Returns:
         The whole workout after the change.
 
     Raises:
         NotFoundError: if the workout or the exercise does not exist.
+        InvalidSetError: if ``slot`` is not on the workout's program day, or
+            is for another exercise.
     """
     workout_client_id, exercise_id = placement
     # Lookups, slot allocation and the write share one locked transaction, so
@@ -114,8 +146,22 @@ def record_set(
         if exercise_history(conn, exercise_id) is None:
             message = "exercise not found"
             raise NotFoundError(message)
-        save_set(conn, client_id, (workout_id, exercise_id), values)
+        if slot is not None:
+            _check_slot(conn, get_workout(conn, workout_id), exercise_id, slot)
+        save_set(conn, client_id, (workout_id, exercise_id, slot), values)
     return get_workout(conn, workout_id)
+
+
+def _check_slot(
+    conn: sqlite3.Connection, workout: WorkoutDetail, exercise_id: int, slot: int
+) -> None:
+    place = slot_place(conn, slot)
+    if place is None or place.day_id != workout.program_day_id:
+        message = "the program exercise is not on this workout's program day"
+        raise InvalidSetError(message)
+    if place.exercise_id != exercise_id:
+        message = "the program exercise is for another exercise"
+        raise InvalidSetError(message)
 
 
 def remove_set(conn: sqlite3.Connection, client_id: str) -> None:
