@@ -15,6 +15,7 @@ from trainer.storage.catalogue import (
 from trainer.storage.history import current_workout
 from trainer.storage.journal import (
     JournalConflictError,
+    ProgramLink,
     SetValues,
     delete_set,
     delete_workout,
@@ -74,7 +75,7 @@ class TestWorkouts:
 
     def test_delete_workout_cascades_and_is_idempotent(self, db: sqlite3.Connection) -> None:
         workout_id = save_workout(db, W1, ("t", None), None)
-        save_set(db, "s1", (workout_id, exercise(db, "squat")), FIVE)
+        save_set(db, "s1", (workout_id, exercise(db, "squat"), None), FIVE)
 
         assert delete_workout(db, W1) is True
         assert delete_workout(db, W1) is False
@@ -101,7 +102,7 @@ class TestSets:
             ("d", squat),
             ("e", squat),
         ]:
-            save_set(db, client_id, (workout_id, exercise_id), FIVE)
+            save_set(db, client_id, (workout_id, exercise_id, None), FIVE)
 
         assert slots(db, workout_id) == [
             ("a", 1, 1),
@@ -116,10 +117,10 @@ class TestSets:
     ) -> None:
         workout_id = save_workout(db, W1, ("t", None), None)
         squat = exercise(db, "squat")
-        first = save_set(db, "a", (workout_id, squat), FIVE)
-        save_set(db, "b", (workout_id, squat), FIVE)
+        first = save_set(db, "a", (workout_id, squat, None), FIVE)
+        save_set(db, "b", (workout_id, squat, None), FIVE)
 
-        again = save_set(db, "a", (workout_id, squat), SetValues(3, 70.5, 12.0, 9, "heavy"))
+        again = save_set(db, "a", (workout_id, squat, None), SetValues(3, 70.5, 12.0, 9, "heavy"))
 
         assert again == first
         assert slots(db, workout_id) == [("a", 1, 1), ("b", 1, 2)]
@@ -137,8 +138,8 @@ class TestSets:
         workout_id = save_workout(db, W1, ("t", None), None)
         other_workout = save_workout(db, W2, ("t", None), None)
         squat, row = exercise(db, "squat"), exercise(db, "row")
-        save_set(db, "a", (workout_id, squat), FIVE)
-        placement = (other_workout, squat) if move == "workout" else (workout_id, row)
+        save_set(db, "a", (workout_id, squat, None), FIVE)
+        placement = (other_workout, squat, None) if move == "workout" else (workout_id, row, None)
 
         with pytest.raises(
             JournalConflictError, match=r"^set a belongs to another workout or exercise$"
@@ -147,7 +148,7 @@ class TestSets:
 
     def test_delete_set_is_idempotent(self, db: sqlite3.Connection) -> None:
         workout_id = save_workout(db, W1, ("t", None), None)
-        save_set(db, "a", (workout_id, exercise(db, "squat")), FIVE)
+        save_set(db, "a", (workout_id, exercise(db, "squat"), None), FIVE)
 
         assert delete_set(db, "a") is True
         assert delete_set(db, "a") is False
@@ -205,3 +206,111 @@ class TestCatalogueWrites:
         add_alias(db, "bench", bench)
 
         assert known_names(db) == [(row, "Row"), (bench, "Bench Press"), (bench, "bench")]
+
+
+class TestProgramSets:
+    """Sets for program exercises keep one position per exercise, supersets included."""
+
+    @pytest.fixture
+    def slots_of(self, db: sqlite3.Connection) -> dict[str, tuple[int, int]]:
+        """Three program exercises: (exercise id, block exercise id) by name."""
+        db.executescript(
+            """
+            INSERT INTO programs (id, name, training_weeks, status, created_at)
+                VALUES (1, 'P', 6, 'active', 't');
+            INSERT INTO program_days (id, program_id, position, name) VALUES (1, 1, 1, 'Day');
+            INSERT INTO program_blocks (id, day_id, position, rest_s)
+                VALUES (1, 1, 1, 90), (2, 1, 2, 60);
+            """
+        )
+        found: dict[str, tuple[int, int]] = {}
+        for slot_id, block, name in [(11, 1, "squat"), (21, 2, "row"), (22, 2, "curl")]:
+            exercise_id = exercise(db, name)
+            db.execute(
+                "INSERT INTO block_exercises (id, block_id, position, exercise_id, sets, "
+                "rep_min, rep_max) VALUES (?, ?, ?, ?, 3, 8, 10)",
+                (slot_id, block, slot_id % 10, exercise_id),
+            )
+            found[name] = (exercise_id, slot_id)
+        return found
+
+    def test_a_superset_alternates_without_splitting(
+        self, db: sqlite3.Connection, slots_of: dict[str, tuple[int, int]]
+    ) -> None:
+        workout_id = save_workout(db, W1, ("t", None), None, ProgramLink(1, 1))
+
+        for client_id, name in [
+            ("a", "squat"),
+            ("b", "squat"),
+            ("c", "row"),
+            ("d", "curl"),
+            ("e", "row"),
+            ("f", "curl"),
+        ]:
+            exercise_id, slot = slots_of[name]
+            save_set(db, client_id, (workout_id, exercise_id, slot), FIVE)
+
+        assert slots(db, workout_id) == [
+            ("a", 1, 1),
+            ("b", 1, 2),
+            ("c", 2, 1),
+            ("d", 3, 1),
+            ("e", 2, 2),
+            ("f", 3, 2),
+        ]
+        assert [
+            row[0] for row in db.execute("SELECT block_exercise_id FROM workout_sets ORDER BY id")
+        ] == [11, 11, 21, 22, 21, 22]
+
+    def test_an_extra_set_of_the_same_exercise_starts_its_own_block(
+        self, db: sqlite3.Connection, slots_of: dict[str, tuple[int, int]]
+    ) -> None:
+        workout_id = save_workout(db, W1, ("t", None), None)
+        squat, slot = slots_of["squat"]
+        save_set(db, "a", (workout_id, squat, slot), FIVE)
+
+        save_set(db, "b", (workout_id, squat, None), FIVE)
+        save_set(db, "c", (workout_id, squat, None), FIVE)
+        save_set(db, "d", (workout_id, squat, slot), FIVE)
+
+        assert slots(db, workout_id) == [("a", 1, 1), ("b", 2, 1), ("c", 2, 2), ("d", 1, 2)]
+
+    def test_a_program_set_after_an_extra_one_starts_its_own_block(
+        self, db: sqlite3.Connection, slots_of: dict[str, tuple[int, int]]
+    ) -> None:
+        workout_id = save_workout(db, W1, ("t", None), None)
+        squat, slot = slots_of["squat"]
+        save_set(db, "a", (workout_id, squat, None), FIVE)
+
+        save_set(db, "b", (workout_id, squat, slot), FIVE)
+
+        assert slots(db, workout_id) == [("a", 1, 1), ("b", 2, 1)]
+
+    def test_a_client_id_cannot_move_to_another_program_exercise(
+        self, db: sqlite3.Connection, slots_of: dict[str, tuple[int, int]]
+    ) -> None:
+        workout_id = save_workout(db, W1, ("t", None), None)
+        squat, slot = slots_of["squat"]
+        save_set(db, "a", (workout_id, squat, slot), FIVE)
+
+        for moved in (None, 21):
+            with pytest.raises(JournalConflictError):
+                save_set(db, "a", (workout_id, squat, moved), FIVE)
+
+    def test_a_workout_records_and_replaces_its_program_day(
+        self, db: sqlite3.Connection, slots_of: dict[str, tuple[int, int]]
+    ) -> None:
+        assert slots_of
+        workout_id = save_workout(db, W1, ("t", None), None, ProgramLink(1, 3))
+
+        def link() -> tuple[int | None, int | None]:
+            row = db.execute(
+                "SELECT program_day_id, program_week FROM workouts WHERE id = ?", (workout_id,)
+            ).fetchone()
+            return row[0], row[1]
+
+        assert link() == (1, 3)
+        save_workout(db, W1, ("t", "u"), None, ProgramLink(1, 4))
+        assert link() == (1, 4)
+        save_workout(db, W1, ("t", "u"), None)
+        assert link() == (None, None)

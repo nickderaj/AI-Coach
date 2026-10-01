@@ -17,6 +17,7 @@ from pydantic import AwareDatetime, BaseModel, Field, StringConstraints, model_v
 from trainer.domain.exercises import Equipment, Measure
 from trainer.services.journal import (
     DuplicateExerciseError,
+    InvalidSetError,
     InvalidWorkoutError,
     NewExercise,
     NotFoundError,
@@ -26,21 +27,32 @@ from trainer.services.journal import (
     remove_set,
     remove_workout,
 )
+from trainer.services.programs import (
+    RowId,  # noqa: TC001  # why: pydantic reads the annotation at runtime
+)
 from trainer.storage.database import connect
 from trainer.storage.history import ExerciseSummary, WorkoutDetail, current_workout
-from trainer.storage.journal import JournalConflictError, SetValues
+from trainer.storage.journal import JournalConflictError, ProgramLink, SetValues
 
 router = APIRouter(prefix="/api")
 
 Notes = Annotated[str, StringConstraints(strip_whitespace=True, max_length=1000)]
 
 
+class ProgramLinkIn(BaseModel):
+    """The program day a workout trains, and the week of the program."""
+
+    day_id: RowId
+    week: Annotated[int, Field(ge=1, le=52)]
+
+
 class WorkoutIn(BaseModel):
-    """Start, update or finish a workout."""
+    """Start, update or finish a workout; one trained from a program names its day."""
 
     started_at: AwareDatetime
     ended_at: AwareDatetime | None = None
     notes: Notes | None = None
+    program: ProgramLinkIn | None = None
 
 
 class SetIn(BaseModel):
@@ -53,6 +65,8 @@ class SetIn(BaseModel):
     duration_s: Annotated[float, Field(ge=0, le=86_400)] | None = None
     rpe: Annotated[int, Field(ge=1, le=10)] | None = None
     notes: Notes | None = None
+    # The program exercise the set is for, on the workout's program day.
+    block_exercise_id: RowId | None = None
 
     @model_validator(mode="after")
     def reps_or_duration(self) -> Self:
@@ -74,6 +88,10 @@ class ExerciseIn(BaseModel):
     allow_similar: bool = False
 
 
+def _link(program: ProgramLinkIn | None) -> ProgramLink | None:
+    return None if program is None else ProgramLink(program.day_id, program.week)
+
+
 def _database(request: Request) -> str:
     return str(request.app.state.settings.database)
 
@@ -91,7 +109,7 @@ def put_workout(request: Request, client_id: UUID, body: WorkoutIn) -> WorkoutDe
     times: tuple[datetime, datetime | None] = (body.started_at, body.ended_at)
     try:
         with closing(connect(_database(request))) as conn:
-            return record_workout(conn, str(client_id), times, body.notes)
+            return record_workout(conn, str(client_id), times, body.notes, _link(body.program))
     except InvalidWorkoutError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
 
@@ -111,9 +129,11 @@ def put_set(request: Request, client_id: UUID, body: SetIn) -> WorkoutDetail:
     placement = (str(body.workout_client_id), body.exercise_id)
     try:
         with closing(connect(_database(request))) as conn:
-            return record_set(conn, str(client_id), placement, values)
+            return record_set(conn, str(client_id), placement, values, body.block_exercise_id)
     except NotFoundError as error:
         raise HTTPException(status_code=404, detail=str(error)) from error
+    except InvalidSetError as error:
+        raise HTTPException(status_code=422, detail=str(error)) from error
     except JournalConflictError as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
 

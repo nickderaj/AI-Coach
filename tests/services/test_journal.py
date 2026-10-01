@@ -12,6 +12,7 @@ import pytest
 from trainer.domain.exercises import Equipment, Measure
 from trainer.services.journal import (
     DuplicateExerciseError,
+    InvalidSetError,
     InvalidWorkoutError,
     NewExercise,
     NotFoundError,
@@ -24,7 +25,7 @@ from trainer.services.journal import (
 from trainer.storage import journal as journal_storage
 from trainer.storage.catalogue import ExerciseSpec, add_alias, upsert_exercise
 from trainer.storage.database import connect, migrate
-from trainer.storage.journal import SetValues
+from trainer.storage.journal import ProgramLink, SetValues
 
 W1 = "11111111-1111-4111-8111-111111111111"
 START = datetime(2026, 9, 30, 9, 0, tzinfo=timezone(timedelta(hours=1)))
@@ -270,3 +271,97 @@ class TestConcurrency:
         with closing(connect(database[0])) as conn:
             count = conn.execute("SELECT count(*) FROM workout_sets").fetchone()[0]
         assert count == 1
+
+
+class TestProgramLinks:
+    """Workouts name a real program day and week; sets a program exercise of that day."""
+
+    @pytest.fixture
+    def day(self, db: sqlite3.Connection) -> tuple[int, int]:
+        """A program day with bench on it: (exercise id, block exercise id)."""
+        exercise_id = bench(db)
+        db.executescript(
+            """
+            INSERT INTO programs (id, name, training_weeks, status, created_at)
+                VALUES (1, 'P', 6, 'active', 't');
+            INSERT INTO program_days (id, program_id, position, name)
+                VALUES (1, 1, 1, 'A'), (2, 1, 2, 'B');
+            INSERT INTO program_blocks (id, day_id, position, rest_s)
+                VALUES (1, 1, 1, 90), (2, 2, 1, 90);
+            """
+        )
+        db.executemany(
+            "INSERT INTO block_exercises (id, block_id, position, exercise_id, sets, rep_min, "
+            "rep_max) VALUES (?, ?, 1, ?, 3, 8, 10)",
+            [(5, 1, exercise_id), (6, 2, exercise_id)],
+        )
+        db.commit()
+        return exercise_id, 5
+
+    def test_a_workout_of_a_program_day(self, db: sqlite3.Connection, day: tuple[int, int]) -> None:
+        assert day
+        detail = record_workout(db, W1, (START, None), None, ProgramLink(1, 7))
+
+        assert (detail.program_day_id, detail.program_week) == (1, 7)
+
+    @pytest.mark.parametrize(
+        ("link", "message"),
+        [
+            (ProgramLink(9, 1), "program day not found"),
+            (ProgramLink(1, 8), "the program has 7 weeks"),
+        ],
+    )
+    def test_a_workout_of_a_missing_program_day_or_week(
+        self, db: sqlite3.Connection, day: tuple[int, int], link: ProgramLink, message: str
+    ) -> None:
+        assert day
+        with pytest.raises(InvalidWorkoutError, match=rf"^{message}$"):
+            record_workout(db, W1, (START, None), None, link)
+
+        assert not db.in_transaction
+        assert db.execute("SELECT count(*) FROM workouts").fetchone()[0] == 0
+
+    def test_a_set_for_a_program_exercise(
+        self, db: sqlite3.Connection, day: tuple[int, int]
+    ) -> None:
+        exercise_id, slot = day
+        record_workout(db, W1, (START, None), None, ProgramLink(1, 1))
+
+        detail = record_set(db, "s1", (W1, exercise_id), FIVE, slot)
+
+        assert detail.exercises[0].block_exercise_id == slot
+
+    @pytest.mark.parametrize(
+        ("link", "slot", "message"),
+        [
+            (None, 5, "the program exercise is not on this workout's program day"),
+            (ProgramLink(2, 1), 5, "the program exercise is not on this workout's program day"),
+            (ProgramLink(1, 1), 99, "the program exercise is not on this workout's program day"),
+        ],
+    )
+    def test_a_set_for_a_program_exercise_of_another_day(
+        self,
+        db: sqlite3.Connection,
+        day: tuple[int, int],
+        link: ProgramLink | None,
+        slot: int,
+        message: str,
+    ) -> None:
+        exercise_id, _ = day
+        record_workout(db, W1, (START, None), None, link)
+
+        with pytest.raises(InvalidSetError, match=rf"^{message}$"):
+            record_set(db, "s1", (W1, exercise_id), FIVE, slot)
+
+        assert not db.in_transaction
+
+    def test_a_set_of_another_exercise(self, db: sqlite3.Connection, day: tuple[int, int]) -> None:
+        _, slot = day
+        other = upsert_exercise(db, ExerciseSpec("row", "Row", "cable", None, Measure.REPS))
+        db.commit()
+        record_workout(db, W1, (START, None), None, ProgramLink(1, 1))
+
+        with pytest.raises(
+            InvalidSetError, match=r"^the program exercise is for another exercise$"
+        ):
+            record_set(db, "s1", (W1, other), FIVE, slot)
