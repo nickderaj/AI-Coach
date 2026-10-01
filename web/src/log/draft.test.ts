@@ -420,12 +420,10 @@ describe("program days", () => {
       title: "Upper A · Week 2",
       blocks: [],
     });
-    expect(
-      draft.blocks.map((b) => [b.key, b.slot_id, b.plan?.label, b.plan?.group, b.plan?.last]),
-    ).toEqual([
-      ["slot-1", 1, "A", 0, true],
-      ["slot-2", 2, "B1", 1, false],
-      ["slot-3", 3, "B2", 1, true],
+    expect(draft.blocks.map((b) => [b.key, b.slot_id, b.plan?.label, b.plan?.group])).toEqual([
+      ["slot-1", 1, "A", 0],
+      ["slot-2", 2, "B1", 1],
+      ["slot-3", 3, "B2", 1],
     ]);
     expect(block(draft, 0)).toMatchObject({
       exercise: { id: 101, name: "Bench Press", measure: "reps", equipment: "barbell" },
@@ -500,17 +498,65 @@ describe("program days", () => {
     const draft = todayDraft(workout, UPPER, ids(), detail);
 
     const done = { kg: "62.5", reps: "8", seconds: "", rpe: "" };
-    expect(block(draft, 0).sets).toEqual([row({ ...done, id: "a", logged: done })]);
+    // One of three planned sets was logged: it takes its place, the rest keep their targets.
+    expect(block(draft, 0).sets).toEqual([
+      row({ ...done, id: "a", logged: done }),
+      row({ id: "r2", kg: "62.5", reps: "8" }),
+      row({ id: "r3", kg: "62.5", reps: "8" }),
+    ]);
     expect(block(draft, 1).sets).toHaveLength(2); // not done yet: prefilled
+  });
+
+  it("keeps every logged set, even past the plan", () => {
+    const sets = [1, 2, 3, 4].map((n) => logged(n, `s${String(n)}`, { reps: 8, load_kg: 60 }));
+    const detail: WorkoutDetail = {
+      id: 5,
+      started_at: "2026-10-01T07:00:00+00:00",
+      ended_at: null,
+      notes: null,
+      client_id: "w",
+      program_day_id: 11,
+      program_week: 2,
+      exercises: [
+        {
+          position: 1,
+          exercise_id: 101,
+          name: "Bench Press",
+          measure: "reps",
+          carried_kg: 0,
+          sets,
+          block_exercise_id: 1,
+        },
+      ],
+    };
+
+    const draft = todayDraft(workout, UPPER, ids(), detail);
+
+    expect(block(draft, 0).sets.map((set) => set.id)).toEqual(["s1", "s2", "s3", "s4"]);
   });
 
   it("rests per block, and only after a superset's round", () => {
     const draft = todayDraft(workout, UPPER, ids());
 
-    expect(restAfter(block(draft, 0), 90_000)).toBe(120_000);
-    expect(restAfter(block(draft, 1), 90_000)).toBeNull();
-    expect(restAfter(block(draft, 2), 90_000)).toBe(60_000);
-    expect(restAfter(block(withBench()), 90_000)).toBe(90_000);
+    expect(restAfter(draft, block(draft, 0), 0, 90_000)).toBe(120_000);
+    expect(restAfter(draft, block(draft, 1), 0, 90_000)).toBeNull(); // on to B2
+    expect(restAfter(draft, block(draft, 2), 0, 90_000)).toBe(60_000);
+    const adHoc = withBench();
+    expect(restAfter(adHoc, block(adHoc), 0, 90_000)).toBe(90_000);
+  });
+
+  it("ends a round with the last exercise that still has that set", () => {
+    // B1 has three sets and B2 two: B1's third set ends the third round.
+    const draft = addSet(todayDraft(workout, UPPER, ids()), "slot-2", "extra");
+
+    expect(restAfter(draft, block(draft, 1), 1, 90_000)).toBeNull();
+    expect(restAfter(draft, block(draft, 1), 2, 90_000)).toBe(60_000);
+  });
+
+  it("rests after every set once the rest of the superset is removed", () => {
+    const draft = removeBlock(todayDraft(workout, UPPER, ids()), "slot-3");
+
+    expect(restAfter(draft, block(draft, 1), 0, 90_000)).toBe(60_000);
   });
 
   it("keeps a superset together, and everything else apart", () => {

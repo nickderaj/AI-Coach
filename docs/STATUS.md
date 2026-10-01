@@ -540,6 +540,26 @@ workout.
   that, 4b).
 - Drafts saved by the previous version still load: the new fields default to
   nothing.
+- **From review**, so a stale screen can never train or change the wrong day:
+  - **The API** refuses (409) a workout that newly names a program day already
+    finished in that week, or a day of a program no longer active. A replay of
+    its own start or finish is still accepted.
+  - **The service worker** leaves a read made with `cache: "no-store"` to the
+    network: such a read gets the server's answer or fails, never a saved copy.
+  - **Start** reads Today afresh and starts only if the day and week shown are
+    still due and nothing trains them yet. Otherwise the plan reloads, with a
+    note. Without signal it starts from the saved plan, unless this phone
+    finished that day (it remembers the days it finishes).
+  - **Resume** reads the workout in progress afresh. It picks it up only if it
+    is the same workout, day and week; otherwise the plan reloads.
+  - **Partial pick-up:** logged sets take their places, and the sets still to
+    do keep their targets.
+  - **Home's Resume** of a program day goes through Today, which rebuilds the
+    plan around the logged sets. Any other unfinished workout is rebuilt as
+    before, keeping its program day.
+  - **Superset rest:** a round ends with the last exercise that has that set,
+    as the superset stands. With unequal set counts the longer one rests on
+    its extra sets, and after removing the rest of a superset every set rests.
 - Checked at phone size: this branch's API on a copy of the latest backup,
   with an upper/lower program and week 1 logged through the API, driven by
   Playwright in the headless shell. Today showed week 2 with the engine's

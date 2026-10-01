@@ -8,6 +8,7 @@ import { formatDay, formatSet } from "../format";
 import type { Logging } from "../log/context";
 import { useDraft, useLogging } from "../log/context";
 import { blockLabel, newDraft, startWrite, todayDraft } from "../log/draft";
+import { finishedHere } from "../log/finished";
 import type { Draft } from "../log/draft";
 import { href, navigate } from "../router";
 import { targetLine } from "./Log";
@@ -36,7 +37,6 @@ function Exercises({ day }: { day: PlannedDay }): ReactElement {
                 const plan = {
                   label: blockLabel(group, position, block.exercises.length),
                   group,
-                  last: false,
                   rest_s: block.rest_s,
                   rep_min: exercise.rep_min,
                   rep_max: exercise.rep_max,
@@ -67,20 +67,106 @@ function Exercises({ day }: { day: PlannedDay }): ReactElement {
   );
 }
 
+type Outcome = "started" | "stale" | { error: string };
+
+/** @internal Exported for tests. */
+export const FINISHED_HERE =
+  "You finished this day on this phone. The next one shows once you are back online.";
+/** @internal Exported for tests. */
+export const RESUME_OFFLINE = "Picking the workout back up needs a connection.";
+
+/** Start `day` as a new workout on this phone, prefilled from its targets. */
+function startDay(logging: Logging, program_name: string, day: PlannedDay): Outcome {
+  const fresh = todayDraft(
+    { ...newDraft(crypto.randomUUID(), new Date()), program_name },
+    day,
+    () => crypto.randomUUID(),
+  );
+  const used = logging.drafts.update((current) => current ?? fresh);
+  if (used === fresh) {
+    void logging.outbox.send(startWrite(fresh));
+  }
+  return "started";
+}
+
+/**
+ * Start the day shown, if it is still the day to train. The server is asked
+ * afresh (never a saved copy); without signal, the saved plan is used unless
+ * this phone has already finished that day.
+ */
+async function start(logging: Logging, today: TodayPlan, day: PlannedDay): Promise<Outcome> {
+  let fresh: TodayPlan | null;
+  try {
+    fresh = await fetchJson("/api/today", todaySchema, undefined, true);
+  } catch {
+    if (finishedHere(localStorage, day.id, day.week)) {
+      return { error: FINISHED_HERE };
+    }
+    return startDay(logging, today.program_name, day);
+  }
+  const due = stillDue(fresh, day);
+  return due === null ? "stale" : startDay(logging, today.program_name, due);
+}
+
+/** The day in a fresh plan, if it is still `day` and no workout trains it yet. */
+function stillDue(fresh: TodayPlan | null, day: PlannedDay): PlannedDay | null {
+  const due = fresh?.day;
+  if (due?.id !== day.id || due.week !== day.week || fresh?.workout_client_id !== null) {
+    return null;
+  }
+  return due;
+}
+
+/**
+ * Pick up the server's workout for this day, which this phone lost: only if it
+ * is still the one in progress, for this day and week.
+ */
+async function resume(
+  logging: Logging,
+  today: TodayPlan,
+  day: PlannedDay,
+  id: string,
+): Promise<Outcome> {
+  let detail;
+  try {
+    detail = await fetchJson("/api/workouts/current", currentWorkoutSchema, undefined, true);
+  } catch {
+    return { error: RESUME_OFFLINE };
+  }
+  if (
+    detail?.client_id !== id ||
+    detail.program_day_id !== day.id ||
+    detail.program_week !== day.week
+  ) {
+    return "stale";
+  }
+  const { started_at } = detail;
+  const rebuilt = todayDraft(
+    { id, started_at, program_name: today.program_name },
+    day,
+    () => crypto.randomUUID(),
+    detail,
+  );
+  logging.drafts.update((current) => current ?? rebuilt);
+  return "started";
+}
+
 /** Start the day, or carry on with the workout already training it. */
 function Begin({
   logging,
   draft,
   today,
   day,
+  onStale,
 }: {
   logging: Logging;
   draft: Draft | null;
   today: TodayPlan;
   day: PlannedDay;
+  onStale: () => void;
 }): ReactElement {
   const [error, setError] = useState<string | null>(null);
-  const program_name = today.program_name;
+  const [busy, setBusy] = useState(false);
 
   if (draft !== null) {
     const same = draft.program?.day_id === day.id;
@@ -94,51 +180,30 @@ function Begin({
     );
   }
 
-  const start = (): void => {
-    const fresh = todayDraft(
-      { ...newDraft(crypto.randomUUID(), new Date()), program_name },
-      day,
-      () => crypto.randomUUID(),
-    );
-    const used = logging.drafts.update((current) => current ?? fresh);
-    if (used === fresh) {
-      void logging.outbox.send(startWrite(fresh));
-    }
-    navigate({ name: "log" });
-  };
-
-  // The server has this day's workout, but this phone has lost its copy.
-  const resume = async (id: string): Promise<void> => {
-    setError(null);
-    try {
-      const detail = await fetchJson("/api/workouts/current", currentWorkoutSchema);
-      // Finished elsewhere meanwhile: start the day afresh under its id, in whole seconds.
-      const started_at = detail?.started_at ?? newDraft(id, new Date()).started_at;
-      const rebuilt = todayDraft(
-        { id, started_at, program_name },
-        day,
-        () => crypto.randomUUID(),
-        detail,
-      );
-      logging.drafts.update((current) => current ?? rebuilt);
-      navigate({ name: "log" });
-    } catch {
-      setError("Picking the workout back up needs a connection.");
-    }
-  };
-
   const id = today.workout_client_id;
+  const begin = async (): Promise<void> => {
+    setBusy(true);
+    setError(null);
+    const outcome = await (id === null
+      ? start(logging, today, day)
+      : resume(logging, today, day, id));
+    setBusy(false);
+    if (outcome === "started") {
+      navigate({ name: "log" });
+    } else if (outcome === "stale") {
+      onStale();
+    } else {
+      setError(outcome.error);
+    }
+  };
   return (
     <>
       <button
         type="button"
         className="primary"
+        disabled={busy}
         onClick={() => {
-          if (id === null) {
-            start();
-          } else {
-            void resume(id);
-          }
+          void begin();
         }}
       >
         {id === null ? "Start this workout" : "Resume this workout"}
@@ -152,7 +217,15 @@ function Begin({
   );
 }
 
-function Planned({ today, day }: { today: TodayPlan; day: PlannedDay }): ReactElement {
+function Planned({
+  today,
+  day,
+  onStale,
+}: {
+  today: TodayPlan;
+  day: PlannedDay;
+  onStale: () => void;
+}): ReactElement {
   const logging = useLogging();
   const draft = useDraft(logging?.drafts ?? null);
   return (
@@ -164,7 +237,7 @@ function Planned({ today, day }: { today: TodayPlan; day: PlannedDay }): ReactEl
         <h1>{day.name}</h1>
         <p className={day.deload ? "deload" : "muted"}>{weekLine(today, day)}</p>
         {logging === null ? null : (
-          <Begin logging={logging} draft={draft} today={today} day={day} />
+          <Begin logging={logging} draft={draft} today={today} day={day} onStale={onStale} />
         )}
       </header>
       <Exercises day={day} />
@@ -184,25 +257,43 @@ function Nothing({ text }: { text: string }): ReactElement {
   );
 }
 
+function Plan({ onStale }: { onStale: () => void }): ReactElement {
+  const state = useApi("/api/today", todaySchema);
+  return (
+    <Load state={state}>
+      {(today) => {
+        if (today === null) {
+          return <Nothing text="No program yet. Ask the coach for one." />;
+        }
+        if (today.day === null) {
+          return <Nothing text="Block complete. Ask the coach for your next program." />;
+        }
+        return <Planned today={today} day={today.day} onStale={onStale} />;
+      }}
+    </Load>
+  );
+}
+
 /** Today: the active program's next day, with every set's target and last time. */
 export function Today(): ReactElement {
-  const state = useApi("/api/today", todaySchema);
+  // Bumped to load the plan again when it turns out to have changed.
+  const [version, setVersion] = useState(0);
   return (
     <>
       <a className="back" href={href({ name: "home" })}>
         ‹ Home
       </a>
-      <Load state={state}>
-        {(today) => {
-          if (today === null) {
-            return <Nothing text="No program yet. Ask the coach for one." />;
-          }
-          if (today.day === null) {
-            return <Nothing text="Block complete. Ask the coach for your next program." />;
-          }
-          return <Planned today={today} day={today.day} />;
+      {version === 0 ? null : (
+        <p className="notice tint" style={tone("peach")} role="status">
+          The plan had changed since this screen was loaded. This is the current one.
+        </p>
+      )}
+      <Plan
+        key={version}
+        onStale={() => {
+          setVersion((current) => current + 1);
         }}
-      </Load>
+      />
     </>
   );
 }

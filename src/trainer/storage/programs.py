@@ -356,13 +356,33 @@ def set_days(conn: sqlite3.Connection, workout_client_id: str) -> set[int]:
     }
 
 
-def day_weeks(conn: sqlite3.Connection, day_id: int) -> int | None:
-    """How many weeks, deload included, the program of a day has; ``None`` if no such day."""
+@dataclass(frozen=True)
+class DayProgram:
+    """The program a day belongs to: its weeks, deload included, and whether it is active."""
+
+    weeks: int
+    active: bool
+
+
+def day_program(conn: sqlite3.Connection, day_id: int) -> DayProgram | None:
+    """The program of a day, or ``None`` if there is no such day."""
     row = conn.execute(
         """
-        SELECT p.training_weeks + 1 FROM program_days d
+        SELECT p.training_weeks + 1, p.status = 'active' FROM program_days d
         JOIN programs p ON p.id = d.program_id WHERE d.id = ?
         """,
         (day_id,),
     ).fetchone()
-    return None if row is None else int(row[0])
+    return None if row is None else DayProgram(int(row[0]), bool(row[1]))
+
+
+def day_done(conn: sqlite3.Connection, day_id: int, week: int) -> bool:
+    """Whether a finished workout has trained this program day in this week."""
+    row = conn.execute(
+        """
+        SELECT 1 FROM workouts
+        WHERE program_day_id = ? AND program_week = ? AND ended_at IS NOT NULL
+        """,
+        (day_id, week),
+    ).fetchone()
+    return row is not None

@@ -1,11 +1,15 @@
 import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
+import type { Mock } from "vitest";
 
 import { App } from "../App";
 import { addBlock, newDraft, todayDraft } from "../log/draft";
+import type { Draft } from "../log/draft";
+import { finishedHere, markFinished } from "../log/finished";
 import { renderLogging, routeFetch, writes } from "../test/logging";
 import { TODAY, UPPER } from "../test/today";
 import { targetLine } from "./Log";
+import { FINISHED_HERE, RESUME_OFFLINE } from "./Today";
 
 const NOW = new Date("2026-10-01T07:00:00Z");
 const BENCH = { id: 7, name: "Bench Press", measure: "reps" as const, equipment: "barbell" };
@@ -15,6 +19,94 @@ async function go(hash: string): Promise<void> {
     window.location.hash = hash;
     await new Promise((resolve) => setTimeout(resolve, 0));
   });
+}
+
+type Answer = unknown;
+
+/**
+ * Replace fetch with answers given in turn per "METHOD path", the last one
+ * repeated; an Error answers as a network failure.
+ */
+function sequence(routes: Record<string, Answer[]>): Mock<typeof fetch> {
+  const seen = new Map<string, number>();
+  const fetchMock = vi.fn<typeof fetch>((input, init) => {
+    const key = `${init?.method ?? "GET"} ${pathOf(input)}`;
+    const answers = routes[key] ?? [];
+    const count = seen.get(key) ?? 0;
+    seen.set(key, count + 1);
+    return reply(answers, count);
+  });
+  vi.stubGlobal("fetch", fetchMock);
+  return fetchMock;
+}
+
+function pathOf(input: RequestInfo | URL): string {
+  if (typeof input === "string") {
+    return input;
+  }
+  return input instanceof URL ? input.pathname : input.url;
+}
+
+function reply(answers: Answer[], count: number): Promise<Response> {
+  if (answers.length === 0) {
+    return Promise.resolve(new Response("{}", { status: 404 }));
+  }
+  const answer = answers[Math.min(count, answers.length - 1)];
+  if (answer instanceof Error) {
+    return Promise.reject(answer);
+  }
+  return Promise.resolve(new Response(JSON.stringify(answer), { status: 200 }));
+}
+
+/** The server's copy of this day's workout, w9, with one bench set logged. */
+function serverWorkout(): Record<string, unknown> {
+  return {
+    id: 5,
+    started_at: "2026-10-01T06:30:00+00:00",
+    ended_at: null,
+    notes: null,
+    client_id: "w9",
+    program_day_id: 11,
+    program_week: 2,
+    exercises: [
+      {
+        position: 1,
+        exercise_id: 101,
+        name: "Bench Press",
+        measure: "reps",
+        carried_kg: 0,
+        block_exercise_id: 1,
+        sets: [
+          {
+            set_number: 1,
+            reps: 9,
+            load_kg: 62.5,
+            duration_s: null,
+            rpe: null,
+            notes: null,
+            client_id: "a",
+          },
+        ],
+      },
+    ],
+  };
+}
+
+/** The draft rebuilt from `serverWorkout()`: its sets in place, the rest still to do. */
+function expectResumed(draft: Draft | null): void {
+  expect([draft?.id, draft?.started_at, draft?.program]).toEqual([
+    "w9",
+    "2026-10-01T06:30:00+00:00",
+    { day_id: 11, week: 2 },
+  ]);
+  const bench = draft?.blocks[0]?.sets ?? [];
+  // One of three bench sets was logged; the other two keep their targets.
+  expect(bench.map((set) => [set.logged?.reps, set.reps])).toEqual([
+    ["9", "9"],
+    [undefined, "8"],
+    [undefined, "8"],
+  ]);
+  expect(draft?.blocks.map((block) => block.sets.length)).toEqual([3, 2, 2]);
 }
 
 let counter = 0;
@@ -40,7 +132,6 @@ describe("targetLine", () => {
   const plan = {
     label: "A",
     group: 0,
-    last: true,
     rest_s: 90,
     rep_min: 5,
     rep_max: 5,
@@ -113,13 +204,17 @@ describe("Today", () => {
   });
 
   it("starts the day prefilled from its targets, and trains it", async () => {
-    routeFetch({ "GET /api/today": { body: TODAY } });
+    const fetchMock = sequence({ "GET /api/today": [TODAY, TODAY] });
     const { outbox, drafts } = renderLogging();
 
     fireEvent.click(await screen.findByRole("button", { name: "Start this workout" }));
+    await vi.waitFor(() => {
+      expect(window.location.hash).toBe("#/log");
+    });
     await go(window.location.hash);
 
-    expect(window.location.hash).toBe("#/log");
+    // The day was checked with the server, not a saved copy, before starting.
+    expect(fetchMock.mock.calls.map(([, init]) => init?.cache)).toEqual([undefined, "no-store"]);
     const draft = drafts.get();
     expect(draft?.program).toEqual({ day_id: 11, week: 2 });
     expect(writes(outbox)).toEqual([
@@ -151,19 +246,69 @@ describe("Today", () => {
     expect(within(superset).getByText("First time in this program")).toBeInTheDocument();
 
     // Bench rests its own 120 s; a superset rests only after its round.
+    const ticked = Date.now();
     fireEvent.click(within(bench).getByRole("button", { name: "Set 1 done" }));
-    expect(drafts.get()?.restUntil).toBe(NOW.getTime() + 120_000);
+    expect(drafts.get()?.restUntil).toBe(ticked + 120_000);
     const row = within(superset).getByRole("region", { name: "Cable Row" });
     fireEvent.click(within(row).getByRole("button", { name: "Set 1 done" }));
-    expect(drafts.get()?.restUntil).toBe(NOW.getTime() + 120_000);
+    expect(drafts.get()?.restUntil).toBe(ticked + 120_000);
     const hang = within(superset).getByRole("region", { name: "Dead Hang" });
     fireEvent.click(within(hang).getByRole("button", { name: "Set 1 done" }));
-    expect(drafts.get()?.restUntil).toBe(NOW.getTime() + 60_000);
+    expect(drafts.get()?.restUntil).toBe(ticked + 60_000);
 
     const sets = writes(outbox).slice(1);
     expect(
       sets.map(([, body]) => (body as { block_exercise_id: number }).block_exercise_id),
     ).toEqual([1, 2, 3]);
+
+    // Finishing it marks the day done on this phone.
+    fireEvent.click(screen.getByRole("button", { name: "Finish" }));
+    expect(finishedHere(localStorage, 11, 2)).toBe(true);
+    expect(finishedHere(localStorage, 11, 3)).toBe(false);
+  });
+
+  it.each([
+    ["the server has moved on to another day", { ...TODAY, day: { ...UPPER, id: 12 } }],
+    ["the server has moved on to another week", { ...TODAY, day: { ...UPPER, week: 3 } }],
+    ["the day is already being trained", { ...TODAY, workout_client_id: "w8" }],
+    ["the block is done", { ...TODAY, day: null }],
+    ["there is no program any more", null],
+  ])("does not start a day when %s", async (_why, fresh) => {
+    sequence({ "GET /api/today": [TODAY, fresh] });
+    const { outbox, drafts } = renderLogging();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Start this workout" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent(
+      "The plan had changed since this screen was loaded. This is the current one.",
+    );
+    expect(drafts.get()).toBeNull();
+    expect(writes(outbox)).toEqual([]);
+    expect(window.location.hash).toBe("#/today");
+  });
+
+  it("starts from the saved plan without signal", async () => {
+    sequence({ "GET /api/today": [TODAY, new TypeError("offline")] });
+    const { drafts } = renderLogging();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Start this workout" }));
+
+    await vi.waitFor(() => {
+      expect(drafts.get()?.program).toEqual({ day_id: 11, week: 2 });
+    });
+  });
+
+  it("never starts a day again that this phone has finished, without signal", async () => {
+    markFinished(localStorage, 11, 2);
+    sequence({ "GET /api/today": [TODAY, new TypeError("offline")] });
+    const { drafts, outbox } = renderLogging();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Start this workout" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(FINISHED_HERE);
+    expect(drafts.get()).toBeNull();
+    expect(writes(outbox)).toEqual([]);
+    expect(screen.getByRole("button", { name: "Start this workout" })).toBeEnabled();
   });
 
   it("goes back to the day's workout already on this phone", async () => {
@@ -187,41 +332,10 @@ describe("Today", () => {
     expect(screen.queryByRole("button", { name: "Start this workout" })).not.toBeInTheDocument();
   });
 
-  it("picks the day's workout back up from the server", async () => {
-    routeFetch({
-      "GET /api/today": { body: { ...TODAY, workout_client_id: "w9" } },
-      "GET /api/workouts/current": {
-        body: {
-          id: 5,
-          started_at: "2026-10-01T06:30:00+00:00",
-          ended_at: null,
-          notes: null,
-          client_id: "w9",
-          program_day_id: 11,
-          program_week: 2,
-          exercises: [
-            {
-              position: 1,
-              exercise_id: 101,
-              name: "Bench Press",
-              measure: "reps",
-              carried_kg: 0,
-              block_exercise_id: 1,
-              sets: [
-                {
-                  set_number: 1,
-                  reps: 9,
-                  load_kg: 62.5,
-                  duration_s: null,
-                  rpe: null,
-                  notes: null,
-                  client_id: "a",
-                },
-              ],
-            },
-          ],
-        },
-      },
+  it("picks the day's workout back up from the server, keeping the sets still to do", async () => {
+    const fetchMock = sequence({
+      "GET /api/today": [{ ...TODAY, workout_client_id: "w9" }],
+      "GET /api/workouts/current": [serverWorkout()],
     });
     const { outbox, drafts } = renderLogging();
 
@@ -230,20 +344,15 @@ describe("Today", () => {
       expect(window.location.hash).toBe("#/log");
     });
 
-    const draft = drafts.get();
-    expect([draft?.id, draft?.started_at, draft?.program]).toEqual([
-      "w9",
-      "2026-10-01T06:30:00+00:00",
-      { day_id: 11, week: 2 },
-    ]);
-    expect(draft?.blocks[0]?.sets.map((set) => set.logged?.reps)).toEqual(["9"]);
+    expect(fetchMock.mock.calls.at(-1)?.[1]?.cache).toBe("no-store");
     expect(writes(outbox)).toEqual([]);
+    expectResumed(drafts.get());
   });
 
-  it("starts afresh if the server's workout has just been finished", async () => {
-    routeFetch({
-      "GET /api/today": { body: { ...TODAY, workout_client_id: "w9" } },
-      "GET /api/workouts/current": { body: null },
+  it("picks up a day started with nothing logged yet", async () => {
+    sequence({
+      "GET /api/today": [{ ...TODAY, workout_client_id: "w9" }],
+      "GET /api/workouts/current": [{ ...serverWorkout(), exercises: [] }],
     });
     const { drafts } = renderLogging();
 
@@ -251,21 +360,41 @@ describe("Today", () => {
     await vi.waitFor(() => {
       expect(drafts.get()?.id).toBe("w9");
     });
-    expect(drafts.get()?.started_at).toBe(NOW.toISOString());
+
+    expect(drafts.get()?.blocks.map((block) => block.sets.length)).toEqual([3, 2, 2]);
+    expect(drafts.get()?.blocks[0]?.plan?.label).toBe("A");
+  });
+
+  it.each([
+    ["it has been finished", null],
+    ["another workout is in progress", { ...serverWorkout(), client_id: "w7" }],
+    ["it trains another day", { ...serverWorkout(), program_day_id: 12 }],
+    ["it trains another week", { ...serverWorkout(), program_week: 3 }],
+  ])("does not pick up the server's workout when %s", async (_why, current) => {
+    sequence({
+      "GET /api/today": [{ ...TODAY, workout_client_id: "w9" }, TODAY],
+      "GET /api/workouts/current": [current],
+    });
+    const { drafts, outbox } = renderLogging();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Resume this workout" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent("The plan had changed");
+    expect(await screen.findByRole("button", { name: "Start this workout" })).toBeInTheDocument();
+    expect(drafts.get()).toBeNull();
+    expect(writes(outbox)).toEqual([]);
   });
 
   it("needs a connection to pick it back up", async () => {
-    routeFetch({
-      "GET /api/today": { body: { ...TODAY, workout_client_id: "w9" } },
-      "GET /api/workouts/current": new TypeError("offline"),
+    sequence({
+      "GET /api/today": [{ ...TODAY, workout_client_id: "w9" }],
+      "GET /api/workouts/current": [new TypeError("offline")],
     });
     const { drafts } = renderLogging();
 
     fireEvent.click(await screen.findByRole("button", { name: "Resume this workout" }));
 
-    expect(await screen.findByRole("alert")).toHaveTextContent(
-      "Picking the workout back up needs a connection.",
-    );
+    expect(await screen.findByRole("alert")).toHaveTextContent(RESUME_OFFLINE);
     expect(drafts.get()).toBeNull();
   });
 });
@@ -297,6 +426,41 @@ describe("Home", () => {
     expect(await screen.findByRole("link", { name: /Next in your program/ })).toHaveTextContent(
       "Upper A · Deload week",
     );
+  });
+
+  it("picks up a program day in progress through Today", async () => {
+    window.location.hash = "";
+    routeFetch({
+      "GET /api/today": { body: { ...TODAY, workout_client_id: "w9" } },
+      "GET /api/workouts?limit=500": { body: [] },
+      "GET /api/workouts/current": { body: serverWorkout() },
+    });
+    renderLogging();
+
+    const link = await screen.findByRole("link", {
+      name: /Resume the unfinished program workout from/,
+    });
+    expect(link).toHaveAttribute("href", "#/today");
+    expect(
+      screen.queryByRole("button", { name: /Resume the unfinished workout/ }),
+    ).not.toBeInTheDocument();
+  });
+
+  it("picks up any other unfinished workout as it is", async () => {
+    window.location.hash = "";
+    routeFetch({
+      "GET /api/today": { body: TODAY },
+      "GET /api/workouts?limit=500": { body: [] },
+      "GET /api/workouts/current": { body: serverWorkout() },
+    });
+    const { drafts } = renderLogging();
+
+    fireEvent.click(
+      await screen.findByRole("button", { name: /Resume the unfinished workout from/ }),
+    );
+
+    // Its program day is kept, so finishing it still names it.
+    expect(drafts.get()?.program).toEqual({ day_id: 11, week: 2 });
   });
 
   it("shows no card once the block is done", async () => {

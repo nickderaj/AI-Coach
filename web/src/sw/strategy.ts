@@ -8,7 +8,8 @@
  *   icons) is network first, falling back to the last copy when the network
  *   fails, answers 5xx or is too slow, so the app opens and shows recent data
  *   in a gym with no signal.
- * - Writes and other sites are left alone; writes go through the outbox.
+ * - Writes, other sites and reads that must be fresh (`cache: "no-store"`)
+ *   are left alone; writes go through the outbox.
  */
 
 /** Bump to discard every cached response when the worker is next updated. */
@@ -27,8 +28,17 @@ export interface Deps {
   fetch: Fetch;
 }
 
-export function strategyFor(method: string, url: URL, origin: string): Strategy {
-  if (method !== "GET" || url.origin !== origin) {
+/**
+ * A read made with `cache: "no-store"` must come from the server or fail: it
+ * is left to the network, never answered from a stale copy.
+ */
+export function strategyFor(
+  method: string,
+  url: URL,
+  origin: string,
+  cache: RequestCache = "default",
+): Strategy {
+  if (method !== "GET" || url.origin !== origin || cache === "no-store") {
     return "bypass";
   }
   return url.pathname.startsWith("/assets/") ? "cache-first" : "network-first";

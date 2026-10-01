@@ -1,6 +1,7 @@
 import type { ReactElement } from "react";
 
-import { currentWorkoutSchema, useApi } from "../api";
+import { currentWorkoutSchema, todaySchema, useApi } from "../api";
+import type { Loadable, TodayPlan } from "../api";
 import { tone } from "../components";
 import { formatDay, formatTime, plural } from "../format";
 import type { Logging } from "../log/context";
@@ -22,12 +23,48 @@ function Resume({ draft }: { draft: Draft }): ReactElement {
   );
 }
 
-function Start({ logging }: { logging: Logging }): ReactElement {
-  // A workout started on another device, or on this one before its copy was lost.
+/** Whether the workout `id` is the one training the program's day, as Today has it. */
+function trainsToday(today: Loadable<TodayPlan | null>, id: string): boolean {
+  return today.status === "ready" && today.data?.workout_client_id === id;
+}
+
+/**
+ * Pick up a workout started on another device, or on this one before its copy
+ * was lost. A program day in progress goes through Today, which rebuilds its
+ * plan (targets, supersets, rests) around the sets it has, after checking it
+ * afresh; any other is rebuilt from what the server has.
+ */
+function PickUp({ logging }: { logging: Logging }): ReactElement | null {
   const current = useApi("/api/workouts/current", currentWorkoutSchema);
+  const today = useApi("/api/today", todaySchema);
   const unfinished = current.status === "ready" ? current.data : null;
   const clientId = unfinished?.client_id ?? null;
+  if (unfinished === null || clientId === null) {
+    return null;
+  }
+  const when = `${formatDay(unfinished.started_at)}, ${formatTime(unfinished.started_at)}`;
+  if (trainsToday(today, clientId)) {
+    return (
+      <a className="link" href={href({ name: "today" })}>
+        Resume the unfinished program workout from {when} ›
+      </a>
+    );
+  }
+  return (
+    <button
+      type="button"
+      className="link"
+      onClick={() => {
+        logging.drafts.update((current) => current ?? draftFromServer(unfinished, clientId));
+        navigate({ name: "log" });
+      }}
+    >
+      Resume the unfinished workout from {when}
+    </button>
+  );
+}
 
+function Start({ logging }: { logging: Logging }): ReactElement {
   const start = (): void => {
     const fresh = newDraft(crypto.randomUUID(), new Date());
     // Another tab may have started one since this screen was drawn: use that.
@@ -45,19 +82,7 @@ function Start({ logging }: { logging: Logging }): ReactElement {
       <button type="button" className="primary" onClick={start}>
         Start workout
       </button>
-      {unfinished === null || clientId === null ? null : (
-        <button
-          type="button"
-          className="link"
-          onClick={() => {
-            logging.drafts.update((current) => current ?? draftFromServer(unfinished, clientId));
-            navigate({ name: "log" });
-          }}
-        >
-          Resume the unfinished workout from {formatDay(unfinished.started_at)},{" "}
-          {formatTime(unfinished.started_at)}
-        </button>
-      )}
+      <PickUp logging={logging} />
     </section>
   );
 }

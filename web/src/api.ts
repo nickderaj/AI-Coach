@@ -103,16 +103,20 @@ export class ApiError extends Error {
 }
 
 /**
- * GET a same-origin JSON endpoint and validate the body against `schema`.
+ * GET a same-origin JSON endpoint and validate the body against `schema`;
+ * `fresh` insists on the server's answer, never a saved copy.
  */
 export async function fetchJson<T>(
   path: string,
   schema: z.ZodType<T>,
   signal?: AbortSignal,
+  fresh = false,
 ): Promise<T> {
   const response = await fetch(path, {
     signal: signal ?? null,
     headers: { Accept: "application/json" },
+    // Fresh reads skip the service worker's saved copies: the server or nothing.
+    ...(fresh ? { cache: "no-store" as const } : {}),
   });
   if (!response.ok) {
     throw new ApiError(response.status);

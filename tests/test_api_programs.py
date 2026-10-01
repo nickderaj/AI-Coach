@@ -292,6 +292,23 @@ class TestTraining:
         assert response.status_code == 422
         assert isinstance(response.json()["detail"], list)  # refused by the shape, not the day
 
+    def test_a_finished_day_cannot_be_started_again(
+        self, client: TestClient, program: dict[str, Any]
+    ) -> None:
+        day_id = program["days"][0]["id"]
+        link = {"day_id": day_id, "week": 1}
+        done = {"started_at": "2026-10-01T09:00:00Z", "ended_at": "2026-10-01T10:00:00Z"}
+        client.put(f"/api/workouts/{W1}", json=done | {"program": link}, headers=OWNER)
+
+        again = client.put(
+            "/api/workouts/22222222-2222-4222-8222-222222222222",
+            json={"started_at": "2026-10-02T09:00:00Z", "program": link},
+            headers=OWNER,
+        )
+
+        assert again.status_code == 409
+        assert again.json() == {"detail": "week 1 of day " + str(day_id) + " is already done"}
+
     def test_a_workout_of_a_missing_day(self, client: TestClient, program: dict[str, Any]) -> None:
         response = self.start(client, program["days"][1]["id"] + 100)
 

@@ -21,6 +21,7 @@ from trainer.services.journal import (
     InvalidWorkoutError,
     NewExercise,
     NotFoundError,
+    StaleProgramDayError,
     add_exercise,
     record_set,
     record_workout,
@@ -112,6 +113,8 @@ def put_workout(request: Request, client_id: UUID, body: WorkoutIn) -> WorkoutDe
             return record_workout(conn, str(client_id), times, body.notes, _link(body.program))
     except InvalidWorkoutError as error:
         raise HTTPException(status_code=422, detail=str(error)) from error
+    except StaleProgramDayError as error:
+        raise HTTPException(status_code=409, detail=str(error)) from error
 
 
 @router.delete("/workouts/{client_id}", status_code=204)

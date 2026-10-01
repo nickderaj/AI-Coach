@@ -21,6 +21,7 @@ import {
   valuesOf,
 } from "../log/draft";
 import type { Draft, DraftBlock, DraftSet, Plan, Typed } from "../log/draft";
+import { markFinished } from "../log/finished";
 import { useNow } from "../log/useNow";
 import { href, navigate } from "../router";
 
@@ -87,7 +88,8 @@ function actionsFor({ outbox, drafts }: Logging, draft: Draft): Actions {
         void outbox.send(deleteSetWrite(block, set));
       } else if (valuesOf(set, block.exercise.measure) !== null) {
         // A program block rests as long as it says, and a superset only after its round.
-        const rest = restAfter(block, REST_MS);
+        const index = block.sets.findIndex((row) => row.id === set.id);
+        const rest = restAfter(draft, block, index, REST_MS);
         change((d) => ({
           ...updateSet(d, block.key, set.id, { logged: typedOf(set) }),
           restUntil: rest === null ? d.restUntil : Date.now() + rest,
@@ -404,6 +406,9 @@ function ActiveWorkout({ logging, draft }: { logging: Logging; draft: Draft }): 
             if (logged === 0) {
               setPending("empty");
             } else {
+              if (draft.program !== null) {
+                markFinished(localStorage, draft.program.day_id, draft.program.week);
+              }
               void close(finishWrite(draft, new Date()));
             }
           }}

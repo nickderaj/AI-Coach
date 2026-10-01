@@ -49,8 +49,6 @@ const planSchema = z.object({
   label: z.string(),
   /** Its block's index in the day: a superset's exercises share one. */
   group: z.number().int(),
-  /** The last exercise of its block: a round of a superset ends with it. */
-  last: z.boolean(),
   rest_s: z.number().int(),
   rep_min: z.number().int(),
   rep_max: z.number().int(),
@@ -340,8 +338,8 @@ export function blockLabel(block: number, position: number, size: number): strin
  * A workout of today's program day, each set prefilled with its target.
  *
  * `resume` is the server's copy of the workout already training this day, if
- * any: its id and start are kept, and the sets it has logged replace the
- * prefilled rows of their program exercise.
+ * any: the sets it has logged take the first places of their program
+ * exercise, and the rest keep their targets.
  */
 export function todayDraft(
   workout: { id: string; started_at: string; program_name: string },
@@ -362,6 +360,10 @@ export function todayDraft(
           (b) => b.block_exercise_id === exercise.block_exercise_id,
         );
         const { target, measure } = exercise;
+        const planned = target.reps.map((amount) =>
+          targetRow(newId(), measure, target.load_kg, amount),
+        );
+        const logged = done === undefined ? [] : loggedRows(done.sets);
         return {
           key: `slot-${String(exercise.block_exercise_id)}`,
           exercise: {
@@ -375,15 +377,11 @@ export function todayDraft(
             load_kg,
             duration_s,
           })),
-          sets:
-            done === undefined
-              ? target.reps.map((amount) => targetRow(newId(), measure, target.load_kg, amount))
-              : loggedRows(done.sets),
+          sets: [...logged, ...planned.slice(logged.length)],
           slot_id: exercise.block_exercise_id,
           plan: {
             label: blockLabel(group, position, block.exercises.length),
             group,
-            last: position === block.exercises.length - 1,
             rest_s: block.rest_s,
             rep_min: exercise.rep_min,
             rep_max: exercise.rep_max,
@@ -395,12 +393,24 @@ export function todayDraft(
   };
 }
 
-/** Rest after ticking a set in ``block``, in ms; null mid-superset (go to the next exercise). */
-export function restAfter(block: DraftBlock, standard: number): number | null {
-  if (block.plan === null) {
+/**
+ * Rest after ticking set `index` of `block`, in ms; null mid-round of a
+ * superset, where the next exercise follows at once. A round ends with the
+ * last exercise of the superset, as it stands, that has a set at `index`.
+ */
+export function restAfter(
+  draft: Draft,
+  block: DraftBlock,
+  index: number,
+  standard: number,
+): number | null {
+  const { plan } = block;
+  if (plan === null) {
     return standard;
   }
-  return block.plan.last ? block.plan.rest_s * 1000 : null;
+  const group = draft.blocks.filter((other) => other.plan?.group === plan.group);
+  const later = group.slice(group.findIndex((other) => other.key === block.key) + 1);
+  return later.some((other) => other.sets.length > index) ? null : plan.rest_s * 1000;
 }
 
 /**
