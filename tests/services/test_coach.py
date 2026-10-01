@@ -132,7 +132,9 @@ def test_history_shows_what_was_said_oldest_first(db: sqlite3.Connection) -> Non
     gateway = FakeGateway()
     gateway.sessions["s"] = [
         GatewayMessage("user", "what did I bench?", 1_790_859_428.6),
-        GatewayMessage("assistant", "", 1_790_859_430.9),  # a tool call
+        GatewayMessage("assistant", "", 1_790_859_430.9, calls_tools=True),  # a tool call
+        # Commentary written alongside tool calls: a step of the turn, not its answer.
+        GatewayMessage("assistant", "Let me look that up.", 1_790_859_430.95, calls_tools=True),
         GatewayMessage("tool", '{"sets": []}', 1_790_859_431.0),
         GatewayMessage("assistant", "  \n", 1_790_859_431.5),
         GatewayMessage("system", "be brief", 1_790_859_431.7),

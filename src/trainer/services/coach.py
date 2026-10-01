@@ -69,6 +69,9 @@ def send(
 def history(conn: sqlite3.Connection, gateway: Gateway) -> list[CoachMessage]:
     """The conversation so far, oldest first: what was said, without tool traffic.
 
+    A turn's commentary written alongside its tool calls is left out: the
+    turn's answer is the assistant message that calls no tools.
+
     Raises:
         GatewayError: if the gateway cannot be reached or refuses.
     """
@@ -86,7 +89,9 @@ def history(conn: sqlite3.Connection, gateway: Gateway) -> list[CoachMessage]:
             datetime.fromtimestamp(message.timestamp, UTC).isoformat(timespec="seconds"),
         )
         for message in stored
-        if message.role in {"user", "assistant"} and message.content.strip()
+        if message.role in {"user", "assistant"}
+        and message.content.strip()
+        and not message.calls_tools
     ]
     return shown[-HISTORY_LIMIT:]
 

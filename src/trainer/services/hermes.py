@@ -37,6 +37,9 @@ class GatewayMessage:
     role: str
     content: str
     timestamp: float
+    # An assistant message that called tools: a step of a turn, not its answer.
+    # Its content, if any, is commentary written alongside the calls.
+    calls_tools: bool = False
 
 
 class _Lenient(BaseModel):
@@ -63,6 +66,7 @@ class _Stored(_Lenient):
     role: str
     content: str | None
     timestamp: float
+    tool_calls: list[object] | None = None
 
 
 class _Page(_Lenient):
@@ -105,7 +109,10 @@ class HermesGateway:
         """
         path = f"/api/sessions/{_segment(session_id)}/messages?order=latest&limit={PAGE_LIMIT}"
         stored = _parse(_Page, self._request(path)).data
-        return [GatewayMessage(item.role, item.content or "", item.timestamp) for item in stored]
+        return [
+            GatewayMessage(item.role, item.content or "", item.timestamp, bool(item.tool_calls))
+            for item in stored
+        ]
 
     def _request(self, path: str, body: object = None) -> object:
         """GET ``path``, or POST ``body`` as JSON to it; return the JSON answer."""
