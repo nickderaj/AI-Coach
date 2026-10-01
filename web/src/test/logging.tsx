@@ -11,7 +11,10 @@ import type { Outbox } from "../outbox/outbox";
 import { OutboxContext } from "../outbox/Sync";
 import type { Write } from "../outbox/store";
 
-export type FakeOutbox = Outbox & { send: Mock<(write: Write) => Promise<void>> };
+export type FakeOutbox = Outbox & {
+  send: Mock<(write: Write) => Promise<void>>;
+  queued: Mock<(path: string) => Promise<Write | undefined>>;
+};
 
 const CLEAR = { pending: 0, rejected: [], offline: false };
 
@@ -21,7 +24,7 @@ function fakeOutbox(): FakeOutbox {
     send: vi.fn(() => Promise.resolve()),
     flush: () => Promise.resolve(),
     idle: () => Promise.resolve(),
-    queued: () => Promise.resolve(undefined),
+    queued: vi.fn(() => Promise.resolve(undefined)),
     dismissRejected: () => Promise.resolve(),
     subscribe: () => () => undefined,
     status: () => CLEAR,

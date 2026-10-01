@@ -817,6 +817,21 @@ describe("Settings", () => {
     stop();
   });
 
+  it("looks for a queued change once, not on every render", async () => {
+    routeFetch({ "GET /api/profile": { body: { bodyweight_kg: 65 } } });
+    await go("#/settings");
+    const { outbox } = renderLogging();
+
+    const form = await screen.findByRole("form", { name: "Body weight" });
+    fireEvent.change(within(form).getByLabelText("kg"), { target: { value: "66" } });
+    await act(async () => {
+      await new Promise((resolve) => setTimeout(resolve, 50));
+    });
+
+    expect(outbox.queued).toHaveBeenCalledOnce();
+    expect(outbox.queued).toHaveBeenCalledWith("/api/profile");
+  });
+
   it("says when the change could not be saved on the phone", async () => {
     routeFetch({ "GET /api/profile": { body: { bodyweight_kg: 65 } } });
     await go("#/settings");

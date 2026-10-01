@@ -1,4 +1,4 @@
-import { createContext, use, useSyncExternalStore } from "react";
+import { createContext, use, useMemo, useSyncExternalStore } from "react";
 
 import type { Outbox } from "../outbox/outbox";
 import { OutboxContext } from "../outbox/Sync";
@@ -13,11 +13,17 @@ export interface Logging {
   drafts: DraftStore;
 }
 
-/** The outbox and the draft store, or null when the app was rendered without them. */
+/**
+ * The outbox and the draft store, or null when the app was rendered without them.
+ * The same object for as long as both are, so it is safe as an effect dependency.
+ */
 export function useLogging(): Logging | null {
   const outbox = use(OutboxContext);
   const drafts = use(DraftContext);
-  return outbox === null || drafts === null ? null : { outbox, drafts };
+  return useMemo(
+    () => (outbox === null || drafts === null ? null : { outbox, drafts }),
+    [outbox, drafts],
+  );
 }
 
 const NONE = (): (() => void) => () => undefined;

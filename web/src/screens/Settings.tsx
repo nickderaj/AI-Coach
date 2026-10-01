@@ -94,9 +94,11 @@ type Queued = { checked: false } | { checked: true; profile: Profile | null };
  */
 function useQueuedProfile(logging: Logging | null): Queued {
   const [queued, setQueued] = useState<Queued>({ checked: false });
+  // Depend on the outbox itself: it lives as long as the app.
+  const outbox = logging?.outbox;
   useEffect(() => {
     let live = true;
-    void (logging?.outbox.queued(PROFILE) ?? Promise.resolve(undefined)).then((write) => {
+    void (outbox?.queued(PROFILE) ?? Promise.resolve(undefined)).then((write) => {
       const parsed = profileSchema.safeParse(write?.body);
       if (live) {
         setQueued({ checked: true, profile: parsed.success ? parsed.data : null });
@@ -105,7 +107,7 @@ function useQueuedProfile(logging: Logging | null): Queued {
     return (): void => {
       live = false;
     };
-  }, [logging]);
+  }, [outbox]);
   return queued;
 }
 
