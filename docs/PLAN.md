@@ -97,16 +97,18 @@ Layering is enforced by `import-linter`: `api`/`mcp` → `services` → `storage
 
 ```
 exercises          id, name, display_name, equipment, movement, muscle_groups,
-                   measure (reps|seconds|distance), load_increment_kg, archived_at
+                   measure (reps|seconds|distance), load_increment_kg?
 exercise_aliases   alias, exercise_id              -- every historical v1 name
-programs           id, name, split, weeks(6), deload_week(7), started_on, status
+programs           id, name, notes, training_weeks(6), status (proposed|active|archived),
+                   created_at, started_at     -- deload week = training_weeks + 1
 program_days       id, program_id, position, name ("Upper A")
 program_blocks     id, day_id, position, rest_s    -- >1 exercise = superset
 block_exercises    id, block_id, position, exercise_id, sets, rep_min, rep_max,
                    start_load_kg, notes
-workouts           id, started_at, ended_at, program_day_id?, program_week?, notes
-workout_sets       id, workout_id, block_position, exercise_id, set_number,
-                   reps, load_kg, duration_s, rpe, completed_at, client_id (idempotency)
+workouts           id, started_at, ended_at, program_day_id?, program_week?, notes, client_id
+workout_sets       id, workout_id, exercise_position, exercise_id, set_number,
+                   reps, load_kg, duration_s, rpe, notes, client_id (idempotency),
+                   block_exercise_id?
 body_metrics       id, measured_at, metric, value, unit, source
 cardio_sessions    id, started_at, activity, duration_s, distance_m, notes   -- logged in the app
 push_subscriptions id, endpoint, keys, created_at

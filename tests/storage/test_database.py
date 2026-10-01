@@ -49,6 +49,10 @@ def test_migrate_creates_the_schema(tmp_path: Path) -> None:
             "cardio_sessions",
             "profile",
             "coach",
+            "programs",
+            "program_days",
+            "program_blocks",
+            "block_exercises",
         }
 
 
@@ -152,6 +156,129 @@ def test_set_values_are_range_checked(db: sqlite3.Connection, column: str, value
             f"VALUES (1, 1, {', '.join('?' * len(values))})",
             tuple(values.values()),
         )
+
+
+PROGRAM = """
+    INSERT INTO exercises (id, name, display_name, equipment, measure)
+        VALUES (1, 'bench', 'Bench', 'barbell', 'reps');
+    INSERT INTO programs (id, name, training_weeks, status, created_at)
+        VALUES (1, 'Upper/Lower', 6, 'active', 't');
+    INSERT INTO program_days (id, program_id, position, name) VALUES (1, 1, 1, 'Upper A');
+    INSERT INTO program_blocks (id, day_id, position, rest_s) VALUES (1, 1, 1, 90);
+    INSERT INTO block_exercises (id, block_id, position, exercise_id, sets, rep_min, rep_max)
+        VALUES (1, 1, 1, 1, 3, 8, 10);
+    INSERT INTO workouts (id, started_at, source) VALUES (1, 't', 'app');
+"""
+
+
+def test_v6_keeps_existing_rows_outside_any_program(tmp_path: Path) -> None:
+    with closing(connect(tmp_path / "t.db")) as conn:
+        for sql in MIGRATIONS[:5]:
+            conn.executescript(sql)
+        conn.execute("PRAGMA user_version = 5")
+        conn.executescript(
+            """
+            INSERT INTO exercises (id, name, display_name, equipment, measure)
+                VALUES (1, 'bench', 'Bench', 'barbell', 'reps');
+            INSERT INTO workouts (id, started_at, source) VALUES (1, 't', 'app');
+            INSERT INTO workout_sets (workout_id, exercise_id, exercise_position, set_number)
+                VALUES (1, 1, 1, 1);
+            """
+        )
+
+        assert migrate(conn) == len(MIGRATIONS)
+
+        row = conn.execute(
+            "SELECT e.load_increment_kg, w.program_day_id, w.program_week, s.block_exercise_id "
+            "FROM workout_sets s JOIN workouts w ON w.id = s.workout_id "
+            "JOIN exercises e ON e.id = s.exercise_id"
+        ).fetchone()
+        assert tuple(row) == (None, None, None, None)
+
+
+@pytest.fixture
+def program(db: sqlite3.Connection) -> sqlite3.Connection:
+    """A database with one active program of one day, block and exercise, and a workout."""
+    db.executescript(PROGRAM)
+    return db
+
+
+def test_a_workout_and_its_sets_link_to_a_program(program: sqlite3.Connection) -> None:
+    program.execute("UPDATE workouts SET program_day_id = 1, program_week = 7")
+    program.execute(
+        "INSERT INTO workout_sets (workout_id, exercise_id, exercise_position, set_number, "
+        "block_exercise_id) VALUES (1, 1, 1, 1, 1)"
+    )
+    program.execute("UPDATE exercises SET load_increment_kg = 1.25")
+
+    assert program.execute("SELECT count(*) FROM workout_sets").fetchone()[0] == 1
+
+
+@pytest.mark.parametrize(
+    "statement",
+    [
+        "UPDATE programs SET name = ''",
+        "UPDATE programs SET training_weeks = 0",
+        "UPDATE programs SET status = 'done'",
+        # One active and one proposed program at most.
+        (
+            "INSERT INTO programs (name, training_weeks, status, created_at) "
+            "VALUES ('Again', 6, 'active', 't')"
+        ),
+        "UPDATE program_days SET position = 0",
+        "UPDATE program_days SET name = ''",
+        "INSERT INTO program_days (program_id, position, name) VALUES (1, 1, 'Same place')",
+        "UPDATE program_blocks SET position = 0",
+        "UPDATE program_blocks SET rest_s = -1",
+        "UPDATE program_blocks SET rest_s = 601",
+        "INSERT INTO program_blocks (day_id, position, rest_s) VALUES (1, 1, 60)",
+        "UPDATE block_exercises SET position = 0",
+        "UPDATE block_exercises SET sets = 0",
+        "UPDATE block_exercises SET sets = 11",
+        "UPDATE block_exercises SET rep_min = 0",
+        "UPDATE block_exercises SET rep_max = 7",
+        "UPDATE block_exercises SET start_load_kg = -0.5",
+        "UPDATE block_exercises SET exercise_id = 99",
+        (
+            "INSERT INTO block_exercises (block_id, position, exercise_id, sets, rep_min, rep_max) "
+            "VALUES (1, 1, 1, 3, 8, 10)"
+        ),
+        "UPDATE exercises SET load_increment_kg = 0",
+        "UPDATE workouts SET program_day_id = 99, program_week = 1",
+        "UPDATE workouts SET program_day_id = 1",  # a day needs its week
+        "UPDATE workouts SET program_week = 1",  # and a week its day
+        "UPDATE workouts SET program_day_id = 1, program_week = 0",
+        (
+            "INSERT INTO workout_sets (workout_id, exercise_id, exercise_position, set_number, "
+            "block_exercise_id) VALUES (1, 1, 1, 1, 99)"
+        ),
+        # A program trained from cannot be deleted.
+        "UPDATE workouts SET program_day_id = 1, program_week = 1; DELETE FROM programs",
+    ],
+)
+def test_programs_reject_invalid_rows(program: sqlite3.Connection, statement: str) -> None:
+    with pytest.raises(sqlite3.IntegrityError):
+        program.executescript(statement)
+
+
+def test_a_proposed_program_sits_beside_the_active_one(program: sqlite3.Connection) -> None:
+    program.execute(
+        "INSERT INTO programs (name, training_weeks, status, created_at) "
+        "VALUES ('Next', 6, 'proposed', 't')"
+    )
+    program.execute(
+        "INSERT INTO programs (name, training_weeks, status, created_at) "
+        "VALUES ('Old', 6, 'archived', 't'), ('Older', 6, 'archived', 't')"
+    )
+
+    assert program.execute("SELECT count(*) FROM programs").fetchone()[0] == 4
+
+
+def test_deleting_an_untrained_program_removes_its_days(program: sqlite3.Connection) -> None:
+    program.execute("DELETE FROM programs")
+
+    for table in ("program_days", "program_blocks", "block_exercises"):
+        assert program.execute(f"SELECT count(*) FROM {table}").fetchone()[0] == 0  # noqa: S608  # why: table names are the literals above
 
 
 def plain_database(path: Path) -> Path:
