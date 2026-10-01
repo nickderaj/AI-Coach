@@ -18,7 +18,7 @@ import { href, navigate } from "../router";
 import { facts, matches } from "./Exercises";
 import { NoWorkout } from "./Log";
 
-/** What exercises can be done with, as the server knows it. */
+/** What exercises can be done with, as the server knows it. Every exercise has one. */
 const EQUIPMENT = [
   "barbell",
   "dumbbell",
@@ -120,16 +120,17 @@ function NewExercise({
   // while its button is disabled, which must not post the exercise twice.
   const posting = useRef(false);
   const measure = timed ? "seconds" : "reps";
+  const ready = name.trim().length >= 2 && equipment !== "";
 
   const create = async (allowSimilar: boolean): Promise<void> => {
-    if (posting.current) {
+    if (posting.current || !ready) {
       return;
     }
     posting.current = true;
     setBusy(true);
     const outcome = await createExercise({
       name: name.trim(),
-      equipment: equipment === "" ? null : equipment,
+      equipment,
       measure,
       allow_similar: allowSimilar,
     });
@@ -175,7 +176,9 @@ function NewExercise({
             setResult(null);
           }}
         >
-          <option value="">None</option>
+          <option value="" disabled>
+            Choose…
+          </option>
           {EQUIPMENT.map((item) => (
             <option key={item} value={item}>
               {item}
@@ -208,7 +211,7 @@ function NewExercise({
           {result.message}
         </p>
       ) : null}
-      <button type="submit" className="primary" disabled={busy || name.trim().length < 2}>
+      <button type="submit" className="primary" disabled={busy || !ready}>
         Add exercise
       </button>
     </form>

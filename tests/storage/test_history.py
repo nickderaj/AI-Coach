@@ -75,7 +75,7 @@ def test_list_workouts_newest_first(imported: sqlite3.Connection) -> None:
     ]
 
 
-def test_bodyweight_exercises_count_the_owners_body_weight(
+def test_bodyweight_exercises_count_their_share_of_body_weight(
     imported: sqlite3.Connection,
 ) -> None:
     save_profile(imported, Profile(65.0))
@@ -84,9 +84,11 @@ def test_bodyweight_exercises_count_the_owners_body_weight(
     pull_up = exercise_history(imported, ids(imported)["pullup"])
     bench = exercise_history(imported, ids(imported)["barbell bench press"])
 
-    assert august.volume_kg == 12 * 50 + 8 * 65  # lat pulldown + pull-ups at body weight
+    # Lat pulldown, then pull-ups lifting 93% of body weight (60.45, to 0.1 kg).
+    assert august.volume_kg == 12 * 50 + 8 * 60.5
+    assert august.exercises[1].name == "Pull-up"
     assert pull_up is not None
-    assert pull_up.carried_kg == 65.0
+    assert pull_up.carried_kg == 60.5
     assert bench is not None
     assert bench.carried_kg == 0.0
 
@@ -132,7 +134,7 @@ def test_get_workout_groups_sets_by_exercise(imported: sqlite3.Connection) -> No
             exercise["dead hang"],
             "Dead Hang",
             Measure.SECONDS,
-            65.0,  # bodyweight, though a hold adds no volume
+            60.5,  # 93% of body weight, though a hold adds no volume
             [SetView(1, None, None, 50.0, None, None, None)],
         ),
     ]

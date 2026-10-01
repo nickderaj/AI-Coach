@@ -12,7 +12,7 @@ Those live in the owner's private notes on the build host (outside git) and in
 a git-ignored `deploy/local.env`; ask the owner if they are missing. The policy
 checker rejects the most common leaks (emails, `*.ts.net` names, Tailscale IPs).
 
-Last updated: 2026-09-30.
+Last updated: 2026-10-01.
 
 ## Done
 
@@ -30,6 +30,7 @@ Last updated: 2026-09-30.
 | Phase 2b-1 — Catppuccin Latte redesign: dashboard, history cards, exercise charts and records | #12 | Deployed 2026-09-30. |
 | Phase 2c — offline write queue, service worker, installable app | #13 | Deployed 2026-09-30. |
 | Phase 2b-2 — logging screens: start/resume, set table, rest timer, picker, one-off sets | #14 | Deployed 2026-09-30. **Phase 2 built.** |
+| Fixes from the first sessions: shorthand, body weight in volume, RPE, rest timer, common exercises | #15 | Deployed 2026-09-30. |
 
 ## Phase 2 — logging: built, awaiting its exit criterion
 
@@ -77,13 +78,14 @@ logging works without signal.
   cached copy when offline, on a 5xx, or after 3 s.
 - A manifest, icons and iOS meta tags, so the app installs to the home screen.
 
-**In this PR: fixes from the first real sessions.**
+**Fixes from the first real sessions (done, #15).**
 - **Shorthand.** The near-duplicate rule spells out gym shorthand before
   comparing names (`ABBREVIATIONS` in `trainer.domain.exercises`: DB, BB, KB,
   BW, OHP, RDL), so "Incline DB Press" is caught as "Incline Dumbbell Press".
 - **Body weight in volume.** Schema v3 adds a one-row `profile` table
   (`GET`/`PUT /api/profile`), set from a new Settings screen (⚙ on Home).
-  - Bodyweight exercises count reps × (body weight + added load).
+  - Bodyweight exercises count reps × (their share of body weight + added
+    load); see the next PR for the shares.
   - The server sends that carried weight as `carried_kg` on workout blocks and
     exercise histories, so the charts, records and totals all agree.
   - It uses the current body weight, so past sessions are recalculated when it
@@ -100,6 +102,27 @@ logging works without signal.
   stricter "already there" rule than the near-duplicate prompt (`is_catalogued`).
 - **Data fix, outside git.** The owner's late-logged workout #23 was moved to
   Sat 26 Sept, 11:45–12:15 BST. A backup was taken first.
+
+**In this PR: a share of body weight, and one "bodyweight".**
+- **Share of body weight.** 300 bodyweight squats are not 300 squats at body
+  weight. Each bodyweight exercise now carries the share of body weight one rep
+  lifts, as Alpha Progression does (Hevy counts 100% for pull-ups and dips and
+  nothing for the rest). `BODYWEIGHT_SHARES` in `trainer.domain.records` holds
+  them: pull-up, chin-up, dip and dead hang 93%, push-up 64% (knee 49%, incline
+  55%, decline 70%), squat 77%, split squat and lunge 74%, step-up and pistol
+  squat 80%, leg and knee raises 33%, from ExRx's segment data and Ebben et al.
+  2011. The inverted row (60%), sit-up (50%), glute bridge (50%), crunch (30%)
+  and mountain climber (25%) have no published figure and are estimates. A name
+  matches the entry with the most of its words ("Weighted Pull-up" is a
+  pull-up), and anything unlisted counts 65%, about a push-up. `carried_kg` is
+  that share of the profile's body weight, to 0.1 kg.
+- **One "bodyweight".** The new-exercise form offered "None" beside
+  "bodyweight". Equipment is now required (the API refuses a missing one), and
+  schema v4 sets any exercise without equipment to bodyweight. The v1 importer
+  does the same. The live database had none to change.
+
+**Follow-up.** The shares cannot be edited yet; a custom exercise gets the
+closest listed one or 65%.
 
 **Follow-up.** An unfinished workout lists in History like a finished one. It
 could show an "in progress" mark.

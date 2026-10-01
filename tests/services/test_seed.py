@@ -2,6 +2,8 @@
 
 import sqlite3
 
+import pytest
+
 from trainer.domain.exercises import Equipment, Measure, is_catalogued
 from trainer.services.journal import NewExercise
 from trainer.services.seed import (
@@ -22,31 +24,36 @@ def test_parse_exercises() -> None:
     text = (
         "name,equipment,measure,muscle_groups\n"
         'Goblet Squat,dumbbell,reps,"quads,glutes"\n'
-        "Plank,,seconds,\n"
+        "Plank,bodyweight,seconds,\n"
     )
 
     assert parse_exercises(text) == [
         NewExercise("Goblet Squat", Equipment.DUMBBELL, "quads,glutes", Measure.REPS),
-        NewExercise("Plank", None, None, Measure.SECONDS),
+        NewExercise("Plank", Equipment.BODYWEIGHT, None, Measure.SECONDS),
     ]
+
+
+def test_every_exercise_needs_equipment() -> None:
+    with pytest.raises(ValueError, match="''"):
+        parse_exercises("name,equipment,measure,muscle_groups\nPlank,,seconds,\n")
 
 
 def test_describe() -> None:
     goblet, plank = parse_exercises(
         "name,equipment,measure,muscle_groups\n"
         "Goblet Squat,dumbbell,reps,quads\n"
-        "Plank,,seconds,core\n"
+        "Plank,bodyweight,seconds,core\n"
     )
 
     assert describe(goblet) == "Goblet Squat (dumbbell)"
-    assert describe(plank) == "Plank (no equipment)"
+    assert describe(plank) == "Plank (bodyweight)"
 
 
 def test_the_shipped_list_goes_into_an_empty_catalogue_whole() -> None:
     exercises = common_exercises()
     entries: list[tuple[str, str | None]] = []
     for exercise in exercises:
-        equipment = None if exercise.equipment is None else exercise.equipment.value
+        equipment = exercise.equipment.value
         assert not is_catalogued(exercise.name, equipment, entries), exercise.name
         entries.append((exercise.name, equipment))
 
@@ -64,7 +71,7 @@ def test_seeding_adds_only_what_is_missing(imported: sqlite3.Connection) -> None
         "Chin-ups,bodyweight,reps,back\n"  # a repeat within the list
         "Dumbbell Fly,dumbbell,reps,chest\n"
         "Cable Fly,cable,reps,chest\n"  # the same words as the last, other equipment
-        "Plank,,seconds,core\n"  # no equipment
+        "Plank,bodyweight,seconds,core\n"
     )
     expected = [
         "Incline Bench Press",

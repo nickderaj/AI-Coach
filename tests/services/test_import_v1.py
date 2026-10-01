@@ -55,6 +55,17 @@ def test_exercises_keep_identity_and_measure(
     ]
 
 
+def test_a_movement_without_equipment_is_bodyweight(
+    v1: sqlite3.Connection, db: sqlite3.Connection
+) -> None:
+    v1.execute("UPDATE movements SET equipment = NULL WHERE name = 'pullup'")
+
+    import_v1(v1, db)
+
+    row = db.execute("SELECT equipment FROM exercises WHERE name = 'pullup'").fetchone()
+    assert tuple(row) == ("bodyweight",)
+
+
 def test_historical_aliases_resolve_when_their_exercise_exists(
     v1: sqlite3.Connection, db: sqlite3.Connection
 ) -> None:

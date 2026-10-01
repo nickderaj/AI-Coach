@@ -150,12 +150,14 @@ class TestExercises:
         )
         assert not db.in_transaction
 
-    def test_equipment_is_optional(self, db: sqlite3.Connection) -> None:
+    def test_a_timed_bodyweight_exercise(self, db: sqlite3.Connection) -> None:
         added = add_exercise(
-            db, NewExercise("Plank", None, None, Measure.SECONDS), allow_similar=False
+            db,
+            NewExercise("Plank", Equipment.BODYWEIGHT, None, Measure.SECONDS),
+            allow_similar=False,
         )
 
-        assert (added.equipment, added.measure) == (None, Measure.SECONDS)
+        assert (added.equipment, added.measure) == ("bodyweight", Measure.SECONDS)
 
     @pytest.mark.parametrize("name", ["barbell BENCH press", "bench"])
     def test_a_taken_name_or_alias_is_refused_even_when_allowing_similar(
@@ -166,7 +168,9 @@ class TestExercises:
         db.commit()
 
         with pytest.raises(DuplicateExerciseError) as caught:
-            add_exercise(db, NewExercise(name, None, None, Measure.REPS), allow_similar=True)
+            add_exercise(
+                db, NewExercise(name, Equipment.BARBELL, None, Measure.REPS), allow_similar=True
+            )
 
         assert caught.value.exact is True
         assert str(caught.value) == "exists"
@@ -177,7 +181,9 @@ class TestExercises:
 
         with pytest.raises(DuplicateExerciseError) as caught:
             add_exercise(
-                db, NewExercise("Bench Press", None, None, Measure.REPS), allow_similar=False
+                db,
+                NewExercise("Bench Press", Equipment.BARBELL, None, Measure.REPS),
+                allow_similar=False,
             )
 
         assert caught.value.exact is False
@@ -186,7 +192,9 @@ class TestExercises:
         assert caught.value.matches[0].id == existing
 
         added = add_exercise(
-            db, NewExercise("Bench Press", None, None, Measure.REPS), allow_similar=True
+            db,
+            NewExercise("Bench Press", Equipment.BARBELL, None, Measure.REPS),
+            allow_similar=True,
         )
         assert added.name == "Bench Press"
 

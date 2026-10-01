@@ -302,6 +302,8 @@ describe("Picker", () => {
     const submit = within(form).getByRole("button", { name: "Add exercise" });
     expect(submit).toBeDisabled();
     fireEvent.change(within(form).getByLabelText("Name"), { target: { value: "Lat Pull Down" } });
+    expect(submit).toBeDisabled(); // equipment is required
+    fireEvent.change(within(form).getByLabelText("Equipment"), { target: { value: "cable" } });
     fireEvent.click(submit);
 
     const alert = await within(form).findByRole("alert");
@@ -331,7 +333,10 @@ describe("Picker", () => {
       "POST /api/exercises": {
         status: 409,
         body: {
-          detail: { reason: "exists", matches: [{ id: 77, name: "Plank", equipment: null }] },
+          detail: {
+            reason: "exists",
+            matches: [{ id: 77, name: "Plank", equipment: "bodyweight" }],
+          },
         },
       },
     });
@@ -340,12 +345,13 @@ describe("Picker", () => {
     fireEvent.click(await screen.findByRole("button", { name: "+ New exercise" }));
     const form = screen.getByRole("form", { name: "New exercise" });
     fireEvent.change(within(form).getByLabelText("Name"), { target: { value: "plank" } });
+    fireEvent.change(within(form).getByLabelText("Equipment"), { target: { value: "bodyweight" } });
     fireEvent.click(within(form).getByRole("button", { name: "Add exercise" }));
 
     const alert = await within(form).findByRole("alert");
     expect(alert).toHaveTextContent("That exercise is already in your list.");
     expect(within(alert).queryByRole("button", { name: /No, add/ })).not.toBeInTheDocument();
-    fireEvent.change(within(form).getByLabelText("Equipment"), { target: { value: "" } });
+    fireEvent.change(within(form).getByLabelText("Equipment"), { target: { value: "band" } });
     expect(within(form).queryByRole("alert")).not.toBeInTheDocument();
     fireEvent.click(within(form).getByRole("button", { name: "Add exercise" }));
     fireEvent.click(await within(form).findByRole("button", { name: "Use Plank" }));
@@ -355,7 +361,7 @@ describe("Picker", () => {
       expect(drafts.get()?.blocks[0]?.exercise).toEqual({
         id: 77,
         name: "Plank",
-        equipment: null,
+        equipment: "bodyweight",
         measure: "reps",
       });
     });
@@ -374,6 +380,7 @@ describe("Picker", () => {
     fireEvent.click(await screen.findByRole("button", { name: "+ New exercise" }));
     const form = screen.getByRole("form", { name: "New exercise" });
     fireEvent.change(within(form).getByLabelText("Name"), { target: { value: "Plank" } });
+    fireEvent.change(within(form).getByLabelText("Equipment"), { target: { value: "bodyweight" } });
 
     fireEvent.submit(form);
     fireEvent.submit(form);
@@ -393,11 +400,44 @@ describe("Picker", () => {
     renderLogging(newDraft("w1", STARTED));
     fireEvent.click(await screen.findByRole("button", { name: "+ New exercise" }));
     fireEvent.change(screen.getByLabelText("Name"), { target: { value: "Plank" } });
+    fireEvent.change(screen.getByLabelText("Equipment"), { target: { value: "bodyweight" } });
     fireEvent.click(screen.getByRole("button", { name: "Add exercise" }));
 
     expect(await screen.findByRole("alert")).toHaveTextContent(
       "Adding a new exercise needs a connection",
     );
+  });
+
+  it("asks for equipment, with bodyweight for none, before posting", async () => {
+    const fetchMock = routeFetch({ "GET /api/exercises": { body: EXERCISES } });
+    await go("#/log/add");
+    renderLogging(newDraft("w1", STARTED));
+    fireEvent.click(await screen.findByRole("button", { name: "+ New exercise" }));
+    const form = screen.getByRole("form", { name: "New exercise" });
+    const equipment = within(form).getByLabelText("Equipment");
+    fireEvent.change(within(form).getByLabelText("Name"), { target: { value: "Plank" } });
+
+    expect(equipment).toHaveValue("");
+    expect(
+      within(equipment)
+        .getAllByRole("option")
+        .map((option) => option.textContent),
+    ).toEqual([
+      "Choose…",
+      "barbell",
+      "dumbbell",
+      "kettlebell",
+      "cable",
+      "machine",
+      "bodyweight",
+      "ez bar",
+      "band",
+      "other",
+    ]);
+    expect(within(equipment).getByRole("option", { name: "Choose…" })).toBeDisabled();
+    fireEvent.submit(form); // Enter in the name field
+    await Promise.resolve();
+    expect(fetchMock.mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(0);
   });
 
   it.each(["#/log", "#/log/add"])("%s says there is no workout in progress", async (hash) => {
