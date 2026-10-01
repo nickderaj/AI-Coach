@@ -311,6 +311,68 @@ so copying a bubble no longer carries them into a new message.
 Friday's session with the seeded 5-minute mobility warm-up, unprompted, and
 deferred to the app's progression and deload rules.
 
+## Phase 4 — Programs: in progress
+
+Phase 4 is split into PRs that each stand on their own, in this order. Each one
+updates this section.
+
+| Step | Scope | PR |
+| --- | --- | --- |
+| 4a | Schema v6 (programs, days, blocks, block exercises; program links on workouts and sets; an exercise's own load step) and the pure engine: double progression (D5), deload (D6), next day by sequence | this PR |
+| 4b | Programs in storage and services. API: the active and the proposed program, accept a proposal, today's program day with each exercise's target and last time, workouts and sets linked to the program | |
+| 4c | `propose_program`, the coach's MCP tool: exercise ids only, validated, written through the API as a proposal (see below); the coach's profile learns to use it | |
+| 4d | Web: the Program screen. The whole block, the current week, the deload week marked; a proposal to accept; generate or refine through the coach | |
+| 4e | Web: the Today screen. The next program day, supersets side by side, sets prefilled with targets, last time, a rest timer per block | |
+| 4f | Exit criterion, by the owner: a full week trained from the app | |
+
+**How the coach writes a program (4c).** The tool server runs in the coach's
+sandbox, where the data directory is read-only, so it cannot write the
+database, and should not: writes go through services. `propose_program`
+checks its arguments (shape, and that every exercise id exists, read-only),
+then sends the program to the API on loopback. That one endpoint accepts the
+gateway's key, which the API and the coach already share, in place of the
+owner's login. The API checks the program again and saves it as a *proposal*.
+The owner accepts it on the Program screen. The coach never replaces the
+active program by itself, and the model never works out loads (D12).
+
+**4a: the engine and schema v6 (this PR).**
+- `trainer.domain.programs` is pure and every rule in it is
+  `# coverage-critical`.
+- **Next day.** Position is the day after the last completed one
+  (`next_position`): day 1 to the last day, then the next week. Weeks 1–6 are
+  training weeks, week 7 is the deload week, and after its last day the block
+  is done. A missed session is simply the next one.
+- **Double progression (D5)**, worked out from the last session of the same
+  program exercise:
+  - Working sets are the sets at that session's heaviest load, so lighter
+    warm-ups do not count.
+  - If at least the prescribed number of them all reached the top of the
+    range, the load rises one increment and the sets are prefilled with the
+    bottom of the range.
+  - If every one fell short of the bottom, the load drops one increment (never
+    below none) and is worked back up.
+  - Otherwise the load repeats, and each set is prefilled with last time's reps
+    for that set, kept within the range.
+  - A first session uses the program's starting load, or leaves it to the
+    owner. Timed exercises do the same with seconds.
+  - A bodyweight exercise at the top adds load (a dip belt), from none to one
+    increment.
+- **Load steps.** Barbell, dumbbell, EZ bar, cable and bodyweight 2.5 kg,
+  machine 5 kg, kettlebell 4 kg. Bands and "other" have none, so their load
+  never changes by rule. An exercise can have its own step
+  (`exercises.load_increment_kg`; no screen sets it yet).
+- **Deload (D6).** 60% of the sets, rounded and at least one. The load is 90%
+  of the last session's working load, to the nearest increment, a tie going
+  lighter: 12.5 kg becomes 10 kg, 60 kg becomes 55 kg.
+- **Schema v6.** `programs` (name, notes, training weeks, status `proposed`,
+  `active` or `archived`; at most one proposed and one active),
+  `program_days`, `program_blocks` (rest in seconds), `block_exercises` (sets,
+  rep range, starting load, notes). `workouts` gain `program_day_id` and
+  `program_week`, both or neither. `workout_sets` gain `block_exercise_id`, so
+  the sets of a superset (A1, A2, A1, A2…) still belong to their program
+  exercise. A program that has been trained from cannot be deleted. Existing
+  rows are untouched.
+
 ## Remaining phases
 
 | Phase | Scope | Exit criterion |

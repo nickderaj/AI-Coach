@@ -53,7 +53,9 @@ def test_inserts_round_trip(db: sqlite3.Connection) -> None:
         "2026-01-01T11:00:00+00:00",
         "n",
         "test",
-        None,
+        None,  # client_id
+        None,  # program_day_id
+        None,  # program_week
     )
     assert tuple(
         db.execute(

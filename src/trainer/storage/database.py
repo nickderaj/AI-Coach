@@ -104,6 +104,67 @@ MIGRATIONS: tuple[str, ...] = (
         session_id TEXT NOT NULL CHECK (session_id <> '')
     ) STRICT;
     """,
+    """
+    -- Programs (D4, D7): training weeks then a deload week, the same days every
+    -- week. A day is blocks in order; a block of more than one exercise is a
+    -- superset. At most one program is proposed (by the coach, awaiting the
+    -- owner) and one active at a time; replaced ones are archived.
+    CREATE TABLE programs (
+        id INTEGER PRIMARY KEY,
+        name TEXT NOT NULL CHECK (name <> ''),
+        notes TEXT,
+        training_weeks INTEGER NOT NULL CHECK (training_weeks >= 1),
+        status TEXT NOT NULL CHECK (status IN ('proposed', 'active', 'archived')),
+        created_at TEXT NOT NULL,
+        started_at TEXT
+    ) STRICT;
+    CREATE UNIQUE INDEX programs_one_per_status ON programs (status)
+        WHERE status IN ('proposed', 'active');
+
+    CREATE TABLE program_days (
+        id INTEGER PRIMARY KEY,
+        program_id INTEGER NOT NULL REFERENCES programs (id) ON DELETE CASCADE,
+        position INTEGER NOT NULL CHECK (position >= 1),
+        name TEXT NOT NULL CHECK (name <> ''),
+        UNIQUE (program_id, position)
+    ) STRICT;
+
+    CREATE TABLE program_blocks (
+        id INTEGER PRIMARY KEY,
+        day_id INTEGER NOT NULL REFERENCES program_days (id) ON DELETE CASCADE,
+        position INTEGER NOT NULL CHECK (position >= 1),
+        rest_s INTEGER NOT NULL CHECK (rest_s BETWEEN 0 AND 600),
+        UNIQUE (day_id, position)
+    ) STRICT;
+
+    -- The range is reps, or seconds for a timed exercise.
+    CREATE TABLE block_exercises (
+        id INTEGER PRIMARY KEY,
+        block_id INTEGER NOT NULL REFERENCES program_blocks (id) ON DELETE CASCADE,
+        position INTEGER NOT NULL CHECK (position >= 1),
+        exercise_id INTEGER NOT NULL REFERENCES exercises (id),
+        sets INTEGER NOT NULL CHECK (sets BETWEEN 1 AND 10),
+        rep_min INTEGER NOT NULL CHECK (rep_min >= 1),
+        rep_max INTEGER NOT NULL CHECK (rep_max >= rep_min),
+        start_load_kg REAL CHECK (start_load_kg >= 0),
+        notes TEXT,
+        UNIQUE (block_id, position)
+    ) STRICT;
+    CREATE INDEX block_exercises_exercise ON block_exercises (exercise_id);
+
+    -- An exercise's own load step, when its equipment's default does not fit.
+    ALTER TABLE exercises ADD COLUMN load_increment_kg REAL CHECK (load_increment_kg > 0);
+
+    -- A workout trained from a program records which day and week it was; a set
+    -- records the program exercise it was for, so supersets keep their shape.
+    ALTER TABLE workouts ADD COLUMN program_day_id INTEGER REFERENCES program_days (id);
+    ALTER TABLE workouts ADD COLUMN program_week INTEGER
+        CHECK (program_week >= 1 AND (program_week IS NULL) = (program_day_id IS NULL));
+    CREATE INDEX workouts_program_day ON workouts (program_day_id);
+    ALTER TABLE workout_sets ADD COLUMN block_exercise_id INTEGER
+        REFERENCES block_exercises (id);
+    CREATE INDEX workout_sets_block_exercise ON workout_sets (block_exercise_id);
+    """,
 )
 
 
