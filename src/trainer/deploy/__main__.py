@@ -1,4 +1,4 @@
-"""``python -m trainer.deploy``: render the install bundle, or run a backup."""
+"""``python -m trainer.deploy``: render the bundle, back up, or commit the coach's memory."""
 
 from __future__ import annotations
 
@@ -9,6 +9,7 @@ from pathlib import Path
 
 from trainer.deploy.backup import backup
 from trainer.deploy.config import ConfigError, DeployConfig, load
+from trainer.deploy.memory import MemoryRepoError, commit_memory
 from trainer.deploy.preflight import SystemHost, preflight
 from trainer.deploy.render import write_bundle
 
@@ -46,6 +47,16 @@ def _backup(args: argparse.Namespace) -> int:
     return 0
 
 
+def _memory_commit(args: argparse.Namespace) -> int:
+    try:
+        commit = commit_memory(args.hermes_home, args.repo)
+    except MemoryRepoError as error:
+        sys.stderr.write(f"memory-commit: {error}\n")
+        return 1
+    sys.stdout.write(f"committed {commit}\n" if commit else "nothing learned; nothing to do\n")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     """Entry point; returns the process exit code."""
     parser = argparse.ArgumentParser(prog="python -m trainer.deploy", description=__doc__)
@@ -62,6 +73,12 @@ def main(argv: list[str] | None = None) -> int:
     nightly.add_argument("--data-dir", type=Path, required=True)
     nightly.add_argument("--keep", type=int, required=True)
     nightly.set_defaults(handler=_backup)
+    learned = commands.add_parser(
+        "memory-commit", help="commit the coach's memory and skills to its private repository"
+    )
+    learned.add_argument("--hermes-home", type=Path, required=True)
+    learned.add_argument("--repo", type=Path, required=True)
+    learned.set_defaults(handler=_memory_commit)
     args = parser.parse_args(argv)
     status: int = args.handler(args)
     return status

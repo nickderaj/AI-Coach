@@ -14,6 +14,9 @@ CONFIG = DeployConfig(
     bind_port=8000,
     backup_keep=7,
     owner_login="owner@example.com",
+    hermes_port=8642,
+    model_url="https://api.example.com/v1",
+    model="model-1",
 )
 
 
@@ -26,6 +29,12 @@ def test_substitutions() -> None:
         "bind_port": "8000",
         "backup_keep": "7",
         "owner_login": "owner@example.com",
+        "hermes_port": "8642",
+        "model_url": "https://api.example.com/v1",
+        "model": "model-1",
+        "hermes_home": "/srv/trainer/hermes",
+        "memory_repo": "/srv/trainer/hermes-memory.git",
+        "secrets_dir": "/etc/hermes-trainer",
     }
 
 
@@ -81,6 +90,63 @@ def test_timer_is_nightly_and_persistent() -> None:
     assert "Persistent=true" in lines
 
 
+def test_gateway_unit_runs_hermes_with_root_only_secrets() -> None:
+    lines = render_units(CONFIG)["hermes-gateway.service"].splitlines()
+
+    for expected in (
+        "User=trainer",
+        "Group=trainer",
+        "Environment=HERMES_HOME=/srv/trainer/hermes",
+        "Environment=HOME=/srv/trainer/hermes",
+        "Environment=TRAINER_DATA_DIR=/srv/trainer",
+        "Environment=TRAINER_MODEL=model-1",
+        "Environment=TRAINER_MODEL_URL=https://api.example.com/v1",
+        "Environment=TRAINER_HERMES_PORT=8642",
+        "Environment=HERMES_DISABLE_LAZY_INSTALLS=1",
+        "EnvironmentFile=/etc/hermes-trainer/model.env",
+        "EnvironmentFile=/etc/hermes-trainer/gateway.env",
+        "ExecStart=/opt/trainer/hermes/bin/hermes gateway run",
+        "ReadWritePaths=/srv/trainer/hermes",
+        "ProtectSystem=strict",
+        "ProtectHome=yes",
+        "NoNewPrivileges=yes",
+        "CapabilityBoundingSet=",
+        "MemoryDenyWriteExecute=yes",
+        "SystemCallFilter=@system-service",
+        "SystemCallFilter=~@resources @setuid capset",
+        "RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX",
+        "WantedBy=multi-user.target",
+    ):
+        assert expected in lines
+    # The whole data directory (the training database) is not the gateway's to write.
+    assert "ReadWritePaths=/srv/trainer" not in lines
+
+
+def test_memory_unit_commits_offline() -> None:
+    lines = render_units(CONFIG)["trainer-memory.service"].splitlines()
+
+    for expected in (
+        "Type=oneshot",
+        "User=trainer",
+        (
+            "ExecStart=/opt/trainer/venv/bin/python -m trainer.deploy memory-commit "
+            "--hermes-home /srv/trainer/hermes --repo /srv/trainer/hermes-memory.git"
+        ),
+        "ReadWritePaths=/srv/trainer/hermes-memory.git",
+        "ReadOnlyPaths=/srv/trainer/hermes",
+        "PrivateNetwork=yes",
+        "RestrictAddressFamilies=AF_UNIX",
+    ):
+        assert expected in lines
+
+
+def test_memory_timer_runs_nightly_before_the_backup() -> None:
+    lines = render_units(CONFIG)["trainer-memory.timer"].splitlines()
+
+    assert "OnCalendar=*-*-* 03:15:00" in lines
+    assert "Persistent=true" in lines
+
+
 def test_install_env_is_shell_quoted() -> None:
     config = DeployConfig(
         user="trainer",
@@ -90,6 +156,9 @@ def test_install_env_is_shell_quoted() -> None:
         bind_port=8000,
         backup_keep=7,
         owner_login="owner@example.com",
+        hermes_port=8642,
+        model_url="https://api.example.com/v1",
+        model="model-1",
     )
 
     text = install_env(config)
@@ -99,6 +168,10 @@ def test_install_env_is_shell_quoted() -> None:
         "TRAINER_DATA_DIR=/srv/trainer\n"
         "TRAINER_PREFIX=/opt/trainer\n"
         f"TRAINER_UPSTREAM={shlex.quote('[::1]:8000')}\n"
+        f"TRAINER_HERMES_UPSTREAM={shlex.quote('[::1]:8642')}\n"
+        "TRAINER_HERMES_HOME=/srv/trainer/hermes\n"
+        "TRAINER_MEMORY_REPO=/srv/trainer/hermes-memory.git\n"
+        "TRAINER_SECRETS_DIR=/etc/hermes-trainer\n"
     )
 
 
@@ -109,6 +182,9 @@ def test_write_bundle(tmp_path: Path) -> None:
         "out/systemd/trainer-api.service",
         "out/systemd/trainer-backup.service",
         "out/systemd/trainer-backup.timer",
+        "out/systemd/hermes-gateway.service",
+        "out/systemd/trainer-memory.service",
+        "out/systemd/trainer-memory.timer",
         "out/install.env",
         "out/config.env",
     ]

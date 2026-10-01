@@ -12,9 +12,16 @@ if TYPE_CHECKING:
 
     from trainer.deploy.config import DeployConfig
 
-from trainer.deploy.config import to_env
+from trainer.deploy.config import SECRETS_DIR, to_env
 
-UNITS = ("trainer-api.service", "trainer-backup.service", "trainer-backup.timer")
+UNITS = (
+    "trainer-api.service",
+    "trainer-backup.service",
+    "trainer-backup.timer",
+    "hermes-gateway.service",
+    "trainer-memory.service",
+    "trainer-memory.timer",
+)
 
 
 def substitutions(config: DeployConfig) -> dict[str, str]:
@@ -27,6 +34,12 @@ def substitutions(config: DeployConfig) -> dict[str, str]:
         "bind_port": str(config.bind_port),
         "backup_keep": str(config.backup_keep),
         "owner_login": config.owner_login,
+        "hermes_port": str(config.hermes_port),
+        "model_url": config.model_url,
+        "model": config.model,
+        "hermes_home": str(config.hermes_home),
+        "memory_repo": str(config.memory_repo),
+        "secrets_dir": str(SECRETS_DIR),
     }
 
 
@@ -41,12 +54,16 @@ def render_units(config: DeployConfig) -> dict[str, str]:
 
 
 def install_env(config: DeployConfig) -> str:
-    """Shell-quoted variables for ``deploy/install.sh`` and ``tailscale-serve.sh``."""
+    """Shell-quoted variables for the root scripts in ``deploy/``."""
     variables = {
         "TRAINER_USER": config.user,
         "TRAINER_DATA_DIR": str(config.data_dir),
         "TRAINER_PREFIX": str(config.prefix),
         "TRAINER_UPSTREAM": config.upstream,
+        "TRAINER_HERMES_UPSTREAM": config.hermes_upstream,
+        "TRAINER_HERMES_HOME": str(config.hermes_home),
+        "TRAINER_MEMORY_REPO": str(config.memory_repo),
+        "TRAINER_SECRETS_DIR": str(SECRETS_DIR),
     }
     return "".join(f"{key}={shlex.quote(value)}\n" for key, value in variables.items())
 

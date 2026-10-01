@@ -6,8 +6,12 @@
 #  - creates the unprivileged service user and its data directory (0750)
 #  - installs a fresh virtualenv under the root-owned prefix from hash-pinned
 #    requirements, and the built web app, then swaps each into place
-#  - installs, verifies and (re)starts the systemd units
-#  - checks /healthz on the loopback address
+#  - installs the pinned Hermes in its own virtualenv, and the coach's profile
+#    (config.yaml, SOUL.md) into its home in the data directory
+#  - creates the private, local-only memory repository (nightly commits)
+#  - installs, verifies and (re)starts the systemd units; the coach's gateway
+#    starts only once its secrets exist (deploy/hermes-secrets.sh)
+#  - checks /healthz and the gateway's /health on loopback
 set -euo pipefail
 umask 022
 
@@ -65,6 +69,34 @@ fi
 mv "$TRAINER_PREFIX/web.new" "$TRAINER_PREFIX/web"
 rm -rf "$TRAINER_PREFIX/web.old"
 
+# Hermes, in its own virtualenv: dependencies from its hash-pinned lock, then the
+# wheel built from the pinned commit.
+staging="$TRAINER_PREFIX/hermes.new"
+rm -rf "$staging"
+python3 -m venv "$staging"
+"$staging/bin/python" -m pip install --quiet --no-deps --require-hashes \
+  -r "$bundle/hermes/requirements.txt"
+hermes_wheels=("$bundle"/hermes/*.whl)
+"$staging/bin/python" -m pip install --quiet --no-deps --no-index "${hermes_wheels[0]}"
+rm -rf "$TRAINER_PREFIX/hermes.old"
+if [ -d "$TRAINER_PREFIX/hermes" ]; then
+  mv "$TRAINER_PREFIX/hermes" "$TRAINER_PREFIX/hermes.old"
+fi
+mv "$staging" "$TRAINER_PREFIX/hermes"
+rm -rf "$TRAINER_PREFIX/hermes.old"
+
+# The coach's home holds its sessions, memory and skills: the service user's only.
+# The profile comes from this repository on every install; the bundled skill
+# catalogue is opted out, so skills/ holds only what the coach learns.
+install -d -o "$TRAINER_USER" -g "$TRAINER_USER" -m 0700 \
+  "$TRAINER_HERMES_HOME" "$TRAINER_MEMORY_REPO"
+for file in config.yaml SOUL.md; do
+  install -o "$TRAINER_USER" -g "$TRAINER_USER" -m 0600 "$bundle/hermes/$file" \
+    "$TRAINER_HERMES_HOME/$file"
+done
+install -o "$TRAINER_USER" -g "$TRAINER_USER" -m 0600 /dev/null \
+  "$TRAINER_HERMES_HOME/.no-bundled-skills"
+
 units=()
 for unit in "$bundle"/systemd/*; do
   install -m 0644 -o root -g root "$unit" /etc/systemd/system/
@@ -72,17 +104,28 @@ for unit in "$bundle"/systemd/*; do
 done
 systemd-analyze verify "${units[@]}"
 systemctl daemon-reload
-systemctl enable --now trainer-backup.timer
-systemctl enable trainer-api.service
+systemctl enable --now trainer-backup.timer trainer-memory.timer
+systemctl enable trainer-api.service hermes-gateway.service
 systemctl restart trainer-api.service
 
-for _ in $(seq 1 20); do
-  if curl --fail --silent --show-error "http://$TRAINER_UPSTREAM/healthz"; then
-    printf '\ninstalled: trainer-api is healthy on %s\n' "$TRAINER_UPSTREAM"
-    exit 0
-  fi
-  sleep 1
-done
-echo "trainer-api did not become healthy; recent logs:" >&2
-journalctl --unit trainer-api.service --lines 40 --no-pager >&2
-exit 1
+# wait_healthy <unit> <url> <seconds>: wait for a service to answer, else show its logs.
+wait_healthy() {
+  for _ in $(seq 1 "$3"); do
+    if curl --fail --silent --show-error --output /dev/null "$2"; then
+      echo "installed: $1 is healthy"
+      return 0
+    fi
+    sleep 1
+  done
+  echo "$1 did not become healthy; recent logs:" >&2
+  journalctl --unit "$1" --lines 40 --no-pager >&2
+  return 1
+}
+
+wait_healthy trainer-api.service "http://$TRAINER_UPSTREAM/healthz" 20
+if [ -f "$TRAINER_SECRETS_DIR/model.env" ] && [ -f "$TRAINER_SECRETS_DIR/gateway.env" ]; then
+  systemctl restart hermes-gateway.service
+  wait_healthy hermes-gateway.service "http://$TRAINER_HERMES_UPSTREAM/health" 60
+else
+  echo "hermes-gateway not started: run sudo ./deploy/hermes-secrets.sh first" >&2
+fi

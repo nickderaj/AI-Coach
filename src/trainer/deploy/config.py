@@ -15,11 +15,18 @@ KEYS = (
     "TRAINER_BIND_PORT",
     "TRAINER_BACKUP_KEEP",
     "TRAINER_OWNER_LOGIN",
+    "TRAINER_HERMES_PORT",
+    "TRAINER_MODEL_URL",
+    "TRAINER_MODEL",
 )
 USER_NAME = re.compile(r"^[a-z_][a-z0-9_-]{0,31}$")
 # A Tailscale login (e.g. an email address). No "%": systemd expands it in units.
 LOGIN = re.compile(r"^[A-Za-z0-9._+@-]{1,254}$")
 SAFE_PATH = re.compile(r"^(?:/[A-Za-z0-9._-]+)+$")
+# The model provider's OpenAI-compatible base URL: HTTPS, host, optional port and path.
+# No "%" or "$": systemd and Hermes's config would expand them.
+MODEL_URL = re.compile(r"^https://[A-Za-z0-9.-]+(?::[0-9]{1,5})?(?:/[A-Za-z0-9._~-]+)*/?$")
+MODEL_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,99}$")
 # Dedicated locations only. The two sets are disjoint, so the service-writable
 # data directory and the root-owned code prefix can never be equal or nested.
 DATA_ROOTS = ("/srv", "/var/lib", "/mnt", "/media")
@@ -28,6 +35,8 @@ RESERVED_USERS = frozenset({"root", "nobody"})
 MIN_PORT = 1024
 MAX_PORT = 65535
 MAX_BACKUPS = 365
+# Root-only directory of the coach's secrets, read by systemd for hermes-gateway.
+SECRETS_DIR = PurePosixPath("/etc/hermes-trainer")
 
 
 class ConfigError(ValueError):
@@ -45,12 +54,34 @@ class DeployConfig:
     bind_port: int
     backup_keep: int
     owner_login: str
+    # Loopback port of the Hermes gateway's API server (the coach).
+    hermes_port: int
+    model_url: str
+    model: str
 
     @property
     def upstream(self) -> str:
         """``host:port`` for the API, with IPv6 hosts bracketed for URLs."""
-        host = f"[{self.bind_host}]" if ":" in self.bind_host else self.bind_host
-        return f"{host}:{self.bind_port}"
+        return f"{self._url_host}:{self.bind_port}"
+
+    @property
+    def hermes_home(self) -> PurePosixPath:
+        """Hermes's home: config, sessions, and the memory and skills it learns."""
+        return self.data_dir / "hermes"
+
+    @property
+    def memory_repo(self) -> PurePosixPath:
+        """The private, local-only git repository the learned memory is committed to."""
+        return self.data_dir / "hermes-memory.git"
+
+    @property
+    def hermes_upstream(self) -> str:
+        """``host:port`` for the Hermes gateway, on the API's loopback address."""
+        return f"{self._url_host}:{self.hermes_port}"
+
+    @property
+    def _url_host(self) -> str:
+        return f"[{self.bind_host}]" if ":" in self.bind_host else self.bind_host
 
 
 def parse_env(text: str) -> dict[str, str]:
@@ -91,14 +122,18 @@ def load(text: str) -> DeployConfig:
     if unknown:
         message = f"unknown {', '.join(unknown)}"
         raise ConfigError(message)
+    bind_port = _integer("TRAINER_BIND_PORT", values["TRAINER_BIND_PORT"], MIN_PORT, MAX_PORT)
     return DeployConfig(
         user=_user(values["TRAINER_USER"]),
         data_dir=_path("TRAINER_DATA_DIR", values["TRAINER_DATA_DIR"], DATA_ROOTS),
         prefix=_path("TRAINER_PREFIX", values["TRAINER_PREFIX"], PREFIX_ROOTS),
         bind_host=_loopback(values["TRAINER_BIND_HOST"]),
-        bind_port=_integer("TRAINER_BIND_PORT", values["TRAINER_BIND_PORT"], MIN_PORT, MAX_PORT),
+        bind_port=bind_port,
         backup_keep=_integer("TRAINER_BACKUP_KEEP", values["TRAINER_BACKUP_KEEP"], 1, MAX_BACKUPS),
         owner_login=_login(values["TRAINER_OWNER_LOGIN"]),
+        hermes_port=_hermes_port(values["TRAINER_HERMES_PORT"], bind_port),
+        model_url=_matching("TRAINER_MODEL_URL", values["TRAINER_MODEL_URL"], MODEL_URL),
+        model=_matching("TRAINER_MODEL", values["TRAINER_MODEL"], MODEL_ID),
     )
 
 
@@ -112,6 +147,9 @@ def to_env(config: DeployConfig) -> str:
         "TRAINER_BIND_PORT": str(config.bind_port),
         "TRAINER_BACKUP_KEEP": str(config.backup_keep),
         "TRAINER_OWNER_LOGIN": config.owner_login,
+        "TRAINER_HERMES_PORT": str(config.hermes_port),
+        "TRAINER_MODEL_URL": config.model_url,
+        "TRAINER_MODEL": config.model,
     }
     return "".join(f"{key}={value}\n" for key, value in values.items())
 
@@ -157,6 +195,21 @@ def _loopback(value: str) -> str:
             f"TRAINER_BIND_HOST {value!r} must be a loopback address; "
             "tailscale serve is the only way in"
         )
+        raise ConfigError(message)
+    return value
+
+
+def _hermes_port(value: str, bind_port: int) -> int:
+    port = _integer("TRAINER_HERMES_PORT", value, MIN_PORT, MAX_PORT)
+    if port == bind_port:
+        message = f"TRAINER_HERMES_PORT {value!r} must differ from TRAINER_BIND_PORT"
+        raise ConfigError(message)
+    return port
+
+
+def _matching(key: str, value: str, pattern: re.Pattern[str]) -> str:
+    if not pattern.match(value):
+        message = f"{key} {value!r} is not allowed (expected {pattern.pattern})"
         raise ConfigError(message)
     return value
 

@@ -1,0 +1,52 @@
+# The coach's Hermes profile, installed as <data dir>/hermes/config.yaml by
+# deploy/install.sh on every install (edits on the host are overwritten).
+# ${...} values come from hermes-gateway.service, which takes them from
+# deploy/local.env; the two API keys come from the root-only secrets
+# (deploy/hermes-secrets.sh). Nothing here is host-specific or personal.
+
+# The model: an OpenAI-compatible provider (D13), reached as a custom provider.
+model:
+  provider: trainer-model
+  default: ${TRAINER_MODEL}
+providers:
+  trainer-model:
+    api: ${TRAINER_MODEL_URL}
+    key_env: TRAINER_MODEL_API_KEY
+    # The provider lists hundreds of models; only the configured one is used.
+    discover_models: false
+    models:
+      - ${TRAINER_MODEL}
+
+# What the coach can do. Learning is on from day one (D11): memory, skills and
+# session search. It has no terminal, files, web, browser or code execution:
+# training facts reach it only through the trainer's MCP tools (D10).
+toolsets: [memory, session_search, skills, todo, clarify]
+platform_toolsets:
+  api_server: [memory, session_search, skills, todo, clarify]
+agent:
+  # Belt and braces: removed everywhere, whatever a platform lists.
+  disabled_toolsets:
+    - terminal
+    - file
+    - web
+    - browser
+    - code_execution
+    - vision
+    - image_gen
+    - delegation
+    - cronjob
+    - connections
+tools:
+  # Every allowed tool is shown to the model directly; no search-and-call bridge.
+  tool_search:
+    enabled: "off"
+security:
+  # The installed Hermes is fixed and root-owned: never pip-install at runtime.
+  allow_lazy_installs: false
+
+# The web app's Coach tab talks to this, through the API, on loopback only.
+gateway:
+  api_server:
+    enabled: true
+    host: 127.0.0.1
+    port: ${TRAINER_HERMES_PORT}

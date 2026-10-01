@@ -1,5 +1,6 @@
 """``python -m trainer.deploy`` command line."""
 
+import re
 import runpy
 import sqlite3
 import stat
@@ -23,14 +24,20 @@ def test_render_writes_the_bundle(tmp_path: Path, capsys: pytest.CaptureFixture[
 
     assert (out / "install.env").is_file()
     assert sorted(path.name for path in (out / "systemd").iterdir()) == [
+        "hermes-gateway.service",
         "trainer-api.service",
         "trainer-backup.service",
         "trainer-backup.timer",
+        "trainer-memory.service",
+        "trainer-memory.timer",
     ]
     assert capsys.readouterr().out.splitlines() == [
         f"rendered {out}/systemd/trainer-api.service",
         f"rendered {out}/systemd/trainer-backup.service",
         f"rendered {out}/systemd/trainer-backup.timer",
+        f"rendered {out}/systemd/hermes-gateway.service",
+        f"rendered {out}/systemd/trainer-memory.service",
+        f"rendered {out}/systemd/trainer-memory.timer",
         f"rendered {out}/install.env",
         f"rendered {out}/config.env",
     ]
@@ -128,12 +135,15 @@ def test_help_describes_the_commands(
         main(["--help"])
 
     out = capsys.readouterr().out
-    assert out.startswith("usage: python -m trainer.deploy [-h] {render,preflight,backup} ...\n")
-    assert "render the install bundle, or run a backup." in out
+    assert out.startswith(
+        "usage: python -m trainer.deploy [-h] {render,preflight,backup,memory-commit} ...\n"
+    )
+    assert "render the bundle, back up, or commit the coach's memory." in out
     lines = [" ".join(line.split()) for line in out.splitlines()]
     assert "render validate local.env and render the bundle" in lines
     assert "preflight refuse unsafe host state before install" in lines
     assert "backup back up the database and rotate" in lines
+    assert "memory-commit commit the coach's memory and skills to its private repository" in lines
 
 
 @pytest.mark.parametrize(
@@ -145,6 +155,8 @@ def test_help_describes_the_commands(
         (["preflight", "--env", "x"], "--admin-uid"),
         (["backup", "--keep", "1"], "--data-dir"),
         (["backup", "--data-dir", "x"], "--keep"),
+        (["memory-commit", "--repo", "x"], "--hermes-home"),
+        (["memory-commit", "--hermes-home", "x"], "--repo"),
     ],
 )
 def test_every_option_is_required(
@@ -155,6 +167,32 @@ def test_every_option_is_required(
 
     assert exited.value.code == 2
     assert f"the following arguments are required: {missing}" in capsys.readouterr().err
+
+
+def test_memory_commit_records_what_was_learned(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    home = tmp_path / "hermes"
+    (home / "memories").mkdir(parents=True)
+    (home / "memories" / "USER.md").write_text("Trains four days a week.\n")
+    argv = ["memory-commit", "--hermes-home", str(home), "--repo", str(tmp_path / "memory.git")]
+
+    assert main(argv) == 0
+    assert re.fullmatch(r"committed [0-9a-f]{40}\n", capsys.readouterr().out)
+
+    assert main(argv) == 0
+    assert capsys.readouterr().out == "nothing learned; nothing to do\n"
+
+
+def test_memory_commit_reports_a_failure(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    home = tmp_path / "missing"
+    argv = ["memory-commit", "--hermes-home", str(home), "--repo", str(tmp_path / "memory.git")]
+
+    assert main(argv) == 1
+
+    assert capsys.readouterr().err == f"memory-commit: {home} is not a directory\n"
 
 
 @pytest.mark.usefixtures("far_east_timezone")
