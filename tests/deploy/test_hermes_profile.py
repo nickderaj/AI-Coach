@@ -49,6 +49,9 @@ def test_the_api_server_listens_on_loopback_only() -> None:
 def test_every_placeholder_is_set_by_the_gateway_unit() -> None:
     unit = render_units(load(EXAMPLE.read_text(encoding="utf-8")))["trainer-coach.service"]
     environment = set(re.findall(r"^Environment=([A-Z_]+)=", unit, re.MULTILINE))
+    # The gateway's key comes from its root-only secrets file.
+    assert "EnvironmentFile=/etc/hermes-trainer/gateway.env" in unit.splitlines()
+    environment.add("API_SERVER_KEY")
 
     assert set(re.findall(r"\$\{([A-Z_]+)\}", CONFIG)) == {
         "TRAINER_MODEL",
@@ -57,8 +60,31 @@ def test_every_placeholder_is_set_by_the_gateway_unit() -> None:
         "TRAINER_HERMES_PORT",
         "TRAINER_PREFIX",
         "TRAINER_DATA_DIR",
+        "TRAINER_API_URL",
+        "API_SERVER_KEY",
     }
     assert set(re.findall(r"\$\{([A-Z_]+)\}", CONFIG)) <= environment
+
+
+def test_the_tool_server_proposes_through_the_api_with_the_gateways_key() -> None:
+    lines = CONFIG.splitlines()
+
+    assert "      TRAINER_API_URL: ${TRAINER_API_URL}" in lines
+    assert "      TRAINER_COACH_KEY: ${API_SERVER_KEY}" in lines
+
+
+@pytest.mark.parametrize(
+    ("bind_host", "url"),
+    [("127.0.0.1", "http://127.0.0.1:8000"), ("::1", "http://[::1]:8000")],
+)
+def test_the_coach_finds_the_api_where_it_listens(bind_host: str, url: str) -> None:
+    config = load(
+        EXAMPLE_TEXT.replace("TRAINER_BIND_HOST=127.0.0.1", f"TRAINER_BIND_HOST={bind_host}")
+    )
+
+    unit = render_units(config)["trainer-coach.service"].splitlines()
+
+    assert f"Environment=TRAINER_API_URL={url}" in unit
 
 
 def test_keys_are_named_never_written() -> None:

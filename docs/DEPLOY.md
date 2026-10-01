@@ -108,6 +108,15 @@ from there only while its `-wal` and `-shm` files exist, so the API holds one
 connection open for as long as it runs, and `trainer-coach` starts after it.
 If the API is down, the tools answer that the log cannot be read.
 
+**Proposing a program.** The sixth tool, `propose_program`, is the coach's only
+write. It sends the program to the API at `TRAINER_API_URL` (the API's loopback
+address, set by `trainer-coach.service`) with the gateway's key, which the API
+accepts on `PUT /api/programs/proposal` and nowhere else. The API saves it as a
+proposal; the owner accepts it in the app. `hermes/config.yaml` passes the URL
+and the key to the tool server as its only environment besides the data
+directory; Hermes keeps the `${API_SERVER_KEY}` name, not the key, in the
+config file it may rewrite.
+
 **The Coach tab's endpoints.** The API talks to the gateway at
 `TRAINER_HERMES_URL` (the gateway's loopback address), with the key from
 `/etc/hermes-trainer/gateway.env`. That file is optional for `trainer-api`, so

@@ -321,7 +321,7 @@ updates this section.
 | --- | --- | --- |
 | 4a | Schema v6 (programs, days, blocks, block exercises; program links on workouts and sets; an exercise's own load step) and the pure engine: double progression (D5), deload (D6), next day by sequence | #24 |
 | 4b | Programs in storage and services. API: the active and the proposed program, accept a proposal, today's program day with each exercise's target and last time, workouts and sets linked to the program | this PR |
-| 4c | `propose_program`, the coach's MCP tool: exercise ids only, validated, written through the API as a proposal (see below); the coach's profile learns to use it | |
+| 4c | `propose_program`, the coach's MCP tool: exercise ids only, validated, written through the API as a proposal (see below); the coach's profile learns to use it | this PR |
 | 4d | Web: the Program screen. The whole block, the current week, the deload week marked; a proposal to accept; generate or refine through the coach | |
 | 4e | Web: the Today screen. The next program day, supersets side by side, sets prefilled with targets, last time, a rest timer per block | |
 | 4f | Exit criterion, by the owner: a full week trained from the app | |
@@ -419,6 +419,42 @@ active program by itself, and the model never works out loads (D12).
   (422), so a workout's day and its sets' program exercises always agree. A
   later week of the same day, or a new day before any program set is logged,
   is still allowed.
+
+**4c: the coach proposes programs (this PR).**
+- `propose_program` is a sixth tool on `trainer.mcp`, offered only when the
+  tool server has `TRAINER_API_URL` and `TRAINER_COACH_KEY`. Its arguments are
+  `ProgramIn` (4b), so the coach writes exercise ids, sets, rep ranges, rest
+  and starting loads, never later loads. Its JSON schema has the nested models
+  written out in place (no `$ref`), which any model provider can read.
+- Bad arguments are answered as a tool error naming where each problem is
+  (`days.0.blocks.1.exercises.0.rep_max: …`) and never reach the API. The
+  API's own refusals (an unknown exercise id) come back as the coach's tool
+  error with the API's reason.
+- It `PUT`s the program to the API on loopback with
+  `Authorization: Bearer <gateway key>`. The API accepts that key (compared in
+  constant time) on `PUT /api/programs/proposal` alone; every other route
+  still needs the owner's login. Proxies are ignored, as for the Hermes client.
+- `trainer-coach.service` sets `TRAINER_API_URL` to the API's address
+  (bracketed for IPv6). `hermes/config.yaml` passes it and
+  `${API_SERVER_KEY}` to the tool server. Hermes gives a stdio server only its
+  configured env and a safe baseline, and keeps the `${...}` names when it
+  rewrites the config (checked in the pinned Hermes source), so the key is
+  never written to disk by it.
+- `hermes/SOUL.md` gains a Programs section: read the log and memory first,
+  use catalogue ids, set first-session loads only, and tell the owner the
+  proposal waits for them on the Program screen (4d).
+- **Checked end to end before review**, with throwaway servers, removed
+  afterwards:
+  - this branch's API on a copy of the latest backup;
+  - a second pinned Hermes gateway with a scratch home, running this branch's
+    profile and tool server with the production model.
+
+  Asked for a two-day full-body program, the coach read the log, called
+  `propose_program` once (the API logged one `PUT …/proposal` 200), and saved
+  a two-day program with a superset each day and starting loads from the
+  log; nothing active changed. The provider accepted the nested schema.
+  (Hermes also refused to start on a short test key: its API server wants at
+  least 16 characters, as the real generated key has.)
 
 ## Remaining phases
 

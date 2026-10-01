@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import hmac
 import os
 import threading
 from contextlib import asynccontextmanager, closing
@@ -30,6 +31,23 @@ if TYPE_CHECKING:
 # Set by `tailscale serve` for requests from user-owned devices on the tailnet.
 IDENTITY_HEADER = "Tailscale-User-Login"
 PUBLIC_PATHS = frozenset({"/healthz"})
+# What the coach's tool server may do with the gateway's key instead of the
+# owner's login: propose a program (it never touches the active one).
+COACH_ROUTES = frozenset({("PUT", "/api/programs/proposal")})
+
+
+def is_coach(request: Request, settings: Settings) -> bool:
+    """Whether ``request`` is the coach's, on a route the coach may use.
+
+    The coach proves itself with the gateway's key, which only the API and the
+    coach hold, compared in constant time.
+    """
+    if settings.coach is None or (request.method, request.url.path) not in COACH_ROUTES:
+        return False
+    # why: header names are case-insensitive, so a mutant changing the name's case is equal
+    given = request.headers.get("Authorization")  # pragma: no mutate
+    expected = f"Bearer {settings.coach.key}"
+    return given is not None and hmac.compare_digest(given.encode(), expected.encode())
 
 
 def create_app(settings: Settings | None = None, coach_gateway: Gateway | None = None) -> FastAPI:
@@ -69,7 +87,7 @@ def create_app(settings: Settings | None = None, coach_gateway: Gateway | None =
     async def owner_only(
         request: Request, call_next: Callable[[Request], Awaitable[Response]]
     ) -> Response:
-        if request.url.path in PUBLIC_PATHS:
+        if request.url.path in PUBLIC_PATHS or is_coach(request, settings):
             return await call_next(request)
         if request.headers.get(IDENTITY_HEADER) != settings.owner_login:
             return JSONResponse({"detail": "forbidden"}, status_code=403)

@@ -27,6 +27,7 @@ def test_substitutions() -> None:
         "prefix": "/opt/trainer",
         "bind_host": "127.0.0.1",
         "bind_port": "8000",
+        "upstream": "127.0.0.1:8000",
         "backup_keep": "7",
         "owner_login": "owner@example.com",
         "hermes_port": "8642",

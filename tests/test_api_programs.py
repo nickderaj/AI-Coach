@@ -8,12 +8,13 @@ import pytest
 from fastapi.testclient import TestClient
 
 from trainer.api.app import create_app
-from trainer.api.settings import Settings
+from trainer.api.settings import CoachSettings, Settings
 
 OWNER = {"Tailscale-User-Login": "owner@example.com"}
 W1 = "11111111-1111-4111-8111-111111111111"
 S1 = "aaaaaaaa-aaaa-4aaa-8aaa-aaaaaaaaaaaa"
 S2 = "bbbbbbbb-bbbb-4bbb-8bbb-bbbbbbbbbbbb"
+COACH = {"Authorization": "Bearer gateway-key"}
 
 
 @pytest.fixture
@@ -328,3 +329,61 @@ class TestTraining:
         assert response.json() == {
             "detail": "the program exercise is not on this workout's program day"
         }
+
+
+class TestTheCoachsKey:
+    """The coach's tool server proposes programs with the gateway's key, and does nothing else."""
+
+    @pytest.fixture
+    def coached(self, tmp_path: Path) -> TestClient:
+        settings = Settings(
+            database=tmp_path / "trainer.db",
+            owner_login="owner@example.com",
+            coach=CoachSettings("http://127.0.0.1:1", "gateway-key"),
+        )
+        return TestClient(create_app(settings))
+
+    def test_it_may_propose(self, coached: TestClient) -> None:
+        bench = new_exercise(coached, "Bench Press")
+        body = program_body(bench, bench)
+
+        response = coached.put("/api/programs/proposal", json=body, headers=COACH)
+
+        assert response.status_code == 200
+        assert response.json()["status"] == "proposed"
+
+    @pytest.mark.parametrize(
+        ("method", "path"),
+        [
+            ("GET", "/api/programs"),
+            ("DELETE", "/api/programs/proposal"),
+            ("POST", "/api/programs/1/accept"),
+            ("GET", "/api/today"),
+            ("GET", "/api/workouts"),
+            ("POST", "/api/coach/messages"),
+        ],
+    )
+    def test_it_may_do_nothing_else(self, coached: TestClient, method: str, path: str) -> None:
+        assert coached.request(method, path, json={}, headers=COACH).status_code == 403
+
+    @pytest.mark.parametrize(
+        "headers",
+        [
+            {},
+            {"Authorization": "Bearer wrong"},
+            {"Authorization": "gateway-key"},
+            {"Authorization": "bearer gateway-key"},
+            {"Authorization": "Bearer gateway-key "},
+        ],
+    )
+    def test_only_with_the_key(self, coached: TestClient, headers: dict[str, str]) -> None:
+        response = coached.put("/api/programs/proposal", json={}, headers=headers)
+
+        assert response.status_code == 403
+
+    def test_not_without_a_coach(self, client: TestClient) -> None:
+        response = client.put(
+            "/api/programs/proposal", json={}, headers={"Authorization": "Bearer "}
+        )
+
+        assert response.status_code == 403

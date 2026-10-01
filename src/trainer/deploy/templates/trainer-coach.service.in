@@ -17,6 +17,8 @@ Environment=TRAINER_MODEL=${model}
 Environment=TRAINER_MODEL_URL=${model_url}
 Environment=TRAINER_HERMES_HOST=${bind_host}
 Environment=TRAINER_HERMES_PORT=${hermes_port}
+# The API, which saves the programs the coach proposes (see hermes/config.yaml).
+Environment=TRAINER_API_URL=http://${upstream}
 Environment=HERMES_DISABLE_LAZY_INSTALLS=1
 # Root-only secrets (deploy/hermes-secrets.sh): the model provider's API key, and
 # the key the API server checks. Without them the unit does not start.
