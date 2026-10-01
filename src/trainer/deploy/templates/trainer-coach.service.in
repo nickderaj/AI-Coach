@@ -1,8 +1,9 @@
 [Unit]
 Description=hermes-trainer coach (Hermes gateway)
 Documentation=https://github.com/nickderaj/hermes-trainer
-Wants=network-online.target
-After=network-online.target
+Wants=network-online.target trainer-api.service
+# The API holds the training log open, so the tool server can read it read-only.
+After=network-online.target trainer-api.service
 
 [Service]
 Type=exec
@@ -11,6 +12,7 @@ Group=${user}
 Environment=HERMES_HOME=${hermes_home}
 Environment=HOME=${hermes_home}
 Environment=TRAINER_DATA_DIR=${data_dir}
+Environment=TRAINER_PREFIX=${prefix}
 Environment=TRAINER_MODEL=${model}
 Environment=TRAINER_MODEL_URL=${model_url}
 Environment=TRAINER_HERMES_HOST=${bind_host}

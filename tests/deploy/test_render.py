@@ -94,11 +94,14 @@ def test_gateway_unit_runs_hermes_with_root_only_secrets() -> None:
     lines = render_units(CONFIG)["trainer-coach.service"].splitlines()
 
     for expected in (
+        "Wants=network-online.target trainer-api.service",
+        "After=network-online.target trainer-api.service",
         "User=trainer",
         "Group=trainer",
         "Environment=HERMES_HOME=/srv/trainer/hermes",
         "Environment=HOME=/srv/trainer/hermes",
         "Environment=TRAINER_DATA_DIR=/srv/trainer",
+        "Environment=TRAINER_PREFIX=/opt/trainer",
         "Environment=TRAINER_MODEL=model-1",
         "Environment=TRAINER_MODEL_URL=https://api.example.com/v1",
         "Environment=TRAINER_HERMES_HOST=127.0.0.1",

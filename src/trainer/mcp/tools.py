@@ -1,0 +1,173 @@
+"""The coach's read-only tools over the training log (D10: SQLite owns facts)."""
+
+from __future__ import annotations
+
+import sqlite3
+from contextlib import closing
+from dataclasses import asdict, replace
+from typing import TYPE_CHECKING, Annotated, Any
+
+from pydantic import BaseModel, ConfigDict, Field, ValidationError
+
+from trainer.mcp.protocol import Json, Tool, ToolError
+from trainer.storage.database import connect_readonly
+from trainer.storage.history import (
+    WorkoutNotFoundError,
+    exercise_history,
+    get_workout,
+    list_exercises,
+    list_workouts,
+)
+from trainer.storage.profile import read_profile
+
+if TYPE_CHECKING:
+    from collections.abc import Callable
+    from pathlib import Path
+
+
+# SQLite's INTEGER is signed 64-bit, and row ids start at 1. A larger Python int
+# would raise OverflowError in the query instead of finding nothing.
+MAX_ROW_ID = 2**63 - 1
+# A plain alias, not a `type` statement, so the schema shows the bounds inline.
+RowId = Annotated[int, Field(ge=1, le=MAX_ROW_ID)]
+
+
+class _Arguments(BaseModel):
+    model_config = ConfigDict(extra="forbid", frozen=True)
+
+
+class RecentWorkouts(_Arguments):
+    """Arguments of ``recent_workouts``."""
+
+    limit: Annotated[int, Field(ge=1, le=50, description="How many workouts, newest first.")] = 10
+
+
+class Workout(_Arguments):
+    """Arguments of ``get_workout``."""
+
+    workout_id: Annotated[RowId, Field(description="A workout id from recent_workouts.")]
+
+
+class Catalogue(_Arguments):
+    """Arguments of ``list_exercises``: none."""
+
+
+class History(_Arguments):
+    """Arguments of ``exercise_history``."""
+
+    exercise_id: Annotated[RowId, Field(description="An exercise id from list_exercises.")]
+    sessions: Annotated[
+        int, Field(ge=1, le=100, description="How many sessions, newest first.")
+    ] = 20
+
+
+class BodyWeight(_Arguments):
+    """Arguments of ``body_weight``: none."""
+
+
+def _recent_workouts(conn: sqlite3.Connection, arguments: RecentWorkouts) -> object:
+    return [asdict(summary) for summary in list_workouts(conn, arguments.limit)]
+
+
+def _get_workout(conn: sqlite3.Connection, arguments: Workout) -> object:
+    try:
+        return asdict(get_workout(conn, arguments.workout_id))
+    except WorkoutNotFoundError as error:
+        message = f"there is no workout {arguments.workout_id}"
+        raise ToolError(message) from error
+
+
+def _list_exercises(conn: sqlite3.Connection, _arguments: Catalogue) -> object:
+    return [asdict(summary) for summary in list_exercises(conn)]
+
+
+def _exercise_history(conn: sqlite3.Connection, arguments: History) -> object:
+    found = exercise_history(conn, arguments.exercise_id)
+    if found is None:
+        message = f"there is no exercise {arguments.exercise_id}"
+        raise ToolError(message)
+    return asdict(replace(found, sessions=found.sessions[: arguments.sessions]))
+
+
+def _body_weight(conn: sqlite3.Connection, _arguments: BodyWeight) -> object:
+    return asdict(read_profile(conn))
+
+
+# Each tool's description, argument model and answer, by name.
+_TOOLS: dict[str, tuple[str, type[_Arguments], Callable[[sqlite3.Connection, Any], object]]] = {
+    "recent_workouts": (
+        (
+            "The most recent workouts, newest first: when, each exercise with its set "
+            "count and best set, the total set count and volume in kg."
+        ),
+        RecentWorkouts,
+        _recent_workouts,
+    ),
+    "get_workout": (
+        (
+            "One workout with every set: reps, load_kg, duration_s, rpe and notes per set, "
+            "grouped by exercise in the order done. carried_kg is the body weight each rep "
+            "of a bodyweight exercise moves on top of load_kg."
+        ),
+        Workout,
+        _get_workout,
+    ),
+    "list_exercises": (
+        (
+            "The exercise catalogue: id, name, equipment, muscle groups, measure (reps or "
+            "seconds), how many workouts included it, when it was last done, best load."
+        ),
+        Catalogue,
+        _list_exercises,
+    ),
+    "exercise_history": (
+        (
+            "Every set of one exercise, by session, newest first, with carried_kg for "
+            "bodyweight exercises. Use it for progress, records and what was done last time."
+        ),
+        History,
+        _exercise_history,
+    ),
+    "body_weight": (
+        "The owner's body weight in kg, or null if not set.",
+        BodyWeight,
+        _body_weight,
+    ),
+}
+
+
+def tools(database: Path) -> dict[str, Tool]:
+    """The tool set over the database at ``database``, opened read-only per call."""
+    return {
+        name: Tool(name, description, model.model_json_schema(), _caller(database, model, answer))
+        for name, (description, model, answer) in _TOOLS.items()
+    }
+
+
+def _caller(
+    database: Path,
+    model: type[_Arguments],
+    answer: Callable[[sqlite3.Connection, Any], object],
+) -> Callable[[Json], object]:
+    def call(arguments: Json) -> object:
+        try:
+            parsed = model.model_validate(arguments)
+        except ValidationError as error:
+            raise ToolError(_describe(error)) from error
+        try:
+            with closing(connect_readonly(database)) as conn:
+                return answer(conn, parsed)
+        except sqlite3.OperationalError as error:
+            message = f"the training log cannot be read right now ({error})"
+            raise ToolError(message) from error
+
+    return call
+
+
+def _describe(error: ValidationError) -> str:
+    problems = "; ".join(
+        # Arguments are flat, so each problem names one argument.
+        f"{problem['loc'][0]}: {problem['msg']}"
+        for problem in error.errors()
+    )
+    return f"invalid arguments: {problems}"
