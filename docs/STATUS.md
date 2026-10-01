@@ -261,7 +261,9 @@ were installed, but the gateway did not start, for two reasons.
   at once and "Thinking…" until the reply arrives; the view scrolls to the
   newest message. Only one message is in flight at a time, and blank messages
   are not sent. The field takes up to 4000 characters, the server's limit.
-- If a message cannot be sent, it goes back into the box with the reason:
+- If a message cannot be sent, it goes back into the box with the reason. If
+  a new message was started in the box meanwhile, that is kept, and the unsent
+  one is shown under the reason instead. The reasons:
   - no connection: "Talking to the coach needs a connection.";
   - 409: the coach is still answering;
   - 503: the server's reason, such as "The coach is not set up.".

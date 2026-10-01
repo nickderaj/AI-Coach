@@ -151,6 +151,57 @@ describe("Coach", () => {
     expect(send).toBeEnabled();
   });
 
+  it("keeps a new draft typed while a failing message was on its way", async () => {
+    let fail: (error: Error) => void = () => undefined;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>((_input, init) =>
+        init?.method === "POST"
+          ? new Promise<Response>((_resolve, reject) => {
+              fail = reject;
+            })
+          : Promise.resolve(new Response("[]", { status: 200 })),
+      ),
+    );
+    render(<App />);
+    await screen.findByText(/Nothing said yet/);
+    const { box, send } = composer();
+    fireEvent.change(box, { target: { value: "first" } });
+    fireEvent.click(send);
+
+    fireEvent.change(box, { target: { value: "second, typed while waiting" } });
+    await act(async () => {
+      fail(new TypeError("offline"));
+      await Promise.resolve();
+    });
+
+    const alert = await screen.findByRole("alert");
+    expect(alert).toHaveTextContent(OFFLINE_COACH);
+    expect(within(alert).getByText("Not sent: “first”")).toBeInTheDocument();
+    expect(box).toHaveValue("second, typed while waiting");
+    expect(conversation()).toEqual([]);
+  });
+
+  it("does not repeat the message that went back into the box", async () => {
+    routeFetch({
+      [`GET ${MESSAGES}`]: { body: [] },
+      [`POST ${MESSAGES}`]: new TypeError("offline"),
+    });
+    render(<App />);
+    await screen.findByText(/Nothing said yet/);
+    const { box, send } = composer();
+    fireEvent.change(box, { target: { value: "only once" } });
+    fireEvent.click(send);
+    fireEvent.change(box, { target: { value: "   " } }); // only spaces: not a new message
+
+    const alert = await screen.findByRole("alert");
+    expect(box).toHaveValue("only once");
+    expect(within(alert).queryByText(/Not sent/)).not.toBeInTheDocument();
+
+    fireEvent.change(box, { target: { value: "only once, edited" } });
+    expect(within(alert).getByText("Not sent: “only once”")).toBeInTheDocument();
+  });
+
   it("clears the last failure when sending again", async () => {
     routeFetch({
       [`GET ${MESSAGES}`]: { body: [] },

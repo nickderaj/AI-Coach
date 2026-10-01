@@ -128,6 +128,33 @@ function Composer({
   );
 }
 
+/** A message the coach did not get, and why. */
+interface Failure {
+  reason: string;
+  unsent: string;
+}
+
+/** Why the last message failed, and the message itself unless it is back in the box. */
+function FailureNote({
+  failure,
+  draft,
+}: {
+  failure: Failure | null;
+  draft: string;
+}): ReactElement | null {
+  if (failure === null) {
+    return null;
+  }
+  return (
+    <div role="alert">
+      <p className="error">{failure.reason}</p>
+      {draft === failure.unsent ? null : (
+        <p className="muted unsent">Not sent: “{failure.unsent}”</p>
+      )}
+    </div>
+  );
+}
+
 /** The Coach tab: one long conversation with the coach, which needs a connection. */
 export function Coach(): ReactElement {
   const history = useHistory();
@@ -135,7 +162,7 @@ export function Coach(): ReactElement {
   const [said, setSaid] = useState<CoachMessage[]>([]);
   const [draft, setDraft] = useState("");
   const [waiting, setWaiting] = useState(false);
-  const [failure, setFailure] = useState<string | null>(null);
+  const [failure, setFailure] = useState<Failure | null>(null);
   const messages = [...(history.status === "ready" ? history.messages : []), ...said];
 
   const send = async (): Promise<void> => {
@@ -155,10 +182,11 @@ export function Coach(): ReactElement {
       setSaid((current) => [...current, reply]);
       return;
     }
-    // Take the question back, so it can be sent again as it was.
+    // Take the question back. It returns to the box unless a new message has
+    // been started there meanwhile; then it is shown with the reason instead.
     setSaid((current) => current.filter((message) => message !== question));
-    setDraft(text);
-    setFailure(result.message);
+    setDraft((current) => (current.trim() === "" ? text : current));
+    setFailure({ reason: result.message, unsent: text });
   };
 
   return (
@@ -169,11 +197,7 @@ export function Coach(): ReactElement {
       </header>
       <HistoryNote history={history} empty={messages.length === 0 && !waiting} />
       <Conversation messages={messages} waiting={waiting} />
-      {failure === null ? null : (
-        <p className="error" role="alert">
-          {failure}
-        </p>
-      )}
+      <FailureNote failure={failure} draft={draft} />
       <Composer
         draft={draft}
         waiting={waiting}
