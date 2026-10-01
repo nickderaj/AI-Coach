@@ -74,3 +74,9 @@ def test_the_gateway_starts_only_with_its_secrets() -> None:
     assert '[ -f "$TRAINER_SECRETS_DIR/model.env" ]' in text
     assert "--require-hashes" in text
     assert ".no-bundled-skills" in text
+
+
+def test_the_old_coach_unit_is_removed_only_when_it_is_ours() -> None:
+    text = (DEPLOY / "install.sh").read_text(encoding="utf-8")
+
+    assert "grep -q '^Description=hermes-trainer coach' \"$legacy\"" in text

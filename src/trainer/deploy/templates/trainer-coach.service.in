@@ -20,7 +20,8 @@ Environment=HERMES_DISABLE_LAZY_INSTALLS=1
 # the key the API server checks. Without them the unit does not start.
 EnvironmentFile=${secrets_dir}/model.env
 EnvironmentFile=${secrets_dir}/gateway.env
-ExecStart=${prefix}/hermes/bin/hermes gateway run
+# Run as a module: the venv's console scripts name the staging path it was built in.
+ExecStart=${prefix}/hermes/bin/python -m hermes_cli.main gateway run
 Restart=on-failure
 RestartSec=10
 UMask=0077

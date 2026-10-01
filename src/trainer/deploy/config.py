@@ -35,7 +35,7 @@ RESERVED_USERS = frozenset({"root", "nobody"})
 MIN_PORT = 1024
 MAX_PORT = 65535
 MAX_BACKUPS = 365
-# Root-only directory of the coach's secrets, read by systemd for hermes-gateway.
+# Root-only directory of the coach's secrets, read by systemd for trainer-coach.
 SECRETS_DIR = PurePosixPath("/etc/hermes-trainer")
 
 

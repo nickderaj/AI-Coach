@@ -31,6 +31,8 @@ Last updated: 2026-10-01.
 | Phase 2c — offline write queue, service worker, installable app | #13 | Deployed 2026-09-30. |
 | Phase 2b-2 — logging screens: start/resume, set table, rest timer, picker, one-off sets | #14 | Deployed 2026-09-30. **Phase 2 built.** |
 | Fixes from the first sessions: shorthand, body weight in volume, RPE, rest timer, common exercises | #15 | Deployed 2026-09-30. |
+| A share of body weight per bodyweight exercise; "no equipment" merged into bodyweight; schema v4 | #16 | Deployed 2026-10-01 (backup first; no rows needed converting). |
+| Phase 3a — pinned Hermes gateway, profile, root-only secrets, private memory repo | #17 | Deploy on 2026-10-01 stopped at the gateway; fixed in the next PR. |
 
 ## Phase 2 — logging: built, awaiting its exit criterion
 
@@ -103,7 +105,7 @@ logging works without signal.
 - **Data fix, outside git.** The owner's late-logged workout #23 was moved to
   Sat 26 Sept, 11:45–12:15 BST. A backup was taken first.
 
-**In this PR: a share of body weight, and one "bodyweight".**
+**A share of body weight, and one "bodyweight" (done, #16).**
 - **Share of body weight.** 300 bodyweight squats are not 300 squats at body
   weight. Each bodyweight exercise now carries the share of body weight one rep
   lifts, as Alpha Progression does (Hevy counts 100% for pull-ups and dips and
@@ -156,7 +158,7 @@ that shaped the build:
 
 | Step | Scope | PR |
 | --- | --- | --- |
-| 3a | Pinned Hermes in its own venv; `hermes-gateway` unit; `hermes/` profile (config, SOUL); root-only secrets; private memory repo with a nightly commit | this PR |
+| 3a | Pinned Hermes in its own venv; `trainer-coach` unit; `hermes/` profile (config, SOUL); root-only secrets; private memory repo with a nightly commit | #17, and the fix below |
 | 3b | `trainer.mcp`: read-only training-history tools (recent workouts, an exercise's history and records, the catalogue, body weight), run by Hermes over stdio | next |
 | 3c | Coach proxy in the API: one durable Hermes session, its id in SQLite; send a message, read the conversation | |
 | 3d | Coach tab in the web app (needs a connection; shows the conversation) | |
@@ -168,13 +170,13 @@ Hermes writes what it learns to `memories/` and `skills/` there.
 `<data dir>/hermes-memory.git`, a bare repository on the host with no remote.
 The job has no network and refuses a repository that has one.
 
-**In this PR (3a).**
+**3a (done, #17).**
 - `build.sh` checks out Hermes at a pinned tag and commit (which must match),
   builds its wheel and exports its hash-pinned requirements (extras `mcp`,
   `sms`).
 - `install.sh` installs them into `<prefix>/hermes`, installs the profile into
   the coach's home, creates the memory repository, and enables
-  `hermes-gateway`. It starts the gateway only once both secrets exist.
+  `trainer-coach`. It starts the gateway only once both secrets exist.
 - `deploy/hermes-secrets.sh` reads the provider key from the terminal and
   generates the gateway's API key. Both go in root-only files under
   `/etc/hermes-trainer`, which systemd hands to the gateway.
@@ -183,12 +185,27 @@ The job has no network and refuses a repository that has one.
 - `python -m trainer.deploy memory-commit` does the nightly commit, without
   user or system git config or hooks.
 
+**In this PR: fixes from deploying 3a (2026-10-01).** The API and the secrets
+were installed, but the gateway did not start, for two reasons.
+- **Unit name.** The coach's unit was `hermes-gateway.service`. That is the name
+  Hermes gives its own gateway, and the v1 bot's Hermes install on the host had
+  already used it, with a drop-in of its own (another user, home and env file).
+  The installer overwrote v1's unit file under that name (v1's gateway was not
+  enabled and nothing ran), and v1's drop-in then applied to the coach. The
+  coach's unit is now `trainer-coach.service`. `install.sh` removes the old
+  `hermes-gateway.service` only if its description is the coach's, and leaves
+  v1's drop-in alone.
+- **Launcher.** `ExecStart` ran the venv's `hermes` script, whose `#!` names
+  the staging directory the venv was built in, which no longer exists after the
+  swap. The unit now runs `python -m hermes_cli.main gateway run`. A test checks
+  that every unit starts a venv's `python`, not a console script.
+
 ## Remaining phases
 
 | Phase | Scope | Exit criterion |
 | --- | --- | --- |
 | 2 — Logging | 2a write API, 2b-1 visual design, 2c offline queue and PWA install, 2b-2 logging screens (all done) | Owner stops logging in v1 |
-| 3 — Hermes | `hermes-gateway` unit, `hermes/` profile templates (SOUL, config), MCP tool server, Coach tab on one durable session, **private local git repo** for memory/skills with a nightly commit (never this repo) | Coach remembers across turns and days |
+| 3 — Hermes | `trainer-coach` unit, `hermes/` profile templates (SOUL, config), MCP tool server, Coach tab on one durable session, **private local git repo** for memory/skills with a nightly commit (never this repo) | Coach remembers across turns and days |
 | 4 — Programs | Domain engine (`# coverage-critical`): double progression per D5, deload per D6, sequence-based "next day"; `propose_program` via Hermes; Today screen with blocks/supersets, targets, "last time", rest timer | A full week trained from the app |
 | 5 — Cut-over | Web Push + in-app inbox, retire the v1 bot | v1 retired |
 

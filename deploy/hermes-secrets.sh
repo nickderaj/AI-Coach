@@ -1,6 +1,6 @@
 #!/usr/bin/env bash
 # Store the coach's secrets where only root can read them; systemd hands them to
-# hermes-gateway as environment variables. Run as root after ./deploy/build.sh.
+# trainer-coach as environment variables. Run as root after ./deploy/build.sh.
 # Idempotent: re-run to replace the model provider's API key.
 #
 #  - model.env:   TRAINER_MODEL_API_KEY, read from stdin (never an argument, so it
@@ -58,7 +58,7 @@ if [ "$rotate" = yes ] || [ ! -f "$TRAINER_SECRETS_DIR/gateway.env" ]; then
 fi
 echo "secrets stored in $TRAINER_SECRETS_DIR"
 
-if systemctl is-enabled --quiet hermes-gateway.service 2>/dev/null; then
-  systemctl restart hermes-gateway.service
-  echo "restarted hermes-gateway"
+if systemctl is-enabled --quiet trainer-coach.service 2>/dev/null; then
+  systemctl restart trainer-coach.service
+  echo "restarted trainer-coach"
 fi

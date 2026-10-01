@@ -53,7 +53,7 @@ tailscale serve ──▶ trainer-api (FastAPI, 127.0.0.1)
                       ├─ REST API for the web app
                       ├─ Web Push sender
                       ├─ SQLite  $TRAINER_DATA_DIR/trainer.db
-                      └─ Coach proxy ──▶ hermes-gateway (127.0.0.1, session API)
+                      └─ Coach proxy ──▶ trainer-coach (127.0.0.1, session API)
                                            home: $TRAINER_DATA_DIR/hermes (profile from hermes/)
                                            memory · skills · session_search · todo · clarify
                                            └─ MCP ──▶ trainer-mcp (reads/writes via services)
@@ -62,7 +62,7 @@ tailscale serve ──▶ trainer-api (FastAPI, 127.0.0.1)
 Processes (systemd, all as `gym`, loopback-only):
 
 1. **trainer-api** — serves the built web app and the JSON API.
-2. **hermes-gateway** — one long-lived Hermes gateway, pinned to a Hermes
+2. **trainer-coach** — one long-lived Hermes gateway, pinned to a Hermes
    release, with the profile in `hermes/` installed into its home,
    addressed through its authenticated HTTP session API. The web app's Coach tab
    maps to one durable Hermes session, so turns keep context and a warm prompt

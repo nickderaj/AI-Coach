@@ -38,7 +38,7 @@ def test_the_api_server_listens_on_loopback_only() -> None:
 
 
 def test_every_placeholder_is_set_by_the_gateway_unit() -> None:
-    unit = render_units(load(EXAMPLE.read_text(encoding="utf-8")))["hermes-gateway.service"]
+    unit = render_units(load(EXAMPLE.read_text(encoding="utf-8")))["trainer-coach.service"]
     environment = set(re.findall(r"^Environment=([A-Z_]+)=", unit, re.MULTILINE))
 
     assert set(re.findall(r"\$\{([A-Z_]+)\}", CONFIG)) == {
@@ -69,7 +69,7 @@ def test_the_gateway_listens_where_the_api_and_installer_look(
     config = load(
         EXAMPLE_TEXT.replace("TRAINER_BIND_HOST=127.0.0.1", f"TRAINER_BIND_HOST={bind_host}")
     )
-    unit = render_units(config)["hermes-gateway.service"].splitlines()
+    unit = render_units(config)["trainer-coach.service"].splitlines()
 
     # The gateway binds ${TRAINER_HERMES_HOST} (above), which the unit sets to the
     # API's address; the installer's health check and the API use the same one.

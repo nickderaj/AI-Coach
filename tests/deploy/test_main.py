@@ -24,10 +24,10 @@ def test_render_writes_the_bundle(tmp_path: Path, capsys: pytest.CaptureFixture[
 
     assert (out / "install.env").is_file()
     assert sorted(path.name for path in (out / "systemd").iterdir()) == [
-        "hermes-gateway.service",
         "trainer-api.service",
         "trainer-backup.service",
         "trainer-backup.timer",
+        "trainer-coach.service",
         "trainer-memory.service",
         "trainer-memory.timer",
     ]
@@ -35,7 +35,7 @@ def test_render_writes_the_bundle(tmp_path: Path, capsys: pytest.CaptureFixture[
         f"rendered {out}/systemd/trainer-api.service",
         f"rendered {out}/systemd/trainer-backup.service",
         f"rendered {out}/systemd/trainer-backup.timer",
-        f"rendered {out}/systemd/hermes-gateway.service",
+        f"rendered {out}/systemd/trainer-coach.service",
         f"rendered {out}/systemd/trainer-memory.service",
         f"rendered {out}/systemd/trainer-memory.timer",
         f"rendered {out}/install.env",
