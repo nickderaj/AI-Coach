@@ -38,6 +38,7 @@ Last updated: 2026-10-01.
 | Phase 3c — Coach endpoints on one durable Hermes session; schema v5 | #20 | Deployed 2026-10-01. |
 | Phase 3d — Coach tab in the web app | #21 | Deployed 2026-10-01. **Phase 3 built.** |
 | Phase 4a — program engine (progression, deload, next day); schema v6 | #24 | Deployed 2026-10-01 (backup first); schema v6 live, existing workouts untouched. |
+| Phase 4b — programs through the API: proposals, the active program, today's day | #25 | Deployed 2026-10-01 (backup first); `/api/programs` and `/api/today` answer the owner, 403 otherwise. |
 
 ## Phase 2 — logging: built, awaiting its exit criterion
 
@@ -320,7 +321,7 @@ updates this section.
 | Step | Scope | PR |
 | --- | --- | --- |
 | 4a | Schema v6 (programs, days, blocks, block exercises; program links on workouts and sets; an exercise's own load step) and the pure engine: double progression (D5), deload (D6), next day by sequence | #24 |
-| 4b | Programs in storage and services. API: the active and the proposed program, accept a proposal, today's program day with each exercise's target and last time, workouts and sets linked to the program | this PR |
+| 4b | Programs in storage and services. API: the active and the proposed program, accept a proposal, today's program day with each exercise's target and last time, workouts and sets linked to the program | #25 |
 | 4c | `propose_program`, the coach's MCP tool: exercise ids only, validated, written through the API as a proposal (see below); the coach's profile learns to use it | this PR |
 | 4d | Web: the Program screen. The whole block, the current week, the deload week marked; a proposal to accept; generate or refine through the coach | |
 | 4e | Web: the Today screen. The next program day, supersets side by side, sets prefilled with targets, last time, a rest timer per block | |
@@ -378,7 +379,7 @@ active program by itself, and the model never works out loads (D12).
 - **From review:** an exercise without an increment keeps its load in the
   deload week (see above), rather than rounding to an invented step.
 
-**4b: programs through the API (this PR).** Every endpoint is owner-only.
+**4b: programs through the API (done, #25).** Every endpoint is owner-only.
 - **The program's shape** is one pydantic model in `trainer.services.programs`
   (`ProgramIn`), so the API and the coach's tool (4c) check it the same way:
   - 1–7 days, each with 1–12 blocks;
