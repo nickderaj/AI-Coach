@@ -34,6 +34,8 @@ export interface OutboxStore {
   add: (write: Write) => Promise<void>;
   /** The oldest queued write, if any. */
   next: () => Promise<QueuedWrite | undefined>;
+  /** The write queued for `path`, if any (there is at most one). */
+  queued: (path: string) => Promise<QueuedWrite | undefined>;
   /**
    * Remove a write that the server accepted (`reason` null) or refused. Does
    * nothing if it was replaced after it was read, so the newer version is sent.
@@ -113,6 +115,12 @@ export function outboxStore(factory: IDBFactory): OutboxStore {
       const tx = await transaction([OUTBOX], "readonly");
       const [first] = (await request(tx.objectStore(OUTBOX).getAll(null, 1))) as QueuedWrite[];
       return first;
+    },
+
+    async queued(path): Promise<QueuedWrite | undefined> {
+      const tx = await transaction([OUTBOX], "readonly");
+      return (await request(tx.objectStore(OUTBOX).index("path").get(path))) as
+        QueuedWrite | undefined;
     },
 
     async finish(write, reason): Promise<void> {

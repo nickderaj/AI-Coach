@@ -218,6 +218,41 @@ class TestHistory:
             (6, 70.0),
         ]
 
+    def test_bodyweight_exercises_use_the_profile(self, client: TestClient) -> None:
+        assert client.get("/api/profile", headers=AS_OWNER).json() == {"bodyweight_kg": None}
+
+        saved = client.put("/api/profile", json={"bodyweight_kg": 65}, headers=AS_OWNER)
+
+        assert saved.status_code == 200
+        assert saved.json() == {"bodyweight_kg": 65.0}
+        assert client.get("/api/profile", headers=AS_OWNER).json() == {"bodyweight_kg": 65.0}
+        newest = client.get("/api/workouts", headers=AS_OWNER).json()[0]
+        assert newest["volume_kg"] == 12 * 50 + 8 * 65
+        detail = client.get(f"/api/workouts/{newest['id']}", headers=AS_OWNER).json()
+        assert [e["carried_kg"] for e in detail["exercises"]] == [0.0, 65.0]
+        pull_up = next(
+            e["id"]
+            for e in client.get("/api/exercises", headers=AS_OWNER).json()
+            if e["name"] == "Pull-up"
+        )
+        history = client.get(f"/api/exercises/{pull_up}/history", headers=AS_OWNER).json()
+        assert history["carried_kg"] == 65.0
+
+    @pytest.mark.parametrize("weight", [0, -1, 501, "heavy"])
+    def test_profile_rejects_impossible_body_weights(
+        self, client: TestClient, weight: object
+    ) -> None:
+        response = client.put("/api/profile", json={"bodyweight_kg": weight}, headers=AS_OWNER)
+
+        assert response.status_code == 422
+
+    def test_profile_body_weight_can_be_cleared(self, client: TestClient) -> None:
+        client.put("/api/profile", json={"bodyweight_kg": 65}, headers=AS_OWNER)
+
+        cleared = client.put("/api/profile", json={}, headers=AS_OWNER)
+
+        assert cleared.json() == {"bodyweight_kg": None}
+
     def test_missing_exercise(self, client: TestClient) -> None:
         response = client.get("/api/exercises/999/history", headers=AS_OWNER)
 

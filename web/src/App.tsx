@@ -2,31 +2,33 @@ import type { ReactElement } from "react";
 
 import { SyncBanner } from "./outbox/Sync";
 import { href, useRoute } from "./router";
-import type { Route } from "./router";
+import type { FixedRouteName, Route } from "./router";
 import { ExerciseDetail } from "./screens/ExerciseDetail";
 import { Exercises } from "./screens/Exercises";
 import { History, WorkoutDetail } from "./screens/History";
 import { Home } from "./screens/Home";
 import { Log } from "./screens/Log";
 import { Picker } from "./screens/Picker";
+import { Settings } from "./screens/Settings";
+
+const SCREENS: Record<FixedRouteName, () => ReactElement> = {
+  home: Home,
+  history: History,
+  exercises: Exercises,
+  log: Log,
+  pick: Picker,
+  settings: Settings,
+};
 
 function Screen({ route }: { route: Route }): ReactElement {
-  switch (route.name) {
-    case "home":
-      return <Home />;
-    case "history":
-      return <History />;
-    case "workout":
-      return <WorkoutDetail key={route.id} id={route.id} />;
-    case "exercises":
-      return <Exercises />;
-    case "exercise":
-      return <ExerciseDetail key={route.id} id={route.id} />;
-    case "log":
-      return <Log />;
-    case "pick":
-      return <Picker />;
+  if (route.name === "workout") {
+    return <WorkoutDetail key={route.id} id={route.id} />;
   }
+  if (route.name === "exercise") {
+    return <ExerciseDetail key={route.id} id={route.id} />;
+  }
+  const Fixed = SCREENS[route.name];
+  return <Fixed />;
 }
 
 type Tab = "home" | "history" | "exercises";
@@ -37,24 +39,20 @@ const TABS: { tab: Tab; route: Route; icon: string; label: string }[] = [
   { tab: "exercises", route: { name: "exercises" }, icon: "✦", label: "Exercises" },
 ];
 
-function tabOf(route: Route): Tab {
-  switch (route.name) {
-    case "home":
-    case "log":
-    case "pick":
-      return "home";
-    case "history":
-    case "workout":
-      return "history";
-    case "exercises":
-    case "exercise":
-      return "exercises";
-  }
-}
+const TAB_OF: Record<Route["name"], Tab> = {
+  home: "home",
+  log: "home",
+  pick: "home",
+  settings: "home",
+  history: "history",
+  workout: "history",
+  exercises: "exercises",
+  exercise: "exercises",
+};
 
 export function App(): ReactElement {
   const route = useRoute();
-  const current = tabOf(route);
+  const current = TAB_OF[route.name];
   return (
     <div className="app">
       <main>

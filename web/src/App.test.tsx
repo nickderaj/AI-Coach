@@ -53,6 +53,7 @@ const WORKOUT_2 = {
       exercise_id: 45,
       name: "Lat Pulldown",
       measure: "reps",
+      carried_kg: 0,
       sets: [set(1, 12, 50), set(2, 8, 60, { rpe: 9, notes: "last rep slow" })],
     },
     {
@@ -60,6 +61,7 @@ const WORKOUT_2 = {
       exercise_id: 23,
       name: "Dead Hang",
       measure: "seconds",
+      carried_kg: 65,
       sets: [set(1, null, null, { duration_s: 50 })],
     },
   ],
@@ -102,6 +104,7 @@ const EXERCISES = [
 
 const HISTORY_45 = {
   exercise: PULLDOWN,
+  carried_kg: 0,
   sessions: [
     {
       workout_id: 2,
@@ -129,6 +132,7 @@ const HISTORY_23 = {
     workouts: 1,
     best_load_kg: null,
   },
+  carried_kg: 65,
   sessions: [
     {
       workout_id: 2,
@@ -287,11 +291,33 @@ describe("History", () => {
     expect(text(rows)).toEqual(["SetReps × kgRPE", "112 × 50 kg–", "28 × 60 kg9"]);
     expect(at(rows, 2)).toHaveAttribute("title", "last rep slow");
     expect(at(rows, 1)).not.toHaveAttribute("title");
-    expect(text(within(hang ?? document.body).getAllByRole("row"))).toEqual([
-      "SetTimeRPE",
-      "150 s–",
-    ]);
+    // No set of the hang has an RPE, so its table has no RPE column.
+    expect(text(within(hang ?? document.body).getAllByRole("row"))).toEqual(["SetTime", "150 s"]);
     expect(screen.getByRole("link", { name: "‹ History" })).toHaveAttribute("href", "#/history");
+  });
+
+  it("counts body weight in a workout's volume", async () => {
+    mockFetch({
+      "/api/workouts/2": {
+        body: {
+          ...WORKOUT_2,
+          exercises: [
+            {
+              position: 1,
+              exercise_id: 17,
+              name: "Pull-up",
+              measure: "reps",
+              carried_kg: 65,
+              sets: [set(1, 10, null), set(2, 8, 10)],
+            },
+          ],
+        },
+      },
+    });
+    await go("#/workouts/2");
+    render(<App />);
+
+    expect(await screen.findByText("🏋 1,250 kg")).toBeInTheDocument(); // 10 × 65 + 8 × 75
   });
 
   it("omits notes and duration when there are none", async () => {
@@ -394,6 +420,7 @@ describe("Exercises", () => {
       "/api/exercises/45/history": {
         body: {
           exercise: PULLDOWN,
+          carried_kg: 0,
           sessions: [
             {
               workout_id: 2,
@@ -442,7 +469,11 @@ describe("Exercises", () => {
   it("shows a dash for records that do not exist yet", async () => {
     mockFetch({
       "/api/exercises/45/history": {
-        body: { exercise: { ...PULLDOWN, equipment: null, workouts: 0 }, sessions: [] },
+        body: {
+          exercise: { ...PULLDOWN, equipment: null, workouts: 0 },
+          carried_kg: 0,
+          sessions: [],
+        },
       },
     });
     await go("#/exercises/45");

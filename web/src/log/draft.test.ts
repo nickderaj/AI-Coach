@@ -33,11 +33,12 @@ const row = (values: Partial<DraftSet> = {}): DraftSet => ({
   kg: "",
   reps: "",
   seconds: "",
+  rpe: "",
   logged: null,
   ...values,
 });
 
-const BENCH_8x60 = { kg: "60", reps: "8", seconds: "" };
+const BENCH_8x60 = { kg: "60", reps: "8", seconds: "", rpe: "" };
 
 function withBench(previous = [{ reps: 8, load_kg: 60, duration_s: null }]): Draft {
   return addBlock(newDraft("w", START), { block: "b", set: "s1" }, BENCH, previous);
@@ -69,8 +70,8 @@ describe("parseAmount", () => {
 
 describe("valuesOf", () => {
   it.each([
-    [row({ kg: "60", reps: "8" }), { reps: 8, load_kg: 60, duration_s: null }],
-    [row({ reps: "12" }), { reps: 12, load_kg: null, duration_s: null }],
+    [row({ kg: "60", reps: "8" }), { reps: 8, load_kg: 60, duration_s: null, rpe: null }],
+    [row({ reps: "12" }), { reps: 12, load_kg: null, duration_s: null, rpe: null }],
     [row({ kg: "60" }), null],
     [row({ kg: "60", reps: "8.5" }), null],
     [row({ kg: "sixty", reps: "8" }), null],
@@ -79,11 +80,27 @@ describe("valuesOf", () => {
   });
 
   it.each([
-    [row({ seconds: "45" }), { reps: null, load_kg: null, duration_s: 45 }],
-    [row({ kg: "10", seconds: "30.5" }), { reps: null, load_kg: 10, duration_s: 30.5 }],
+    [row({ seconds: "45" }), { reps: null, load_kg: null, duration_s: 45, rpe: null }],
+    [row({ kg: "10", seconds: "30.5" }), { reps: null, load_kg: 10, duration_s: 30.5, rpe: null }],
     [row({ reps: "8" }), null],
   ])("seconds: %j", (set, values) => {
     expect(valuesOf(set, "seconds")).toEqual(values);
+  });
+});
+
+describe("valuesOf with RPE", () => {
+  it.each([
+    ["8", 8],
+    [" 10 ", 10],
+    ["1", 1],
+    ["", null],
+  ])("logs RPE %j as %s", (rpe, value) => {
+    expect(valuesOf(row({ reps: "5", rpe }), "reps")?.rpe).toBe(value);
+    expect(valuesOf(row({ seconds: "30", rpe }), "seconds")?.rpe).toBe(value);
+  });
+
+  it.each(["0", "11", "7.5", "hard"])("will not log RPE %j", (rpe) => {
+    expect(valuesOf(row({ reps: "5", rpe }), "reps")).toBeNull();
   });
 });
 
@@ -248,13 +265,15 @@ describe("draftFromServer", () => {
           exercise_id: 7,
           name: "Bench Press",
           measure: "reps",
-          sets: [logged(1, "a", { reps: 8, load_kg: 60 }), logged(2, null, { reps: 8 })],
+          carried_kg: 0,
+          sets: [logged(1, "a", { reps: 8, load_kg: 60, rpe: 9 }), logged(2, null, { reps: 8 })],
         },
         {
           position: 2,
           exercise_id: 9,
           name: "Dead Hang",
           measure: "seconds",
+          carried_kg: 65,
           sets: [logged(1, "b", { duration_s: 45 })],
         },
       ],
@@ -269,7 +288,7 @@ describe("draftFromServer", () => {
           key: "server-1",
           exercise: { ...BENCH, equipment: null },
           previous: [],
-          sets: [row({ ...BENCH_8x60, id: "a", logged: BENCH_8x60 })],
+          sets: [row({ ...BENCH_8x60, rpe: "9", id: "a", logged: { ...BENCH_8x60, rpe: "9" } })],
         },
         {
           key: "server-2",
@@ -279,7 +298,7 @@ describe("draftFromServer", () => {
             row({
               id: "b",
               seconds: "45",
-              logged: { kg: "", reps: "", seconds: "45" },
+              logged: { kg: "", reps: "", seconds: "45", rpe: "" },
             }),
           ],
         },
@@ -317,16 +336,25 @@ describe("writes", () => {
   it("names a set by its place even in an edited copy", () => {
     const edited = { ...second, reps: "9" };
 
-    expect(setWrite(draft, bench, edited, { reps: 9, load_kg: 60, duration_s: null }).label).toBe(
-      "Log set 2 of Bench Press",
-    );
+    expect(
+      setWrite(draft, bench, edited, { reps: 9, load_kg: 60, duration_s: null, rpe: null }).label,
+    ).toBe("Log set 2 of Bench Press");
   });
 
   it("logs and deletes a set by its id, in its workout and exercise", () => {
-    expect(setWrite(draft, bench, second, { reps: 8, load_kg: 60, duration_s: null })).toEqual({
+    expect(
+      setWrite(draft, bench, second, { reps: 8, load_kg: 60, duration_s: null, rpe: null }),
+    ).toEqual({
       method: "PUT",
       path: "/api/sets/s2",
-      body: { workout_client_id: "w", exercise_id: 7, reps: 8, load_kg: 60, duration_s: null },
+      body: {
+        workout_client_id: "w",
+        exercise_id: 7,
+        reps: 8,
+        load_kg: 60,
+        duration_s: null,
+        rpe: null,
+      },
       label: "Log set 2 of Bench Press",
     });
     expect(deleteSetWrite(bench, second)).toEqual({

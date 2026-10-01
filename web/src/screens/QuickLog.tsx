@@ -9,7 +9,7 @@ import { finishWrite, newDraft, setWrite, typedOf, valuesOf } from "../log/draft
 import type { DraftBlock, DraftSet } from "../log/draft";
 import { href } from "../router";
 
-const EMPTY: DraftSet = { id: "", kg: "", reps: "", seconds: "", logged: null };
+const EMPTY: DraftSet = { id: "", kg: "", reps: "", seconds: "", rpe: "", logged: null };
 
 function QuickLogForm({
   exercise,

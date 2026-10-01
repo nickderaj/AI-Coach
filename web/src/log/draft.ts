@@ -25,7 +25,13 @@ const previousSchema = z.object({
   duration_s: z.number().nullable(),
 });
 
-const typedSchema = z.object({ kg: z.string(), reps: z.string(), seconds: z.string() });
+const typedSchema = z.object({
+  kg: z.string(),
+  reps: z.string(),
+  seconds: z.string(),
+  // Optional; drafts saved before RPE could be logged have none.
+  rpe: z.string().default(""),
+});
 
 /** One row of the set table. Values are kept as typed, and parsed when logged. */
 const draftSetSchema = typedSchema.extend({
@@ -64,6 +70,7 @@ export interface SetValues {
   reps: number | null;
   load_kg: number | null;
   duration_s: number | null;
+  rpe: number | null;
 }
 
 /**
@@ -84,14 +91,10 @@ export function newDraft(id: string, now: Date): Draft {
 
 /** Just the typed values of a row. */
 export function typedOf(set: Typed): Typed {
-  return { kg: set.kg, reps: set.reps, seconds: set.seconds };
+  return { kg: set.kg, reps: set.reps, seconds: set.seconds, rpe: set.rpe };
 }
 
-/**
- * A number typed on a phone keypad ("22.5" or "22,5"); null if empty or not one.
- *
- * @internal Exported for tests; screens use `valuesOf`.
- */
+/** A number typed on a phone keypad ("22.5" or "22,5"); null if empty or not one. */
 export function parseAmount(text: string): number | null {
   const trimmed = text.trim().replace(",", ".");
   if (trimmed === "") {
@@ -101,18 +104,28 @@ export function parseAmount(text: string): number | null {
   return Number.isFinite(value) && value >= 0 ? value : null;
 }
 
+/** RPE as typed: null if left empty, undefined unless a whole number from 1 to 10. */
+function rpeOf(text: string): number | null | undefined {
+  if (text.trim() === "") {
+    return null;
+  }
+  const value = parseAmount(text);
+  return value !== null && Number.isInteger(value) && value >= 1 && value <= 10 ? value : undefined;
+}
+
 /** What a row would log, or null while it is incomplete or has something unreadable. */
-export function valuesOf(set: DraftSet, measure: Measure): SetValues | null {
+export function valuesOf(set: Typed, measure: Measure): SetValues | null {
   const load_kg = parseAmount(set.kg);
-  if (load_kg === null && set.kg.trim() !== "") {
+  const rpe = rpeOf(set.rpe);
+  if ((load_kg === null && set.kg.trim() !== "") || rpe === undefined) {
     return null;
   }
   if (measure === "seconds") {
     const duration_s = parseAmount(set.seconds);
-    return duration_s === null ? null : { reps: null, load_kg, duration_s };
+    return duration_s === null ? null : { reps: null, load_kg, duration_s, rpe };
   }
   const reps = parseAmount(set.reps);
-  return reps === null || !Number.isInteger(reps) ? null : { reps, load_kg, duration_s: null };
+  return reps === null || !Number.isInteger(reps) ? null : { reps, load_kg, duration_s: null, rpe };
 }
 
 function text(value: number | null | undefined): string {
@@ -124,7 +137,8 @@ function prefilled(block: DraftBlock, id: string): DraftSet {
   const previous = block.previous[block.sets.length];
   if (previous !== undefined) {
     const { reps, load_kg, duration_s } = previous;
-    return { id, kg: text(load_kg), reps: text(reps), seconds: text(duration_s), logged: null };
+    const typed = { kg: text(load_kg), reps: text(reps), seconds: text(duration_s), rpe: "" };
+    return { id, ...typed, logged: null };
   }
   const above = block.sets.at(-1);
   return {
@@ -132,6 +146,7 @@ function prefilled(block: DraftBlock, id: string): DraftSet {
     kg: above?.kg ?? "",
     reps: above?.reps ?? "",
     seconds: above?.seconds ?? "",
+    rpe: "",
     logged: null,
   };
 }
@@ -208,6 +223,7 @@ function loggedRow(id: string, values: SetValues): DraftSet {
     kg: text(values.load_kg),
     reps: text(values.reps),
     seconds: text(values.duration_s),
+    rpe: text(values.rpe),
   };
   return { id, ...shown, logged: shown };
 }

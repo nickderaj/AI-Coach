@@ -85,6 +85,15 @@ describe("send", () => {
     expect(outbox.status()).toEqual({ pending: 0, rejected: [], offline: false });
   });
 
+  it("tells what is still waiting for a path", async () => {
+    fetchMock.mockReturnValue(new Promise<Response>(() => undefined)); // never answers
+
+    await outbox.send(put("/api/profile", { bodyweight_kg: 70 }));
+
+    expect(await outbox.queued("/api/profile")).toMatchObject({ body: { bodyweight_kg: 70 } });
+    expect(await outbox.queued("/api/sets/a")).toBeUndefined();
+  });
+
   it("delivers a DELETE without a body", async () => {
     replies(new Response(null, { status: 204 }));
 

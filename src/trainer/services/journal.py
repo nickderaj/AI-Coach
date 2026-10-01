@@ -132,6 +132,17 @@ def _summaries(conn: sqlite3.Connection, ids: list[int]) -> list[ExerciseSummary
     ]
 
 
+def spec_for(exercise: NewExercise) -> ExerciseSpec:
+    """How a new exercise is stored: keyed by its normalised name."""
+    return ExerciseSpec(
+        name=normalise_name(exercise.name),
+        display_name=" ".join(exercise.name.split()),
+        equipment=None if exercise.equipment is None else exercise.equipment.value,
+        muscle_groups=exercise.muscle_groups,
+        measure=exercise.measure,
+    )
+
+
 def add_exercise(
     conn: sqlite3.Connection, exercise: NewExercise, *, allow_similar: bool
 ) -> ExerciseSummary:
@@ -141,13 +152,7 @@ def add_exercise(
         DuplicateExerciseError: if the name (or an alias) is taken, or, unless
             ``allow_similar``, if it probably duplicates existing exercises.
     """
-    spec = ExerciseSpec(
-        name=normalise_name(exercise.name),
-        display_name=" ".join(exercise.name.split()),
-        equipment=None if exercise.equipment is None else exercise.equipment.value,
-        muscle_groups=exercise.muscle_groups,
-        measure=exercise.measure,
-    )
+    spec = spec_for(exercise)
     # The duplicate checks and the insert share one locked transaction, so two
     # concurrent requests cannot both pass the checks and race to insert.
     with write_transaction(conn):

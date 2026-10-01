@@ -9,6 +9,12 @@ from dataclasses import asdict
 from pathlib import Path
 
 from trainer.services.import_v1 import import_v1
+from trainer.services.seed import (
+    common_exercises,
+    describe,
+    missing_exercises,
+    seed_exercises,
+)
 from trainer.storage.database import connect, connect_readonly, migrate
 
 
@@ -40,6 +46,20 @@ def _import_v1(args: argparse.Namespace) -> int:
     return 0
 
 
+def _seed_exercises(args: argparse.Namespace) -> int:
+    with closing(connect(args.database)) as conn:
+        migrate(conn)
+        if args.dry_run:
+            exercises = missing_exercises(conn, common_exercises())
+        else:
+            exercises = seed_exercises(conn, common_exercises())
+    verb = "would add" if args.dry_run else "added"
+    sys.stdout.write(f"{verb} {len(exercises)} common exercises\n")
+    for exercise in exercises:
+        sys.stdout.write(f"  {describe(exercise)}\n")
+    return 0
+
+
 def main(argv: list[str] | None = None) -> int:
     """Entry point; returns the process exit code."""
     parser = argparse.ArgumentParser(prog="python -m trainer.manage", description=__doc__)
@@ -51,6 +71,12 @@ def main(argv: list[str] | None = None) -> int:
     v1.add_argument("--source", type=Path, required=True)
     v1.add_argument("--database", required=True)
     v1.set_defaults(handler=_import_v1)
+    seed = commands.add_parser(
+        "seed-exercises", help="add common exercises the catalogue does not have yet"
+    )
+    seed.add_argument("--database", required=True)
+    seed.add_argument("--dry-run", action="store_true", help="list them without adding")
+    seed.set_defaults(handler=_seed_exercises)
     args = parser.parse_args(argv)
     status: int = args.handler(args)
     return status

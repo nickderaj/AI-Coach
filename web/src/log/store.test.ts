@@ -52,7 +52,7 @@ describe("draftStore", () => {
   });
 
   it("puts a correction the app was closed in the middle of back to what was sent", () => {
-    const sent = { kg: "60", reps: "8", seconds: "" };
+    const sent = { kg: "60", reps: "8", seconds: "", rpe: "" };
     const halfEdited = updateSet(withBlock(draft), "b", "s1", {
       kg: "60",
       reps: "",
@@ -64,6 +64,20 @@ describe("draftStore", () => {
 
     expect(reopened?.blocks[0]?.sets[0]).toMatchObject({ reps: "8", logged: sent });
     expect(JSON.parse(localStorage.getItem(KEY) ?? "null")).toEqual(reopened);
+  });
+
+  it("opens a workout saved before RPE could be logged", () => {
+    const old = JSON.parse(JSON.stringify(withBlock(draft))) as {
+      blocks: { sets: Record<string, unknown>[] }[];
+    };
+    for (const block of old.blocks) {
+      for (const set of block.sets) {
+        delete set["rpe"];
+      }
+    }
+    localStorage.setItem(KEY, JSON.stringify(old));
+
+    expect(draftStore(localStorage, window).get()?.blocks[0]?.sets[0]?.rpe).toBe("");
   });
 
   it("tells subscribers about changes until they unsubscribe", () => {

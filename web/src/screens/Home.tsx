@@ -66,9 +66,14 @@ export function Home(): ReactElement {
   const [now] = useState(() => new Date());
   return (
     <>
-      <header className="page-head">
-        <p className="muted">Good {partOfDay(now.toISOString()).toLowerCase()}</p>
-        <h1>Your training</h1>
+      <header className="page-head home-head">
+        <span>
+          <p className="muted">Good {partOfDay(now.toISOString()).toLowerCase()}</p>
+          <h1>Your training</h1>
+        </span>
+        <a className="settings-link" href={href({ name: "settings" })} aria-label="Settings">
+          ⚙
+        </a>
       </header>
       <StartCard />
       <Load state={state}>{(workouts) => <Dashboard workouts={workouts} now={now} />}</Load>

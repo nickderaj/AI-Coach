@@ -139,20 +139,28 @@ export interface SessionStats {
   longest: number | null;
 }
 
+/**
+ * Volume moved in one set: reps × (load + body weight carried). `carried` is the
+ * body weight the server counts for bodyweight exercises (0 for anything else).
+ */
+export function setVolume(set: SetLike, carried: number): number {
+  return (set.reps ?? 0) * ((set.load_kg ?? 0) + carried);
+}
+
 /** Headline numbers for one session (the sets of one exercise in one workout). */
-export function sessionStats(sets: SetLike[]): SessionStats {
+export function sessionStats(sets: SetLike[], carried: number): SessionStats {
   return {
     heaviest: maximum(sets.map((set) => set.load_kg)),
     oneRepMax: maximum(sets.map(estimatedOneRepMax)),
-    volume: sets.reduce((sum, set) => sum + (set.reps ?? 0) * (set.load_kg ?? 0), 0),
+    volume: sets.reduce((sum, set) => sum + setVolume(set, carried), 0),
     mostReps: maximum(sets.map((set) => set.reps)),
     longest: maximum(sets.map((set) => set.duration_s)),
   };
 }
 
 /** Best of each headline number across sessions (personal records). */
-export function personalRecords(sessions: SetLike[][]): SessionStats {
-  const stats = sessions.map(sessionStats);
+export function personalRecords(sessions: SetLike[][], carried: number): SessionStats {
+  const stats = sessions.map((sets) => sessionStats(sets, carried));
   const best = (pick: (s: SessionStats) => number | null): number | null =>
     maximum(stats.map(pick));
   return {

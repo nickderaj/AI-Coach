@@ -7,7 +7,8 @@ from itertools import groupby
 from typing import TYPE_CHECKING, Any
 
 from trainer.domain.exercises import Measure
-from trainer.domain.records import set_rank, set_volume
+from trainer.domain.records import carried_load, set_rank, set_volume
+from trainer.storage.profile import read_profile
 
 if TYPE_CHECKING:
     import sqlite3
@@ -58,6 +59,8 @@ class ExerciseBlock:
     exercise_id: int
     name: str
     measure: Measure
+    # Body weight moved in each rep, on top of the load (bodyweight exercises).
+    carried_kg: float
     sets: list[SetView]
 
 
@@ -106,6 +109,8 @@ class ExerciseHistory:
     """An exercise and its sessions, newest first."""
 
     exercise: ExerciseSummary
+    # Body weight moved in each rep, on top of the load (bodyweight exercises).
+    carried_kg: float
     sessions: list[ExerciseSession]
 
 
@@ -140,6 +145,11 @@ def _best(block: ExerciseBlock) -> SetView:
 def _summary_of(detail: WorkoutDetail) -> WorkoutSummary:
     """Summarise a workout from its full detail (one source of truth for both)."""
     sets = [set_view for block in detail.exercises for set_view in block.sets]
+    volume = sum(
+        set_volume(set_view.reps, set_view.load_kg, block.carried_kg)
+        for block in detail.exercises
+        for set_view in block.sets
+    )
     return WorkoutSummary(
         id=detail.id,
         started_at=detail.started_at,
@@ -149,7 +159,7 @@ def _summary_of(detail: WorkoutDetail) -> WorkoutSummary:
             for block in detail.exercises
         ],
         set_count=len(sets),
-        volume_kg=sum(set_volume(s.reps, s.load_kg) for s in sets),
+        volume_kg=volume,
     )
 
 
@@ -172,14 +182,15 @@ def get_workout(conn: sqlite3.Connection, workout_id: int) -> WorkoutDetail:
         raise WorkoutNotFoundError(message)
     rows = conn.execute(
         """
-        SELECT s.exercise_position, s.exercise_id, e.display_name, e.measure, s.set_number,
-            s.reps, s.load_kg, s.duration_s, s.rpe, s.notes, s.client_id
+        SELECT s.exercise_position, s.exercise_id, e.display_name, e.measure, e.equipment,
+            s.set_number, s.reps, s.load_kg, s.duration_s, s.rpe, s.notes, s.client_id
         FROM workout_sets s JOIN exercises e ON e.id = s.exercise_id
         WHERE s.workout_id = ? ORDER BY s.exercise_position, s.set_number
         """,
         (workout_id,),
     ).fetchall()
-    blocks = [_block(list(group)) for _, group in groupby(rows, key=lambda row: row[0])]
+    bodyweight = read_profile(conn).bodyweight_kg
+    blocks = [_block(list(group), bodyweight) for _, group in groupby(rows, key=lambda row: row[0])]
     found_id, started_at, ended_at, notes, client_id = workout
     return WorkoutDetail(found_id, started_at, ended_at, notes, client_id, blocks)
 
@@ -195,10 +206,17 @@ def current_workout(conn: sqlite3.Connection) -> WorkoutDetail | None:
     return None if row is None else get_workout(conn, row[0])
 
 
-def _block(rows: list[sqlite3.Row]) -> ExerciseBlock:
-    """``rows`` start with: exercise_position, exercise_id, display_name, measure."""
-    position, exercise_id, name, measure = rows[0][:4]
-    return ExerciseBlock(position, exercise_id, name, Measure(measure), [_set(r) for r in rows])
+def _block(rows: list[sqlite3.Row], bodyweight: float | None) -> ExerciseBlock:
+    """``rows`` start with: exercise_position, exercise_id, display_name, measure, equipment."""
+    position, exercise_id, name, measure, equipment = rows[0][:5]
+    return ExerciseBlock(
+        position,
+        exercise_id,
+        name,
+        Measure(measure),
+        carried_load(equipment, bodyweight),
+        [_set(r) for r in rows],
+    )
 
 
 _SUMMARY_SQL = """
@@ -249,7 +267,9 @@ def exercise_history(conn: sqlite3.Connection, exercise_id: int) -> ExerciseHist
         (exercise_id,),
     ).fetchall()
     sessions = [_session(list(block)) for _, block in groupby(rows, key=lambda r: (r[0], r[1]))]
-    return ExerciseHistory(_summary(row), sessions)
+    summary = _summary(row)
+    carried = carried_load(summary.equipment, read_profile(conn).bodyweight_kg)
+    return ExerciseHistory(summary, carried, sessions)
 
 
 def _session(rows: list[sqlite3.Row]) -> ExerciseSession:

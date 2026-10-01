@@ -84,6 +84,14 @@ MIGRATIONS: tuple[str, ...] = (
     ALTER TABLE workouts ADD COLUMN client_id TEXT;
     CREATE UNIQUE INDEX workouts_client_id ON workouts (client_id);
     """,
+    """
+    -- The owner's details: one row. Body weight counts towards the volume of
+    -- bodyweight exercises.
+    CREATE TABLE profile (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        bodyweight_kg REAL CHECK (bodyweight_kg > 0)
+    ) STRICT;
+    """,
 )
 
 

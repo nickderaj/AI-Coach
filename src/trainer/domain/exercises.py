@@ -11,9 +11,27 @@ if TYPE_CHECKING:
 
 # Names at least this similar (difflib ratio) are flagged as near-duplicates.
 SIMILARITY_THRESHOLD = 0.85
+# ...and at least this similar are taken to be the same exercise outright: close
+# enough for "Pull-ups" and "Pull-up", not for "Clean Press" and "Bench Press".
+SAME_SPELLING_THRESHOLD = 0.9
 # Plural "s" is folded only on words longer than this ("press" -> "pres" is harmless,
 # but "abs" must stay "abs").
 MIN_PLURAL_LENGTH = 3
+# Gym shorthand, spelled out before names are compared, so "Incline DB Press" is
+# caught as a duplicate of "Incline Dumbbell Press". Whole words only.
+ABBREVIATIONS: dict[str, str] = {
+    "db": "dumbbell",
+    "bb": "barbell",
+    "kb": "kettlebell",
+    "bw": "bodyweight",
+    "ohp": "overhead press",
+    "rdl": "romanian deadlift",
+}
+# Words that name equipment. Between exercises with the same equipment they say
+# nothing ("Bodyweight Squat" is the bodyweight "Squat").
+EQUIPMENT_WORDS = frozenset(
+    {"barbell", "dumbbell", "kettlebell", "cable", "machine", "bodyweight", "band", "ez", "bar"}
+)
 
 
 class Measure(StrEnum):
@@ -43,11 +61,20 @@ def normalise_name(text: str) -> str:
     return " ".join(text.lower().split())
 
 
+def _words(name: str) -> list[str]:
+    """Words of a name: hyphens split words and gym shorthand is spelled out."""
+    return [
+        part
+        for word in normalise_name(name).replace("-", " ").split()
+        for part in ABBREVIATIONS.get(word, word).split()
+    ]
+
+
 def _tokens(name: str) -> frozenset[str]:
     """Words of a name with a trailing plural "s" folded ("raises" == "raise")."""
     return frozenset(
         word[:-1] if len(word) > MIN_PLURAL_LENGTH and word.endswith("s") else word
-        for word in normalise_name(name).replace("-", " ").split()
+        for word in _words(name)
     )
 
 
@@ -57,12 +84,49 @@ def is_near_duplicate(candidate: str, existing: str) -> bool:
     True when the words match up to plurals and hyphens, when one name's words
     are all contained in the other's ("bench press" vs "barbell bench press"),
     or when the spellings are very close ("lat pulldown" vs "lat pull down").
+    Shorthand counts as the words it stands for ("DB press" vs "dumbbell press").
     """
     left, right = _tokens(candidate), _tokens(existing)
     if not left - right or not right - left:  # one name has no words the other lacks
         return True
-    ratio = SequenceMatcher(None, normalise_name(candidate), normalise_name(existing)).ratio()
-    return ratio >= SIMILARITY_THRESHOLD
+    return _similarity(candidate, existing) >= SIMILARITY_THRESHOLD
+
+
+def _similarity(left: str, right: str) -> float:
+    return SequenceMatcher(None, " ".join(_words(left)), " ".join(_words(right))).ratio()
+
+
+def is_same_exercise(candidate: str, existing: str) -> bool:
+    """Whether two names, for exercises with the same equipment, name one exercise.
+
+    Stricter than ``is_near_duplicate``: the words must match apart from those
+    naming the equipment, or the spellings be very close. One name holding the
+    other's words is not enough ("Incline Bench Press" is not "Bench Press"),
+    and nor is a near-duplicate spelling ("Clean Press" is not "Bench Press").
+    """
+    if _tokens(candidate) - EQUIPMENT_WORDS == _tokens(existing) - EQUIPMENT_WORDS:
+        return True
+    return _similarity(candidate, existing) >= SAME_SPELLING_THRESHOLD
+
+
+def is_catalogued(
+    name: str, equipment: str | None, entries: Iterable[tuple[str, str | None]]
+) -> bool:
+    """Whether a catalogue of ``(name, equipment)`` entries already has this exercise.
+
+    An entry with the same name has it, whatever its equipment (names are
+    unique). Otherwise it must be the same exercise with the same equipment, a
+    missing equipment on either side matching any.
+    """
+    key = normalise_name(name)
+    return any(
+        key == normalise_name(other)
+        or (
+            (equipment is None or other_equipment is None or equipment == other_equipment)
+            and is_same_exercise(name, other)
+        )
+        for other, other_equipment in entries
+    )
 
 
 def near_duplicates(candidate: str, names: Iterable[tuple[int, str]]) -> list[int]:

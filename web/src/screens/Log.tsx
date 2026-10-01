@@ -161,6 +161,20 @@ function SetRow({
         />
       </td>
       <td>
+        <input
+          aria-label={`Set ${String(number)} RPE`}
+          inputMode="numeric"
+          placeholder="–"
+          value={set.rpe}
+          onChange={(event) => {
+            actions.edit(block, set, { rpe: event.target.value });
+          }}
+          onBlur={() => {
+            actions.settle(block, set);
+          }}
+        />
+      </td>
+      <td>
         <button
           type="button"
           className="check"
@@ -194,6 +208,9 @@ function BlockCard({ block, actions }: { block: DraftBlock; actions: Actions }):
             <th scope="col">Previous</th>
             <th scope="col">kg</th>
             <th scope="col">{exercise.measure === "seconds" ? "Secs" : "Reps"}</th>
+            <th scope="col">
+              <abbr title="Rate of perceived exertion, 1 to 10">RPE</abbr>
+            </th>
             <th scope="col">
               <span className="sr-only">Done</span>
             </th>
@@ -385,6 +402,9 @@ function ActiveWorkout({ logging, draft }: { logging: Logging; draft: Draft }): 
           Discard workout
         </button>
       )}
+      {/* Room for the rest timer, which floats above the tabs: reserved even when it
+          is not showing, so ticking a set moves nothing on screen. */}
+      <div className="rest-space" aria-hidden="true" />
     </>
   );
 }

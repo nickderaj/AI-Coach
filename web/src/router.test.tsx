@@ -15,6 +15,7 @@ describe("parseRoute", () => {
     ["#/exercises/7", { name: "exercise", id: 7 }],
     ["#/log", { name: "log" }],
     ["#/log/add", { name: "pick" }],
+    ["#/settings", { name: "settings" }],
     ["#/workouts/abc", { name: "home" }],
     ["#/exercises/7/extra", { name: "home" }],
     ["#/nonsense", { name: "home" }],
@@ -32,6 +33,7 @@ describe("href", () => {
     [{ name: "exercise", id: 9 }, "#/exercises/9"],
     [{ name: "log" }, "#/log"],
     [{ name: "pick" }, "#/log/add"],
+    [{ name: "settings" }, "#/settings"],
   ])("round-trips %j", (route, hash) => {
     expect(href(route)).toBe(hash);
     expect(parseRoute(hash)).toEqual(route);
