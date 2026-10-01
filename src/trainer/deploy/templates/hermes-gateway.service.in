@@ -1,0 +1,59 @@
+[Unit]
+Description=hermes-trainer coach (Hermes gateway)
+Documentation=https://github.com/nickderaj/hermes-trainer
+Wants=network-online.target
+After=network-online.target
+
+[Service]
+Type=exec
+User=${user}
+Group=${user}
+Environment=HERMES_HOME=${hermes_home}
+Environment=HOME=${hermes_home}
+Environment=TRAINER_DATA_DIR=${data_dir}
+Environment=TRAINER_MODEL=${model}
+Environment=TRAINER_MODEL_URL=${model_url}
+Environment=TRAINER_HERMES_HOST=${bind_host}
+Environment=TRAINER_HERMES_PORT=${hermes_port}
+Environment=HERMES_DISABLE_LAZY_INSTALLS=1
+# Root-only secrets (deploy/hermes-secrets.sh): the model provider's API key, and
+# the key the API server checks. Without them the unit does not start.
+EnvironmentFile=${secrets_dir}/model.env
+EnvironmentFile=${secrets_dir}/gateway.env
+ExecStart=${prefix}/hermes/bin/hermes gateway run
+Restart=on-failure
+RestartSec=10
+UMask=0077
+
+# Code is root-owned and read-only; the Hermes home is the only writable path.
+ReadWritePaths=${hermes_home}
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+# Hermes chowns the files it rewrites back to their owner, itself; with no
+# capabilities that is all chown can do. The rest of ~@privileged still applies.
+SystemCallFilter=~@resources @setuid capset
+# The model provider is on the internet; the API server listens on loopback only.
+RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
+
+[Install]
+WantedBy=multi-user.target

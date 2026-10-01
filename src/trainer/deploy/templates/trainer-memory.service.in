@@ -1,0 +1,39 @@
+[Unit]
+Description=Commit the coach's memory and skills to their private repository
+Documentation=https://github.com/nickderaj/hermes-trainer
+
+[Service]
+Type=oneshot
+User=${user}
+Group=${user}
+ExecStart=${prefix}/venv/bin/python -m trainer.deploy memory-commit --hermes-home ${hermes_home} --repo ${memory_repo}
+UMask=0077
+
+ReadWritePaths=${memory_repo}
+ReadOnlyPaths=${hermes_home}
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+PrivateDevices=yes
+# Local-only by construction: no network at all.
+PrivateNetwork=yes
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectKernelLogs=yes
+ProtectControlGroups=yes
+ProtectClock=yes
+ProtectHostname=yes
+ProtectProc=invisible
+ProcSubset=pid
+NoNewPrivileges=yes
+CapabilityBoundingSet=
+AmbientCapabilities=
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+LockPersonality=yes
+MemoryDenyWriteExecute=yes
+SystemCallArchitectures=native
+SystemCallFilter=@system-service
+SystemCallFilter=~@privileged @resources
+RestrictAddressFamilies=AF_UNIX

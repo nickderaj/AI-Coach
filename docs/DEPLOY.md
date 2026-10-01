@@ -7,8 +7,10 @@ committed `deploy/local.env.example` documents the keys with placeholders.
 
 ## Requirements on the host
 
-- systemd, `python3` (3.13) with `venv`, `curl`, `useradd`
-- `uv`, Node (see `web/.nvmrc`) and pnpm (Corepack) for the unprivileged build step
+- systemd, `python3` (3.13) with `venv`, `curl`, `git`, `useradd`
+- `uv`, `git`, Node (see `web/.nvmrc`) and pnpm (Corepack) for the unprivileged
+  build step, which also fetches the pinned Hermes release from GitHub
+- an API key for the model provider (an OpenAI-compatible endpoint, D13)
 - Tailscale with HTTPS certificates enabled for the tailnet, and an ACL that
   lets only the owner's devices reach port 443 on the host
 
@@ -16,8 +18,9 @@ committed `deploy/local.env.example` documents the keys with placeholders.
 
 ```console
 cp deploy/local.env.example deploy/local.env   # then edit every value
-./deploy/build.sh                              # as your user: wheel, locked requirements, units
-sudo ./deploy/install.sh                       # user, data dir, venv, units, health check
+./deploy/build.sh                              # as your user: wheels, locked requirements, units
+sudo ./deploy/install.sh                       # user, data dir, venvs, units, health checks
+sudo ./deploy/hermes-secrets.sh                # the model API key (asked for), starts the coach
 sudo ./deploy/tailscale-serve.sh               # publish on https://<host>.<tailnet>.ts.net/
 ```
 
@@ -35,6 +38,10 @@ Two layers, both failing closed:
      root-owned code, and `/home` (hidden by `ProtectHome=yes`) is excluded;
    - unknown or duplicate keys are rejected.
    - `TRAINER_OWNER_LOGIN` must look like a Tailscale login (no spaces or `%`).
+   - `TRAINER_HERMES_PORT` must differ from `TRAINER_BIND_PORT` (both bind
+     loopback); `TRAINER_MODEL_URL` must be HTTPS with no credentials, query or
+     characters systemd or Hermes would expand; `TRAINER_MODEL` must be a plain
+     model id.
 2. **Host preflight** (`install.sh` → `python -m trainer.deploy preflight`, run
    from the bundled wheel before anything is changed):
    - an existing service account must be a dedicated system account (uid 1–999,
@@ -59,6 +66,54 @@ user-owned device on the tailnet. The API answers only when that header equals
 including requests from tagged devices (they carry no identity). This sits on top
 of the tailnet ACL, which already limits who can reach the host at all.
 
+## The coach (Hermes)
+
+The coach is a [Hermes](https://github.com/NousResearch/hermes-agent) gateway,
+`hermes-gateway.service`, running as the service user. Only the API talks to
+it, over loopback (`TRAINER_HERMES_PORT`); it is never published with
+`tailscale serve`.
+
+**Install.** `build.sh` checks out the Hermes release pinned in it (tag and
+commit, which must match), builds a wheel and exports Hermes's own hash-pinned
+requirements. `install.sh` puts them in a separate virtualenv,
+`<prefix>/hermes`, then copies the profile from `hermes/` (`config.yaml`,
+`SOUL.md`) into the coach's home, `<data dir>/hermes`. Edits made there on the
+host are overwritten on the next install. Bundled Hermes skills are opted out,
+and runtime package installs are off. To upgrade Hermes, change `hermes_tag`
+and `hermes_commit` in `build.sh` in a reviewed PR.
+
+**Model.** `TRAINER_MODEL_URL` (an OpenAI-compatible base URL, HTTPS) and
+`TRAINER_MODEL` (the model id) in `deploy/local.env`. The API key is stored
+by `sudo ./deploy/hermes-secrets.sh`, which reads it from the terminal (or
+stdin) and never takes it as an argument. It writes two root-only files that
+systemd hands to the gateway as environment variables:
+- `/etc/hermes-trainer/model.env`, the provider key;
+- `/etc/hermes-trainer/gateway.env`, the key the gateway's API checks. This one
+  is generated once; `--rotate-gateway-key` replaces it.
+
+Run the script again to change the provider key. Until both files exist,
+`install.sh` leaves the gateway stopped.
+
+**What it can do.** Memory, skills, session search, a to-do list and
+clarifying questions. That's all: no terminal, files, web, browser or code
+execution (`hermes/config.yaml` allows these toolsets and removes the rest).
+Training data will reach it only through the trainer's MCP tools (phase 3).
+
+**Memory.** What the coach learns is written straight to `memories/` and
+`skills/` in its home. Every night at 03:15, `trainer-memory.timer` commits
+those two directories, and nothing else, to a private git repository,
+`<data dir>/hermes-memory.git`. Each learned fact is then a diff you can read
+and revert. The repository is local only: the job has no network, and it
+refuses to run if the repository has a remote. It is personal data and never
+goes in this repository. To read it, run as the service user:
+
+```console
+sudo -u <user> git --git-dir=<data dir>/hermes-memory.git log -p
+```
+
+To revert a fact, check out the old version of the file into the coach's home
+with `--work-tree=<data dir>/hermes`, then restart the gateway.
+
 ## Common exercises
 
 `python -m trainer.manage seed-exercises --database <data dir>/trainer.db` adds
@@ -80,9 +135,15 @@ picks up new versions on the next launch with a connection.
 ## Upgrade
 
 Pull, then run `./deploy/build.sh` and `sudo ./deploy/install.sh` again. The
-installer builds a fresh virtualenv from the hash-pinned requirements, swaps it
-into place, reinstalls the units and restarts the API; it exits non-zero with the
-service's recent logs if `/healthz` does not answer within 20 seconds.
+installer:
+- builds fresh virtualenvs from the hash-pinned requirements and swaps them into
+  place;
+- reinstalls the units and restarts the API, then the coach.
+
+It exits non-zero, with the service's recent logs, if the API's `/healthz` does
+not answer within 20 seconds, or the gateway's `/health` within 60. New keys in
+`deploy/local.env.example` must be added to `deploy/local.env` first; the
+build names any that are missing.
 
 ## What gets installed
 
@@ -90,6 +151,8 @@ service's recent logs if `/healthz` does not answer within 20 seconds.
 | --- | --- | --- |
 | `trainer-api.service` | `python -m trainer.api` (JSON API under `/api`, the built web app at `/`) | Loopback only (`IPAddressAllow=localhost`), read-only system, writable data directory only, no capabilities, `@system-service` syscalls |
 | `trainer-backup.timer` → `trainer-backup.service` | `python -m trainer.deploy backup` nightly at 03:30 | SQLite online backup into `<data dir>/backups`, keeps `TRAINER_BACKUP_KEEP`; no network at all |
+| `hermes-gateway.service` | `hermes gateway run` (the coach; its API on loopback) | Writes only `<data dir>/hermes`; secrets from root-only `EnvironmentFile`s; outbound network for the model provider; read-only system, no capabilities, `@system-service` syscalls |
+| `trainer-memory.timer` → `trainer-memory.service` | `python -m trainer.deploy memory-commit` nightly at 03:15 | Commits `memories/` and `skills/` to `<data dir>/hermes-memory.git`; writes only that repository; no network at all |
 
 Code is root-owned under `TRAINER_PREFIX`; the service user can write only
 `TRAINER_DATA_DIR`. Inspect the sandbox with
@@ -115,8 +178,11 @@ imported from v1 in one transaction; exercise ids stay stable.
 ```console
 systemctl status trainer-api.service
 journalctl -u trainer-api.service -f
-systemctl list-timers trainer-backup.timer
+systemctl list-timers trainer-backup.timer trainer-memory.timer
 sudo systemctl start trainer-backup.service     # back up now
+systemctl status hermes-gateway.service
+journalctl -u hermes-gateway.service -f
+sudo systemctl start trainer-memory.service     # commit the coach's memory now
 tailscale serve status
 ```
 

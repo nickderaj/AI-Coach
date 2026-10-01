@@ -22,6 +22,9 @@ VALID = {
     "TRAINER_BIND_PORT": "8000",
     "TRAINER_BACKUP_KEEP": "14",
     "TRAINER_OWNER_LOGIN": "owner@example.com",
+    "TRAINER_HERMES_PORT": "8642",
+    "TRAINER_MODEL_URL": "https://api.example.com/v1",
+    "TRAINER_MODEL": "model-1",
 }
 
 
@@ -61,6 +64,9 @@ class TestLoad:
             bind_port=8000,
             backup_keep=14,
             owner_login="owner@example.com",
+            hermes_port=8642,
+            model_url="https://api.example.com/v1",
+            model="model-1",
         )
 
     def test_missing_keys_are_listed_in_order(self) -> None:
@@ -166,12 +172,75 @@ class TestLoad:
             f"TRAINER_BACKUP_KEEP {keep!r} must be an integer from 1 to 365"
         )
 
+    @pytest.mark.parametrize(("port", "expected"), [("1024", 1024), ("65535", 65535)])
+    def test_hermes_port_bounds_are_inclusive(self, port: str, expected: int) -> None:
+        assert load(document(TRAINER_HERMES_PORT=port)).hermes_port == expected
+
+    @pytest.mark.parametrize("port", ["1023", "65536", "x"])
+    def test_invalid_hermes_ports(self, port: str) -> None:
+        assert error_for(TRAINER_HERMES_PORT=port) == (
+            f"TRAINER_HERMES_PORT {port!r} must be an integer from 1024 to 65535"
+        )
+
+    def test_hermes_port_must_differ_from_the_api_port(self) -> None:
+        assert error_for(TRAINER_HERMES_PORT="8000") == (
+            "TRAINER_HERMES_PORT '8000' must differ from TRAINER_BIND_PORT"
+        )
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "https://api.example.com/v1",
+            "https://api.example.com",
+            "https://api.example.com/",
+            "https://llm.internal:8443/openai/v1/",
+            "https://a/b_c/d~e/f.g",
+        ],
+    )
+    def test_valid_model_urls(self, url: str) -> None:
+        assert load(document(TRAINER_MODEL_URL=url)).model_url == url
+
+    @pytest.mark.parametrize(
+        "url",
+        [
+            "",
+            "http://api.example.com/v1",  # never in clear text
+            "https://",
+            "https://api.example.com/v1?key=x",
+            "https://api.example.com/%2e",
+            "https://${HOST}/v1",
+            "https://api.example.com//v1",
+            "https://api.example.com:123456/v1",
+            "https://user@example.com/v1",
+        ],
+    )
+    def test_invalid_model_urls(self, url: str) -> None:
+        assert error_for(TRAINER_MODEL_URL=url).startswith(
+            f"TRAINER_MODEL_URL {url!r} is not allowed (expected ^https://"
+        )
+
+    @pytest.mark.parametrize(
+        "model", ["gpt-6-astra", "a", "openai/gpt-5.4", "org/model:free", "M_1", "x" * 100]
+    )
+    def test_valid_models(self, model: str) -> None:
+        assert load(document(TRAINER_MODEL=model)).model == model
+
+    @pytest.mark.parametrize("model", ["", "-x", "a b", "x" * 101, "$MODEL", "a%b", "/x"])
+    def test_invalid_models(self, model: str) -> None:
+        expected = r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,99}$"
+        assert error_for(TRAINER_MODEL=model) == (
+            f"TRAINER_MODEL {model!r} is not allowed (expected {expected})"
+        )
+
 
 @pytest.mark.parametrize(
-    ("host", "upstream"), [("127.0.0.1", "127.0.0.1:8000"), ("::1", "[::1]:8000")]
+    ("host", "upstream", "hermes"),
+    [("127.0.0.1", "127.0.0.1:8000", "127.0.0.1:8642"), ("::1", "[::1]:8000", "[::1]:8642")],
 )
-def test_upstream_brackets_ipv6(host: str, upstream: str) -> None:
-    assert load(document(TRAINER_BIND_HOST=host)).upstream == upstream
+def test_upstreams_bracket_ipv6(host: str, upstream: str, hermes: str) -> None:
+    config = load(document(TRAINER_BIND_HOST=host))
+
+    assert (config.upstream, config.hermes_upstream) == (upstream, hermes)
 
 
 def test_data_and_prefix_roots_cannot_overlap() -> None:

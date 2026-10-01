@@ -32,6 +32,9 @@ CONFIG = DeployConfig(
     bind_port=8000,
     backup_keep=7,
     owner_login="owner@example.com",
+    hermes_port=8642,
+    model_url="https://api.example.com/v1",
+    model="model-1",
 )
 GOOD_ACCOUNT = Account(
     uid=SERVICE, gid=SERVICE, home="/nonexistent", login_shell="/usr/sbin/nologin"

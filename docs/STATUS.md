@@ -127,7 +127,61 @@ closest listed one or 65%.
 **Follow-up.** An unfinished workout lists in History like a finished one. It
 could show an "in progress" mark.
 
-**Next: phase 3, Hermes.**
+**Next: phase 3, Hermes** (below).
+
+## Phase 3 — Hermes: in progress
+
+**Provider check (2026-10-01): passed.** Hermes v0.21.5 (`v2026.9.24`) uses the
+model provider (D13) as a custom OpenAI-compatible provider: a `providers:`
+entry with `key_env`, and `model.provider` pointing at it. On the host, with the
+production model, it:
+- answered over the gateway's Sessions API;
+- called its memory tool;
+- recalled the fact after a gateway restart, in the same session and in a new
+  one.
+
+The same run, as the built bundle, worked under the unit's sandbox. Findings
+that shaped the build:
+- **Toolsets.** The API server enables terminal, file, browser, code execution
+  and more unless `platform_toolsets.api_server` lists the allowed toolsets.
+  `agent.disabled_toolsets` removes the rest too.
+- **Tool search.** It adds a search-and-call bridge; it is turned off.
+- **Packaging.** Hermes refuses to build wheels outside Nix unless
+  `HERMES_NIX_BUILD=1` is set. Its API server needs `aiohttp`, which comes from
+  the `sms` extra.
+- **Runtime installs.** Hermes pip-installs optional providers on first use
+  unless lazy installs are off.
+- **Syscalls.** Hermes chowns the files it rewrites, so the gateway's syscall
+  filter allows `@chown`.
+
+| Step | Scope | PR |
+| --- | --- | --- |
+| 3a | Pinned Hermes in its own venv; `hermes-gateway` unit; `hermes/` profile (config, SOUL); root-only secrets; private memory repo with a nightly commit | this PR |
+| 3b | `trainer.mcp`: read-only training-history tools (recent workouts, an exercise's history and records, the catalogue, body weight), run by Hermes over stdio | next |
+| 3c | Coach proxy in the API: one durable Hermes session, its id in SQLite; send a message, read the conversation | |
+| 3d | Coach tab in the web app (needs a connection; shows the conversation) | |
+| 3e | On the host, not in git: seed the owner's stated preferences into the coach's memory, then check the exit criterion over several days | |
+
+**Where the private memory lives.** The coach's home is `<data dir>/hermes`.
+Hermes writes what it learns to `memories/` and `skills/` there.
+`trainer-memory.timer` commits those two directories nightly to
+`<data dir>/hermes-memory.git`, a bare repository on the host with no remote.
+The job has no network and refuses a repository that has one.
+
+**In this PR (3a).**
+- `build.sh` checks out Hermes at a pinned tag and commit (which must match),
+  builds its wheel and exports its hash-pinned requirements (extras `mcp`,
+  `sms`).
+- `install.sh` installs them into `<prefix>/hermes`, installs the profile into
+  the coach's home, creates the memory repository, and enables
+  `hermes-gateway`. It starts the gateway only once both secrets exist.
+- `deploy/hermes-secrets.sh` reads the provider key from the terminal and
+  generates the gateway's API key. Both go in root-only files under
+  `/etc/hermes-trainer`, which systemd hands to the gateway.
+- New `deploy/local.env` keys: `TRAINER_HERMES_PORT`, `TRAINER_MODEL_URL`,
+  `TRAINER_MODEL`.
+- `python -m trainer.deploy memory-commit` does the nightly commit, without
+  user or system git config or hooks.
 
 ## Remaining phases
 

@@ -1,0 +1,10 @@
+[Unit]
+Description=Nightly commit of the coach's memory
+
+[Timer]
+OnCalendar=*-*-* 03:15:00
+RandomizedDelaySec=10min
+Persistent=true
+
+[Install]
+WantedBy=timers.target
