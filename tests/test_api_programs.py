@@ -284,6 +284,29 @@ class TestTraining:
         assert self.start(client, day_id, 52).json() == {"detail": "the program has 7 weeks"}
         assert self.start(client, day_id, 7).status_code == 200
 
+    def test_a_workout_with_program_sets_keeps_its_day(
+        self, client: TestClient, program: dict[str, Any]
+    ) -> None:
+        day = program["days"][0]
+        slot = day["blocks"][0]["exercises"][0]
+        self.start(client, day["id"])
+        set_body = {
+            "workout_client_id": W1,
+            "exercise_id": slot["exercise_id"],
+            "block_exercise_id": slot["id"],
+            "reps": 10,
+        }
+        client.put(f"/api/sets/{S1}", json=set_body, headers=OWNER)
+
+        cleared = client.put(
+            f"/api/workouts/{W1}", json={"started_at": "2026-10-01T09:00:00Z"}, headers=OWNER
+        )
+        moved = self.start(client, program["days"][1]["id"])
+
+        assert (cleared.status_code, moved.status_code) == (422, 422)
+        assert moved.json() == {"detail": "the workout has sets for another program day"}
+        assert client.put(f"/api/sets/{S1}", json=set_body, headers=OWNER).status_code == 200
+
     def test_a_set_for_another_days_exercise(
         self, client: TestClient, program: dict[str, Any]
     ) -> None:

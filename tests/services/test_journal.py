@@ -321,6 +321,39 @@ class TestProgramLinks:
         assert not db.in_transaction
         assert db.execute("SELECT count(*) FROM workouts").fetchone()[0] == 0
 
+    @pytest.mark.parametrize("link", [None, ProgramLink(2, 1)])
+    def test_a_workout_keeps_the_day_its_program_sets_are_for(
+        self, db: sqlite3.Connection, day: tuple[int, int], link: ProgramLink | None
+    ) -> None:
+        exercise_id, slot = day
+        record_workout(db, W1, (START, None), None, ProgramLink(1, 1))
+        record_set(db, "s1", (W1, exercise_id), FIVE, slot)
+
+        with pytest.raises(
+            InvalidWorkoutError, match=r"^the workout has sets for another program day$"
+        ):
+            record_workout(db, W1, (START, START), None, link)
+
+        assert not db.in_transaction
+        kept = record_workout(db, W1, (START, None), None, ProgramLink(1, 1))
+        assert (kept.program_day_id, kept.ended_at) == (1, None)
+        # Another week of the same day is still that day.
+        moved = record_workout(db, W1, (START, START), None, ProgramLink(1, 2))
+        assert (moved.program_day_id, moved.program_week) == (1, 2)
+
+    def test_a_workout_without_program_sets_may_change_day(
+        self, db: sqlite3.Connection, day: tuple[int, int]
+    ) -> None:
+        exercise_id, _ = day
+        record_workout(db, W1, (START, None), None, ProgramLink(1, 1))
+        record_set(db, "s1", (W1, exercise_id), FIVE)  # not for the program
+
+        moved = record_workout(db, W1, (START, None), None, ProgramLink(2, 1))
+        cleared = record_workout(db, W1, (START, None), None)
+
+        assert moved.program_day_id == 2
+        assert cleared.program_day_id is None
+
     def test_a_set_for_a_program_exercise(
         self, db: sqlite3.Connection, day: tuple[int, int]
     ) -> None:

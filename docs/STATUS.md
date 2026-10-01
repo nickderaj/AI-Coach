@@ -414,6 +414,11 @@ active program by itself, and the model never works out loads (D12).
   log, whatever order a superset is done in; a set outside the program never
   joins it. A workout shows its `program_day_id` and `program_week`, and each
   block its `block_exercise_id`.
+- **From review:** once a workout has sets for a day's program exercises, it
+  keeps that day. A `PUT` that drops the day or names another is refused
+  (422), so a workout's day and its sets' program exercises always agree. A
+  later week of the same day, or a new day before any program set is logged,
+  is still allowed.
 
 ## Remaining phases
 

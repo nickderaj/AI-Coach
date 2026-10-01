@@ -335,6 +335,23 @@ def slot_place(conn: sqlite3.Connection, block_exercise_id: int) -> SlotPlace | 
     return None if row is None else SlotPlace(row[0], row[1])
 
 
+def set_days(conn: sqlite3.Connection, workout_client_id: str) -> set[int]:
+    """The program days that the program sets of a workout belong to."""
+    return {
+        int(row[0])
+        for row in conn.execute(
+            """
+            SELECT b.day_id FROM workout_sets s
+            JOIN workouts w ON w.id = s.workout_id
+            JOIN block_exercises x ON x.id = s.block_exercise_id
+            JOIN program_blocks b ON b.id = x.block_id
+            WHERE w.client_id = ?
+            """,
+            (workout_client_id,),
+        )
+    }
+
+
 def day_weeks(conn: sqlite3.Connection, day_id: int) -> int | None:
     """How many weeks, deload included, the program of a day has; ``None`` if no such day."""
     row = conn.execute(

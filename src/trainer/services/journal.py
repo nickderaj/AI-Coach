@@ -24,7 +24,7 @@ from trainer.storage.journal import (
     save_workout,
     workout_id_for,
 )
-from trainer.storage.programs import day_weeks, slot_place
+from trainer.storage.programs import day_weeks, set_days, slot_place
 
 if TYPE_CHECKING:
     import sqlite3
@@ -76,11 +76,13 @@ def record_workout(
 ) -> WorkoutDetail:
     """Start, update or finish the app workout ``client_id``.
 
-    ``program`` is the program day and week it trains, if any.
+    ``program`` is the program day and week it trains, if any. Once it has
+    sets for that day's program exercises, it keeps that day (in any week).
 
     Raises:
-        InvalidWorkoutError: if it ends before it starts, or the program day
-            does not exist or has no such week.
+        InvalidWorkoutError: if it ends before it starts, the program day does
+            not exist or has no such week, or the workout has program sets for
+            another day than ``program``'s.
     """
     started, ended = times
     if ended is not None and ended < started:
@@ -90,6 +92,9 @@ def record_workout(
     with write_transaction(conn):
         if program is not None:
             _check_link(conn, program)
+        if set_days(conn, client_id) - {None if program is None else program.day_id}:
+            message = "the workout has sets for another program day"
+            raise InvalidWorkoutError(message)
         workout_id = save_workout(conn, client_id, stored, notes, program)
     return get_workout(conn, workout_id)
 
