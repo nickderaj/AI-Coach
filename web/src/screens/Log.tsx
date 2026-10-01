@@ -10,15 +10,17 @@ import {
   deleteSetWrite,
   discardWrite,
   finishWrite,
+  groupBlocks,
   loggedSets,
   removeBlock,
+  restAfter,
   removeSet,
   setWrite,
   typedOf,
   updateSet,
   valuesOf,
 } from "../log/draft";
-import type { Draft, DraftBlock, DraftSet, Typed } from "../log/draft";
+import type { Draft, DraftBlock, DraftSet, Plan, Typed } from "../log/draft";
 import { useNow } from "../log/useNow";
 import { href, navigate } from "../router";
 
@@ -84,9 +86,11 @@ function actionsFor({ outbox, drafts }: Logging, draft: Draft): Actions {
         change((d) => updateSet(d, block.key, set.id, { logged: null }));
         void outbox.send(deleteSetWrite(block, set));
       } else if (valuesOf(set, block.exercise.measure) !== null) {
+        // A program block rests as long as it says, and a superset only after its round.
+        const rest = restAfter(block, REST_MS);
         change((d) => ({
           ...updateSet(d, block.key, set.id, { logged: typedOf(set) }),
-          restUntil: Date.now() + REST_MS,
+          restUntil: rest === null ? d.restUntil : Date.now() + rest,
         }));
         send(block, set);
       }
@@ -192,15 +196,51 @@ function SetRow({
   );
 }
 
+const DECISIONS: Record<Plan["target"]["decision"], string> = {
+  start: "First time in this program",
+  progress: "Up: every set reached the top last time",
+  repeat: "Same load: beat last time",
+  reduce: "Lighter: work back up",
+  deload: "Deload: lighter, fewer sets",
+};
+
+/** "Target 3 × 8–12 · 62.5 kg", or with seconds for a timed exercise. */
+export function targetLine(plan: Plan, measure: string): string {
+  const { target } = plan;
+  const range =
+    plan.rep_min === plan.rep_max
+      ? String(plan.rep_min)
+      : `${String(plan.rep_min)}–${String(plan.rep_max)}`;
+  const unit = measure === "seconds" ? " s" : "";
+  const load =
+    target.load_kg === null || target.load_kg === 0 ? "" : ` · ${String(target.load_kg)} kg`;
+  return `Target ${String(target.reps.length)} × ${range}${unit}${load}`;
+}
+
+function Target({ plan, measure }: { plan: Plan; measure: string }): ReactElement {
+  return (
+    <p className="target">
+      <strong>{targetLine(plan, measure)}</strong>
+      <span className={`muted decision ${plan.target.decision}`}>
+        {DECISIONS[plan.target.decision]}
+      </span>
+    </p>
+  );
+}
+
 function BlockCard({ block, actions }: { block: DraftBlock; actions: Actions }): ReactElement {
-  const { exercise } = block;
+  const { exercise, plan } = block;
   const anyDone = block.sets.some((set) => set.logged !== null);
   return (
     <section className="card" aria-label={exercise.name}>
       <header className="exercise-row">
         <Avatar name={exercise.name} equipment={exercise.equipment} />
-        <strong>{exercise.name}</strong>
+        <strong>
+          {plan === null ? null : <span className="block-letter">{plan.label}</span>}
+          {exercise.name}
+        </strong>
       </header>
+      {plan === null ? null : <Target plan={plan} measure={exercise.measure} />}
       <table className="log-table">
         <thead>
           <tr>
@@ -256,6 +296,21 @@ function BlockCard({ block, actions }: { block: DraftBlock; actions: Actions }):
         )}
       </div>
     </section>
+  );
+}
+
+/** One exercise, or a superset's exercises together on one rail. */
+function Group({ group, actions }: { group: DraftBlock[]; actions: Actions }): ReactElement {
+  const cards = group.map((block) => <BlockCard key={block.key} block={block} actions={actions} />);
+  const rest = group.at(-1)?.plan?.rest_s;
+  if (group.length === 1 || rest === undefined) {
+    return <>{cards}</>;
+  }
+  return (
+    <div className="superset-group" role="group" aria-label="Superset">
+      <p className="muted superset-note">Superset: one set of each in turn, then rest {rest} s</p>
+      {cards}
+    </div>
   );
 }
 
@@ -336,7 +391,7 @@ function ActiveWorkout({ logging, draft }: { logging: Logging; draft: Draft }): 
       <RestTimer logging={logging} draft={draft} />
       <header className="page-head log-head">
         <span>
-          <h1>Workout</h1>
+          <h1>{draft.title ?? "Workout"}</h1>
           <p className="muted">
             Started {formatTime(draft.started_at)} · <Elapsed since={draft.started_at} /> ·{" "}
             {plural(logged, "set")}
@@ -361,8 +416,8 @@ function ActiveWorkout({ logging, draft }: { logging: Logging; draft: Draft }): 
           Nothing is logged yet. Tick off a set first, or discard the workout.
         </p>
       ) : null}
-      {draft.blocks.map((block) => (
-        <BlockCard key={block.key} block={block} actions={actions} />
+      {groupBlocks(draft.blocks).map((group) => (
+        <Group key={group[0]?.key} group={group} actions={actions} />
       ))}
       <a className="button" href={href({ name: "pick" })}>
         + Add exercise

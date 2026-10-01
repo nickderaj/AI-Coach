@@ -1,7 +1,12 @@
 import { describe, expect, it } from "vitest";
 
 import type { SetEntry, WorkoutDetail } from "../api";
+import { UPPER } from "../test/today";
 import {
+  blockLabel,
+  groupBlocks,
+  restAfter,
+  todayDraft,
   restored,
   toSecond,
   typedOf,
@@ -10,6 +15,7 @@ import {
   deleteSetWrite,
   discardWrite,
   draftFromServer,
+  draftSchema,
   finishWrite,
   loggedSets,
   newDraft,
@@ -118,6 +124,8 @@ describe("editing a draft", () => {
       started_at: "2026-09-30T08:00:00.000Z",
       blocks: [],
       restUntil: null,
+      program: null,
+      title: null,
     });
   });
 
@@ -145,6 +153,8 @@ describe("editing a draft", () => {
       exercise: HANG,
       previous: [],
       sets: [row({ id: "s1" })],
+      slot_id: null,
+      plan: null,
     });
   });
 
@@ -236,22 +246,22 @@ describe("typedOf", () => {
   });
 });
 
-describe("draftFromServer", () => {
-  const logged = (
-    set_number: number,
-    client_id: string | null,
-    values: Partial<SetEntry>,
-  ): SetEntry => ({
-    set_number,
-    reps: null,
-    load_kg: null,
-    duration_s: null,
-    rpe: null,
-    notes: null,
-    client_id,
-    ...values,
-  });
+const logged = (
+  set_number: number,
+  client_id: string | null,
+  values: Partial<SetEntry>,
+): SetEntry => ({
+  set_number,
+  reps: null,
+  load_kg: null,
+  duration_s: null,
+  rpe: null,
+  notes: null,
+  client_id,
+  ...values,
+});
 
+describe("draftFromServer", () => {
   it("rebuilds the blocks with every logged set ticked off", () => {
     const detail: WorkoutDetail = {
       id: 5,
@@ -267,6 +277,7 @@ describe("draftFromServer", () => {
           measure: "reps",
           carried_kg: 0,
           sets: [logged(1, "a", { reps: 8, load_kg: 60, rpe: 9 }), logged(2, null, { reps: 8 })],
+          block_exercise_id: null,
         },
         {
           position: 2,
@@ -275,20 +286,27 @@ describe("draftFromServer", () => {
           measure: "seconds",
           carried_kg: 65,
           sets: [logged(1, "b", { duration_s: 45 })],
+          block_exercise_id: null,
         },
       ],
+      program_day_id: null,
+      program_week: null,
     };
 
     expect(draftFromServer(detail, "w")).toEqual({
       id: "w",
       started_at: "2026-09-30T08:00:00+00:00",
       restUntil: null,
+      program: null,
+      title: null,
       blocks: [
         {
           key: "server-1",
           exercise: { ...BENCH, equipment: null },
           previous: [],
           sets: [row({ ...BENCH_8x60, rpe: "9", id: "a", logged: { ...BENCH_8x60, rpe: "9" } })],
+          slot_id: null,
+          plan: null,
         },
         {
           key: "server-2",
@@ -301,6 +319,8 @@ describe("draftFromServer", () => {
               logged: { kg: "", reps: "", seconds: "45", rpe: "" },
             }),
           ],
+          slot_id: null,
+          plan: null,
         },
       ],
     });
@@ -363,5 +383,219 @@ describe("writes", () => {
       body: null,
       label: "Delete set 2 of Bench Press",
     });
+  });
+});
+
+describe("program days", () => {
+  const ids = (): (() => string) => {
+    let next = 0;
+    return () => {
+      next += 1;
+      return `r${String(next)}`;
+    };
+  };
+  const workout = {
+    id: "w",
+    started_at: "2026-10-01T07:00:00.000Z",
+    program_name: "Upper / Lower",
+  };
+
+  it("labels blocks, and a superset's exercises", () => {
+    expect([
+      blockLabel(0, 0, 1),
+      blockLabel(1, 0, 2),
+      blockLabel(1, 1, 2),
+      blockLabel(25, 2, 3),
+    ]).toEqual(["A", "B1", "B2", "Z3"]);
+  });
+
+  it("builds today's workout with every set prefilled from its target", () => {
+    const draft = todayDraft(workout, UPPER, ids());
+
+    expect({ ...draft, blocks: [] }).toEqual({
+      id: "w",
+      started_at: "2026-10-01T07:00:00.000Z",
+      restUntil: null,
+      program: { day_id: 11, week: 2 },
+      title: "Upper A · Week 2",
+      blocks: [],
+    });
+    expect(
+      draft.blocks.map((b) => [b.key, b.slot_id, b.plan?.label, b.plan?.group, b.plan?.last]),
+    ).toEqual([
+      ["slot-1", 1, "A", 0, true],
+      ["slot-2", 2, "B1", 1, false],
+      ["slot-3", 3, "B2", 1, true],
+    ]);
+    expect(block(draft, 0)).toMatchObject({
+      exercise: { id: 101, name: "Bench Press", measure: "reps", equipment: "barbell" },
+      previous: [{ reps: 12, load_kg: 60, duration_s: null }],
+      sets: [
+        row({ id: "r1", kg: "62.5", reps: "8" }),
+        row({ id: "r2", kg: "62.5", reps: "8" }),
+        row({ id: "r3", kg: "62.5", reps: "8" }),
+      ],
+      plan: { rest_s: 120, rep_min: 8, rep_max: 12, target: UPPER.blocks[0]?.exercises[0]?.target },
+    });
+    expect(block(draft, 1).sets).toEqual([
+      row({ id: "r4", kg: "40", reps: "11" }),
+      row({ id: "r5", kg: "40", reps: "10" }),
+    ]);
+    // Timed, and no load to lift: seconds prefilled, kg left empty.
+    expect(block(draft, 2).sets).toEqual([
+      row({ id: "r6", seconds: "30" }),
+      row({ id: "r7", seconds: "30" }),
+    ]);
+    expect(block(draft, 2).previous).toEqual([]);
+  });
+
+  it("leaves kg empty for a target of no added load", () => {
+    const day = structuredClone(UPPER);
+    const bench = day.blocks[0]?.exercises[0];
+    if (bench === undefined) {
+      throw new Error("no bench");
+    }
+    bench.target = { decision: "repeat", load_kg: 0, reps: [8] };
+
+    expect(block(todayDraft(workout, day, ids())).sets).toEqual([row({ id: "r1", reps: "8" })]);
+  });
+
+  it("names the deload week", () => {
+    expect(todayDraft(workout, { ...UPPER, deload: true, week: 7 }, ids()).title).toBe(
+      "Upper A · Deload week",
+    );
+  });
+
+  it("picks up the server's sets for the day", () => {
+    const detail: WorkoutDetail = {
+      id: 5,
+      started_at: "2026-10-01T07:00:00+00:00",
+      ended_at: null,
+      notes: null,
+      client_id: "w",
+      program_day_id: 11,
+      program_week: 2,
+      exercises: [
+        {
+          position: 1,
+          exercise_id: 101,
+          name: "Bench Press",
+          measure: "reps",
+          carried_kg: 0,
+          sets: [logged(1, "a", { reps: 8, load_kg: 62.5 }), logged(2, null, { reps: 1 })],
+          block_exercise_id: 1,
+        },
+        {
+          position: 2,
+          exercise_id: 101,
+          name: "Bench Press",
+          measure: "reps",
+          carried_kg: 0,
+          sets: [logged(1, "z", { reps: 5 })],
+          block_exercise_id: null,
+        },
+      ],
+    };
+
+    const draft = todayDraft(workout, UPPER, ids(), detail);
+
+    const done = { kg: "62.5", reps: "8", seconds: "", rpe: "" };
+    expect(block(draft, 0).sets).toEqual([row({ ...done, id: "a", logged: done })]);
+    expect(block(draft, 1).sets).toHaveLength(2); // not done yet: prefilled
+  });
+
+  it("rests per block, and only after a superset's round", () => {
+    const draft = todayDraft(workout, UPPER, ids());
+
+    expect(restAfter(block(draft, 0), 90_000)).toBe(120_000);
+    expect(restAfter(block(draft, 1), 90_000)).toBeNull();
+    expect(restAfter(block(draft, 2), 90_000)).toBe(60_000);
+    expect(restAfter(block(withBench()), 90_000)).toBe(90_000);
+  });
+
+  it("keeps a superset together, and everything else apart", () => {
+    const today = todayDraft(workout, UPPER, ids());
+    const extra = addBlock(today, { block: "x", set: "x1" }, BENCH, []);
+    const keys = (groups: { key: string }[][]): string[][] =>
+      groups.map((g) => g.map((b) => b.key));
+
+    expect(keys(groupBlocks(extra.blocks))).toEqual([["slot-1"], ["slot-2", "slot-3"], ["x"]]);
+    const twoAdHoc = addBlock(withBench(), { block: "c", set: "c1" }, BENCH, []);
+    expect(keys(groupBlocks(twoAdHoc.blocks))).toEqual([["b"], ["c"]]);
+    expect(groupBlocks([])).toEqual([]);
+  });
+
+  it("names its program day and exercises in every write", () => {
+    const draft = todayDraft(workout, UPPER, ids());
+    const bench = block(draft);
+    const first = bench.sets[0] ?? row();
+
+    expect(startWrite(draft).body).toEqual({
+      started_at: "2026-10-01T07:00:00.000Z",
+      program: { day_id: 11, week: 2 },
+    });
+    expect(finishWrite(draft, new Date("2026-10-01T08:00:00Z")).body).toEqual({
+      started_at: "2026-10-01T07:00:00.000Z",
+      ended_at: "2026-10-01T08:00:00.000Z",
+      program: { day_id: 11, week: 2 },
+    });
+    expect(
+      setWrite(draft, bench, first, { reps: 8, load_kg: 62.5, duration_s: null, rpe: null }).body,
+    ).toEqual({
+      workout_client_id: "w",
+      exercise_id: 101,
+      reps: 8,
+      load_kg: 62.5,
+      duration_s: null,
+      rpe: null,
+      block_exercise_id: 1,
+    });
+  });
+
+  it("keeps a server workout's program day, so finishing it still names it", () => {
+    const detail: WorkoutDetail = {
+      id: 5,
+      started_at: "2026-10-01T07:00:00+00:00",
+      ended_at: null,
+      notes: null,
+      client_id: "w",
+      program_day_id: 11,
+      program_week: 3,
+      exercises: [
+        {
+          position: 1,
+          exercise_id: 101,
+          name: "Bench Press",
+          measure: "reps",
+          carried_kg: 0,
+          sets: [logged(1, "a", { reps: 8 })],
+          block_exercise_id: 1,
+        },
+      ],
+    };
+
+    const draft = draftFromServer(detail, "w");
+
+    expect(draft.program).toEqual({ day_id: 11, week: 3 });
+    expect(block(draft).slot_id).toBe(1);
+    expect(draftFromServer({ ...detail, program_week: null }, "w").program).toBeNull();
+  });
+
+  it("loads a draft saved before programs", () => {
+    const old = {
+      id: "w",
+      started_at: "2026-10-01T07:00:00.000Z",
+      restUntil: null,
+      blocks: [{ key: "b", exercise: BENCH, previous: [], sets: [] }],
+    };
+
+    const parsed = draftSchema.parse(old);
+
+    expect([
+      parsed.program,
+      parsed.title,
+      parsed.blocks[0]?.slot_id,
+      parsed.blocks[0]?.plan,
+    ]).toEqual([null, null, null, null]);
   });
 });

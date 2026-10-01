@@ -40,6 +40,8 @@ Last updated: 2026-10-01.
 | Phase 4a — program engine (progression, deload, next day); schema v6 | #24 | Deployed 2026-10-01 (backup first); schema v6 live, existing workouts untouched. |
 | Phase 4b — programs through the API: proposals, the active program, today's day | #25 | Deployed 2026-10-01 (backup first); `/api/programs` and `/api/today` answer the owner, 403 otherwise. |
 | Phase 4c — `propose_program`: the coach proposes through the API with the gateway's key | #26 | Deployed 2026-10-01 (backup first). A live turn in a throwaway session proposed through the API (200); session deleted, test proposal turned down, no memory written. |
+| Phase 4d — the Program tab: the block, its weeks and next day; accept or turn down a proposal; ask the coach | #27 | Deployed 2026-10-01 (backup first); the live app serves the tab, and decline by id answers 409 for a stale id. |
+| `current_program`: the coach reads the program it changes | #29 | Deployed 2026-10-01. A live turn in a throwaway session called `current_program`; session deleted, no memory written. |
 
 ## Phase 2 — logging: built, awaiting its exit criterion
 
@@ -324,8 +326,8 @@ updates this section.
 | 4a | Schema v6 (programs, days, blocks, block exercises; program links on workouts and sets; an exercise's own load step) and the pure engine: double progression (D5), deload (D6), next day by sequence | #24 |
 | 4b | Programs in storage and services. API: the active and the proposed program, accept a proposal, today's program day with each exercise's target and last time, workouts and sets linked to the program | #25 |
 | 4c | `propose_program`, the coach's MCP tool: exercise ids only, validated, written through the API as a proposal (see below); the coach's profile learns to use it | #26 |
-| 4d | Web: the Program screen. The whole block, the current week, the deload week marked; a proposal to accept; generate or refine through the coach | this PR |
-| 4e | Web: the Today screen. The next program day, supersets side by side, sets prefilled with targets, last time, a rest timer per block | |
+| 4d | Web: the Program screen. The whole block, the current week, the deload week marked; a proposal to accept; generate or refine through the coach | #27 |
+| 4e | Web: the Today screen. The next program day, supersets side by side, sets prefilled with targets, last time, a rest timer per block | this PR |
 | 4f | Exit criterion, by the owner: a full week trained from the app | |
 
 **How the coach writes a program (4c).** The tool server runs in the coach's
@@ -458,7 +460,7 @@ active program by itself, and the model never works out loads (D12).
   (Hermes also refused to start on a short test key: its API server wants at
   least 16 characters, as the real generated key has.)
 
-**4d: the Program screen (this PR).** A fifth tab, **Program** (`#/program`),
+**4d: the Program screen (done, #27).** A fifth tab, **Program** (`#/program`),
 between Home and History.
 - **The block.** The active program's name, when it started, and a strip of
   its weeks: 1–6 and D for the deload week. Weeks done are green, the current
@@ -506,7 +508,48 @@ between Home and History.
   the class of the logging screen's floating rest timer, and was drawn as a
   bar over the tabs. It is `.block-rest` now, and a test checks it.
 
-**The coach reads the program (this PR, from review of 4d).** The coach could
+**4e: the Today screen (this PR).** Training a program day reuses the
+logging screens of phase 2, so it works offline and through the outbox like any
+workout.
+- **Today (`#/today`).** Home shows "Next in your program: Upper A · Week 2"
+  while nothing is in progress, and links here.
+  - The screen shows the day ("Day 1 of 4"), the week or the deload week, and
+    every exercise in order: its letter (A, or B1/B2 in a superset), its
+    target ("Target 3 × 8–12 · 62.5 kg") and last time ("Last Thu 24 Sept:
+    12 × 60 kg, …"), with each block's rest.
+  - **Start this workout** builds the workout from the targets. Each set is
+    prefilled with the target load and that set's reps or seconds; kg stays
+    empty when there is no load to add.
+  - If this phone already has the day in progress, it says **Resume**. Another
+    workout in progress is named, with Resume. If the server has the day in
+    progress but the phone lost its copy, **Resume this workout** fetches it
+    and fills in its logged sets (this needs a connection).
+- **Training it** (`#/log`, the phase 2 screen):
+  - The heading is the day and week. Each exercise card shows its letter, its
+    target and why: "Up: every set reached the top last time", "Same load:
+    beat last time", "Lighter: work back up", "First time in this program" or
+    "Deload: lighter, fewer sets".
+  - A superset's exercises are kept together on one rail: "Superset: one set of
+    each in turn, then rest 60 s".
+  - The rest timer uses the block's rest. In a superset it starts only after
+    the round's last exercise.
+  - Exercises added from the picker are logged as before, outside the program.
+- **Writes.** The workout's `PUT` names `program: {day_id, week}` at start and
+  at finish, and each set its `block_exercise_id`. A workout picked up from the
+  server keeps both, so finishing it never drops its day (the server refuses
+  that, 4b).
+- Drafts saved by the previous version still load: the new fields default to
+  nothing.
+- Checked at phone size: this branch's API on a copy of the latest backup,
+  with an upper/lower program and week 1 logged through the API, driven by
+  Playwright in the headless shell. Today showed week 2 with the engine's
+  decisions: incline press up to 25 kg, lat pulldown "beat 10/9/8", lateral
+  raise up a step, rear delt fly (11/10/9 against 12–15) down a step.
+  Starting it, then ticking set 1, started the block's 150 s rest. The render
+  caught two layout bugs before review: a squeezed "Last" column on Today,
+  and the block letter pushing the exercise name onto its own row.
+
+**The coach reads the program (done, #29, from review of 4d).** The coach could
 propose programs but not read the one being trained, so "Change my program: …"
 from the Program tab left it guessing. A read-only `current_program` tool now
 returns `GET /api/programs`'s answer through the same service: the active

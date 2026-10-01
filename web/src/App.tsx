@@ -12,6 +12,7 @@ import { Log } from "./screens/Log";
 import { Picker } from "./screens/Picker";
 import { Program } from "./screens/Program";
 import { Settings } from "./screens/Settings";
+import { Today } from "./screens/Today";
 
 const SCREENS: Record<FixedRouteName, () => ReactElement> = {
   home: Home,
@@ -22,6 +23,7 @@ const SCREENS: Record<FixedRouteName, () => ReactElement> = {
   settings: Settings,
   coach: Coach,
   program: Program,
+  today: Today,
 };
 
 function Screen({ route }: { route: Route }): ReactElement {
@@ -56,6 +58,7 @@ const TAB_OF: Record<Route["name"], Tab> = {
   exercise: "exercises",
   coach: "coach",
   program: "program",
+  today: "home",
 };
 
 export function App(): ReactElement {

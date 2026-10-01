@@ -858,6 +858,62 @@ h2 {
   font-weight: 700;
 }
 
+.target {
+  display: grid;
+  gap: 0.1rem;
+  margin: 0 0 0.5rem;
+}
+
+.target .decision {
+  font-size: 0.85rem;
+}
+
+.target .decision.progress {
+  color: var(--green);
+}
+
+.target .decision.reduce {
+  color: var(--peach);
+}
+
+.target .decision.deload {
+  color: var(--teal);
+}
+
+/* A superset's exercises, done in turn, on one rail. */
+.superset-group {
+  display: grid;
+  gap: 0.6rem;
+  padding-left: 0.6rem;
+  border-left: 3px solid var(--mauve);
+}
+
+.superset-note {
+  margin: 0;
+  font-size: 0.85rem;
+}
+
+/* Today: the name and target on one line, last time under them. */
+.lines li.planned {
+  display: grid;
+  grid-template-columns: 1fr auto;
+  column-gap: 0.75rem;
+}
+
+.planned .last {
+  grid-column: 1 / -1;
+  font-size: 0.85rem;
+}
+
+.today-head {
+  display: grid;
+  gap: 0.4rem;
+}
+
+.today-head p {
+  margin: 0;
+}
+
 .reply {
   margin: 0.6rem 0 0;
   max-width: none;

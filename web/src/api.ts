@@ -45,8 +45,13 @@ const workoutDetailSchema = z.object({
       /** Body weight moved in each rep, on top of the load (bodyweight exercises). */
       carried_kg: z.number(),
       sets: z.array(setSchema),
+      /** The program exercise these sets were for, if any. */
+      block_exercise_id: z.number().int().nullable().default(null),
     }),
   ),
+  /** The program day and week the workout trains, if any. */
+  program_day_id: z.number().int().nullable().default(null),
+  program_week: z.number().int().nullable().default(null),
 });
 
 const exerciseSummarySchema = z.object({
@@ -346,3 +351,55 @@ export async function changeProgram(
     message: detail.success ? sentence(detail.data.detail) : new ApiError(response.status).message,
   };
 }
+
+/** What the next session of an exercise aims for, and why (the app's rules, D5 and D6). */
+export const targetSchema = z.object({
+  decision: z.enum(["start", "progress", "repeat", "reduce", "deload"]),
+  load_kg: z.number().nullable(),
+  /** One prefilled amount per set: reps, or seconds for a timed exercise. */
+  reps: z.array(z.number().int()),
+});
+
+const plannedExerciseSchema = z.object({
+  block_exercise_id: z.number().int(),
+  exercise_id: z.number().int(),
+  name: z.string(),
+  equipment: z.string().nullable(),
+  measure: measureSchema,
+  carried_kg: z.number(),
+  sets: z.number().int(),
+  rep_min: z.number().int(),
+  rep_max: z.number().int(),
+  notes: z.string().nullable(),
+  target: targetSchema,
+  /** The exercise's last session outside today's workout. */
+  last: z.object({ started_at: z.string(), sets: z.array(setSchema) }).nullable(),
+});
+
+const plannedDaySchema = z.object({
+  id: z.number().int(),
+  position: z.number().int(),
+  name: z.string(),
+  week: z.number().int(),
+  deload: z.boolean(),
+  blocks: z.array(
+    z.object({ rest_s: z.number().int(), exercises: z.array(plannedExerciseSchema) }),
+  ),
+});
+
+/** The active program's next day, planned; null without an active program. */
+export const todaySchema = z
+  .object({
+    program_id: z.number().int(),
+    program_name: z.string(),
+    training_weeks: z.number().int(),
+    days: z.number().int(),
+    /** Null once the block is done. */
+    day: plannedDaySchema.nullable(),
+    /** An unfinished workout already training that day. */
+    workout_client_id: z.string().nullable(),
+  })
+  .nullable();
+
+export type PlannedDay = z.infer<typeof plannedDaySchema>;
+export type TodayPlan = NonNullable<z.infer<typeof todaySchema>>;

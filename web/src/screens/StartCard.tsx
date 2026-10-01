@@ -8,6 +8,7 @@ import { useDraft, useLogging } from "../log/context";
 import { draftFromServer, loggedSets, newDraft, startWrite } from "../log/draft";
 import type { Draft } from "../log/draft";
 import { href, navigate } from "../router";
+import { NextDayCard } from "./Today";
 
 function Resume({ draft }: { draft: Draft }): ReactElement {
   return (
@@ -68,5 +69,12 @@ export function StartCard(): ReactElement | null {
   if (logging === null) {
     return null;
   }
-  return draft === null ? <Start logging={logging} /> : <Resume draft={draft} />;
+  return draft === null ? (
+    <>
+      <NextDayCard />
+      <Start logging={logging} />
+    </>
+  ) : (
+    <Resume draft={draft} />
+  );
 }

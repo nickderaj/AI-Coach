@@ -35,7 +35,14 @@ function QuickLogForm({
     const now = new Date();
     const oneOff = newDraft(crypto.randomUUID(), now);
     const row = { ...set, id: crypto.randomUUID(), logged: typedOf(set) };
-    const block: DraftBlock = { key: "one-off", exercise, previous: [], sets: [row] };
+    const block: DraftBlock = {
+      key: "one-off",
+      exercise,
+      previous: [],
+      sets: [row],
+      slot_id: null,
+      plan: null,
+    };
     await logging.outbox.send({ ...finishWrite(oneOff, now), label: `One-off ${exercise.name}` });
     await logging.outbox.send(setWrite(oneOff, block, row, values));
     setLogged(formatSet(values, exercise.measure));
