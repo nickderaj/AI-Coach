@@ -58,7 +58,10 @@ if [ "$rotate" = yes ] || [ ! -f "$TRAINER_SECRETS_DIR/gateway.env" ]; then
 fi
 echo "secrets stored in $TRAINER_SECRETS_DIR"
 
-if systemctl is-enabled --quiet trainer-coach.service 2>/dev/null; then
-  systemctl restart trainer-coach.service
-  echo "restarted trainer-coach"
-fi
+# The API reads the gateway key too (for the Coach tab), then the coach starts after it.
+for unit in trainer-api.service trainer-coach.service; do
+  if systemctl is-enabled --quiet "$unit" 2>/dev/null; then
+    systemctl restart "$unit"
+    echo "restarted $unit"
+  fi
+done

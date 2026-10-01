@@ -108,6 +108,13 @@ from there only while its `-wal` and `-shm` files exist, so the API holds one
 connection open for as long as it runs, and `trainer-coach` starts after it.
 If the API is down, the tools answer that the log cannot be read.
 
+**The Coach tab's endpoints.** The API talks to the gateway at
+`TRAINER_HERMES_URL` (the gateway's loopback address), with the key from
+`/etc/hermes-trainer/gateway.env`. That file is optional for `trainer-api`, so
+the API starts before the coach's secrets exist; until then the Coach
+endpoints answer 503. `hermes-secrets.sh` restarts both units. The id of the
+tab's one Hermes session is kept in the database (`coach` table).
+
 **Memory.** What the coach learns is written straight to `memories/` and
 `skills/` in its home. Every night at 03:15, `trainer-memory.timer` commits
 those two directories, and nothing else, to a private git repository,

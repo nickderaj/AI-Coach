@@ -110,6 +110,7 @@ workout_sets       id, workout_id, block_position, exercise_id, set_number,
 body_metrics       id, measured_at, metric, value, unit, source
 cardio_sessions    id, started_at, activity, duration_s, distance_m, notes   -- logged in the app
 push_subscriptions id, endpoint, keys, created_at
+coach              session_id                      -- the Coach tab's one Hermes session
 ```
 
 Program position is sequence-based, not calendar-based: "today" is the day after

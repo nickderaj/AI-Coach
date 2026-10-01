@@ -48,6 +48,7 @@ def test_migrate_creates_the_schema(tmp_path: Path) -> None:
             "body_metrics",
             "cardio_sessions",
             "profile",
+            "coach",
         }
 
 

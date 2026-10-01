@@ -10,6 +10,10 @@ Group=${user}
 Environment=TRAINER_DATA_DIR=${data_dir}
 Environment=TRAINER_WEB_DIR=${prefix}/web
 Environment=TRAINER_OWNER_LOGIN=${owner_login}
+# The coach's gateway, for the Coach tab. The key it checks comes from the coach's
+# root-only secrets; "-" lets the API start before they exist (the tab says so).
+Environment=TRAINER_HERMES_URL=http://${hermes_upstream}
+EnvironmentFile=-${secrets_dir}/gateway.env
 ExecStart=${prefix}/venv/bin/python -m trainer.api --host ${bind_host} --port ${bind_port}
 Restart=on-failure
 RestartSec=5

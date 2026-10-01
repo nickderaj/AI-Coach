@@ -35,6 +35,7 @@ def substitutions(config: DeployConfig) -> dict[str, str]:
         "backup_keep": str(config.backup_keep),
         "owner_login": config.owner_login,
         "hermes_port": str(config.hermes_port),
+        "hermes_upstream": config.hermes_upstream,
         "model_url": config.model_url,
         "model": config.model,
         "hermes_home": str(config.hermes_home),

@@ -32,7 +32,9 @@ Last updated: 2026-10-01.
 | Phase 2b-2 — logging screens: start/resume, set table, rest timer, picker, one-off sets | #14 | Deployed 2026-09-30. **Phase 2 built.** |
 | Fixes from the first sessions: shorthand, body weight in volume, RPE, rest timer, common exercises | #15 | Deployed 2026-09-30. |
 | A share of body weight per bodyweight exercise; "no equipment" merged into bodyweight; schema v4 | #16 | Deployed 2026-10-01 (backup first; no rows needed converting). |
-| Phase 3a — pinned Hermes gateway, profile, root-only secrets, private memory repo | #17 | Deploy on 2026-10-01 stopped at the gateway; fixed in the next PR. |
+| Phase 3a — pinned Hermes gateway, profile, root-only secrets, private memory repo | #17 | Deploy on 2026-10-01 stopped at the gateway; fixed by #18. |
+| Coach unit renamed `trainer-coach`; Hermes run as a module | #18 | Deployed 2026-10-01; the coach answers through the provider. |
+| Phase 3b — `trainer.mcp`, the coach's read-only tools; the API holds the log open | #19 | Deployed 2026-10-01; the live coach answers from the owner's log. |
 
 ## Phase 2 — logging: built, awaiting its exit criterion
 
@@ -158,9 +160,9 @@ that shaped the build:
 
 | Step | Scope | PR |
 | --- | --- | --- |
-| 3a | Pinned Hermes in its own venv; `trainer-coach` unit; `hermes/` profile (config, SOUL); root-only secrets; private memory repo with a nightly commit | #17, and the fix below |
-| 3b | `trainer.mcp`: read-only training-history tools (recent workouts, a workout, the catalogue, an exercise's history, body weight), run by Hermes over stdio | this PR |
-| 3c | Coach proxy in the API: one durable Hermes session, its id in SQLite; send a message, read the conversation | |
+| 3a | Pinned Hermes in its own venv; `trainer-coach` unit; `hermes/` profile (config, SOUL); root-only secrets; private memory repo with a nightly commit | #17, #18 |
+| 3b | `trainer.mcp`: read-only training-history tools (recent workouts, a workout, the catalogue, an exercise's history, body weight), run by Hermes over stdio | #19 |
+| 3c | Coach endpoints in the API: one durable Hermes session, its id in SQLite; send a message, read the conversation | this PR |
 | 3d | Coach tab in the web app (needs a connection; shows the conversation) | |
 | 3e | On the host, not in git: seed the owner's stated preferences into the coach's memory, then check the exit criterion over several days | |
 
@@ -185,7 +187,7 @@ The job has no network and refuses a repository that has one.
 - `python -m trainer.deploy memory-commit` does the nightly commit, without
   user or system git config or hooks.
 
-**In this PR: fixes from deploying 3a (2026-10-01).** The API and the secrets
+**Fixes from deploying 3a (done, #18).** The API and the secrets
 were installed, but the gateway did not start, for two reasons.
 - **Unit name.** The coach's unit was `hermes-gateway.service`. That is the name
   Hermes gives its own gateway, and the v1 bot's Hermes install on the host had
@@ -200,7 +202,7 @@ were installed, but the gateway did not start, for two reasons.
   swap. The unit now runs `python -m hermes_cli.main gateway run`. A test checks
   that every unit starts a venv's `python`, not a console script.
 
-**In this PR (3b): the trainer's tools.**
+**3b: the trainer's tools (done, #19).**
 - `python -m trainer.mcp` is an MCP server over stdio. It handles `initialize`
   (the handshake revisions 2024-11-05 to 2025-11-25), `ping`, `tools/list`
   and `tools/call`; other methods are refused and notifications ignored.
@@ -226,6 +228,30 @@ were installed, but the gateway did not start, for two reasons.
 - Checked end to end with the pinned Hermes and a copy of the owner's log: the
   coach answered "what was my last workout, and my last pull-ups?" by calling
   `recent_workouts`, `list_exercises` and `exercise_history`.
+
+**In this PR (3c): the Coach endpoints.**
+- `POST /api/coach/messages` with `{"text"}` (1–4000 characters, trimmed)
+  runs one turn and returns the reply, `{"role", "text", "at"}`.
+  `GET /api/coach/messages` returns the last 100 messages, oldest first: what
+  was said, without tool calls or tool results. Both are owner-only.
+- **One durable session.** Schema v5 adds a one-row `coach` table with the
+  Hermes session id. The first message creates the session, titled "Coach". If
+  Hermes no longer has it (`session_not_found`), the next message starts a new
+  one. Memory and skills carry over; only the transcript starts again.
+- **One turn at a time.** A second message while the coach is answering gets
+  409. If the gateway is unreachable or refuses, the endpoints answer 503 and
+  log a warning. Without the coach's secrets they answer 503 "the coach is not
+  set up".
+- `trainer.services.hermes` is a small client for the gateway's Sessions API.
+  It uses the standard library (`urllib`), with proxies off so the key only goes
+  to the gateway, and a 240 s turn timeout. Tests drive it through a fake
+  urllib handler, with no sockets.
+- Deploy: `trainer-api` gets `TRAINER_HERMES_URL`, and the gateway key from
+  `/etc/hermes-trainer/gateway.env` (optional, so the API starts without it).
+  `hermes-secrets.sh` restarts the API as well as the coach.
+- Checked end to end: this branch's API, a copy of the log, and the live coach.
+  "How many sets of pull-ups did I do last time?" was answered from the log in
+  about 10 s (12 sets, 26 September), and the history showed both messages.
 
 ## Remaining phases
 
