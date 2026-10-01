@@ -297,6 +297,20 @@ so a file recorded before an exclude covered it leaves the repository but
 stays on disk. Checked on a copy of the host's repository: the file left the
 repository, and the next run had nothing to commit.
 
+**In this PR: one answer per turn in the Coach tab.** The first real
+conversation showed a turn twice. When the coach writes a sentence and calls
+tools in the same step ("I'll check your recent upper-body sets…"), Hermes
+stores that commentary as an assistant message with tool calls, and the tab
+showed it as a reply before the real answer. Assistant messages that call
+tools are now left out of the history (`GatewayMessage.calls_tools`, from
+Hermes's `tool_calls`). Checked against the live conversation: each turn now
+shows once. Also, the hidden "You:"/"Coach:" labels can no longer be selected,
+so copying a bubble no longer carries them into a new message.
+
+**Exit criterion, across days:** in that same conversation the coach planned
+Friday's session with the seeded 5-minute mobility warm-up, unprompted, and
+deferred to the app's progression and deload rules.
+
 ## Remaining phases
 
 | Phase | Scope | Exit criterion |

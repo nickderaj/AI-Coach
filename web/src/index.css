@@ -682,6 +682,12 @@ h2 {
   border-bottom-left-radius: 0.3rem;
 }
 
+/* "You:" / "Coach:" are for screen readers only: never part of copied text. */
+.bubble .sr-only {
+  -webkit-user-select: none;
+  user-select: none;
+}
+
 .bubble.thinking {
   color: var(--subtext0);
   font-style: italic;

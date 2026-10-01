@@ -101,8 +101,16 @@ def test_messages_keep_the_gateways_order_even_when_clocks_regress() -> None:
     page = {
         "data": [
             {"role": "user", "content": "hello", "timestamp": 1.0, "id": "1"},
-            {"role": "assistant", "content": None, "timestamp": 2.0, "id": "2"},
-            {"role": "assistant", "content": "Hi", "timestamp": 0.5, "id": "3"},
+            {"role": "assistant", "content": None, "timestamp": 2.0, "id": "2", "tool_calls": None},
+            {
+                "role": "assistant",
+                "content": "Let me check.",
+                "timestamp": 2.1,
+                "id": "3",
+                "tool_calls": [{"id": "call_1", "function": {"name": "x"}}],
+            },
+            {"role": "assistant", "content": "", "timestamp": 2.2, "id": "4", "tool_calls": []},
+            {"role": "assistant", "content": "Hi", "timestamp": 0.5, "id": "5"},
         ]
     }
     client, fake = gateway(
@@ -112,6 +120,8 @@ def test_messages_keep_the_gateways_order_even_when_clocks_regress() -> None:
     assert client.messages("api_1") == [
         GatewayMessage("user", "hello", 1.0),
         GatewayMessage("assistant", "", 2.0),
+        GatewayMessage("assistant", "Let me check.", 2.1, calls_tools=True),
+        GatewayMessage("assistant", "", 2.2),
         GatewayMessage("assistant", "Hi", 0.5),
     ]
     assert fake.requests[0].data is None
