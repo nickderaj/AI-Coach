@@ -391,9 +391,9 @@ active program by itself, and the model never works out loads (D12).
   - unknown fields are refused. Exercises are ids from the catalogue; an
     unknown id, or one measured in distance, is refused with the ids named.
 - `PUT /api/programs/proposal` saves a program as the proposal, replacing the
-  last one. `DELETE` turns it down. `POST /api/programs/{id}/accept` makes it
-  the active program and archives the old one; 409 if it is no longer the
-  proposal.
+  last one. `POST /api/programs/{id}/accept` makes it the active program and
+  archives the old one; 409 if it is no longer the proposal. (Turning one down
+  is `POST /api/programs/{id}/decline`, from review of 4d.)
 - `GET /api/programs`: the active program with its next week and day, and the
   proposal. A program lists its days in order, each with its blocks in order,
   and each exercise with its catalogue name, measure and load step.
@@ -488,6 +488,19 @@ between Home and History.
   - On a failure the request stays in the box with the reason.
   - The request and the reply live with the screen, so the reload does not
     lose them.
+- **From review:**
+  - Turning a proposal down names it: `POST /api/programs/{id}/decline`, 409
+    if another has replaced it. The old `DELETE /api/programs/proposal`
+    removed whichever was current, which a stale screen could do to one never
+    seen.
+  - A replaced or declined proposal is now archived, not deleted. Otherwise
+    SQLite could give its id to the next program, and a stale screen's accept
+    or decline would act on that one.
+  - While a change is on its way, every proposal button, confirmations
+    included, is disabled, and a second change cannot start.
+  - The box to ask the coach appears only once the programs are known.
+    While they load or cannot be read, it can't tell "plan one" from "change
+    it".
 - Checked on a phone-size render (390 px, this branch's API on a copy of
   the latest backup). That caught a clash: a block's rest line used `.rest`,
   the class of the logging screen's floating rest timer, and was drawn as a

@@ -39,7 +39,7 @@ from trainer.storage.programs import (
     SlotSet,
     SlotSpec,
     activate_program,
-    delete_program,
+    archive_program,
     get_program,
     insert_program,
     last_position,
@@ -191,7 +191,7 @@ def _check_exercises(conn: sqlite3.Connection, program: ProgramIn) -> None:
 
 
 def propose_program(conn: sqlite3.Connection, program: ProgramIn, now: datetime) -> Program:
-    """Save ``program`` as the proposal, replacing any earlier one.
+    """Save ``program`` as the proposal; any earlier one is archived.
 
     Raises:
         ProgramError: if an exercise does not exist or is measured in distance.
@@ -200,17 +200,27 @@ def propose_program(conn: sqlite3.Connection, program: ProgramIn, now: datetime)
         _check_exercises(conn, program)
         earlier = program_with_status(conn, ProgramStatus.PROPOSED)
         if earlier is not None:
-            delete_program(conn, earlier)
+            archive_program(conn, earlier)
         program_id = insert_program(conn, _spec(program), ProgramStatus.PROPOSED, utc_iso(now))
     return get_program(conn, program_id)
 
 
-def decline_proposal(conn: sqlite3.Connection) -> None:
-    """Delete the proposed program, if there is one."""
+def decline_proposal(conn: sqlite3.Connection, program_id: int) -> None:
+    """Turn down the proposed program ``program_id``: it is archived.
+
+    Raises:
+        NoProposalError: if ``program_id`` is not the proposed program (one
+            the owner has not seen may have replaced it).
+    """
     with write_transaction(conn):
-        proposed = program_with_status(conn, ProgramStatus.PROPOSED)
-        if proposed is not None:
-            delete_program(conn, proposed)
+        _check_proposal(conn, program_id)
+        archive_program(conn, program_id)
+
+
+def _check_proposal(conn: sqlite3.Connection, program_id: int) -> None:
+    if program_with_status(conn, ProgramStatus.PROPOSED) != program_id:
+        message = f"program {program_id} is not the proposal"
+        raise NoProposalError(message)
 
 
 def accept_proposal(conn: sqlite3.Connection, program_id: int, now: datetime) -> Program:
@@ -220,9 +230,7 @@ def accept_proposal(conn: sqlite3.Connection, program_id: int, now: datetime) ->
         NoProposalError: if ``program_id`` is not the proposed program.
     """
     with write_transaction(conn):
-        if program_with_status(conn, ProgramStatus.PROPOSED) != program_id:
-            message = f"program {program_id} is not the proposal"
-            raise NoProposalError(message)
+        _check_proposal(conn, program_id)
         activate_program(conn, program_id, utc_iso(now))
     return get_program(conn, program_id)
 

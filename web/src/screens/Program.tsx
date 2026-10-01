@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useRef, useState } from "react";
 import type { ReactElement } from "react";
 
 import { askCoach, changeProgram, programsSchema, useApi } from "../api";
@@ -179,11 +179,18 @@ function Proposal({
   const [asking, setAsking] = useState<Asking>("idle");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  // One change at a time: a second tap must not race the first to the server.
+  const changing = useRef(false);
 
-  const change = async (what: { accept: number } | "decline"): Promise<void> => {
+  const change = async (what: { accept: number } | { decline: number }): Promise<void> => {
+    if (changing.current) {
+      return;
+    }
+    changing.current = true;
     setBusy(true);
     setError(null);
     const result = await changeProgram(what);
+    changing.current = false;
     setBusy(false);
     if (result.kind === "ok") {
       onChanged();
@@ -219,6 +226,7 @@ function Proposal({
             <button
               type="button"
               className="link"
+              disabled={busy}
               onClick={() => {
                 setAsking("idle");
               }}
@@ -237,7 +245,7 @@ function Proposal({
               className="primary"
               disabled={busy}
               onClick={() => {
-                void change("decline");
+                void change({ decline: program.id });
               }}
             >
               Yes, turn it down
@@ -245,6 +253,7 @@ function Proposal({
             <button
               type="button"
               className="link"
+              disabled={busy}
               onClick={() => {
                 setAsking("idle");
               }}
@@ -273,6 +282,7 @@ function Proposal({
           <button
             type="button"
             className="link danger"
+            disabled={busy}
             onClick={() => {
               setAsking("decline");
             }}
@@ -445,7 +455,8 @@ function Loaded({
           />
         )}
       </Load>
-      <AskCoach request={request} hasProgram={hasProgram} />
+      {/* Only once the programs are known: "plan" and "change" are different requests. */}
+      {state.status === "ready" ? <AskCoach request={request} hasProgram={hasProgram} /> : null}
     </>
   );
 }

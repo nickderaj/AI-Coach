@@ -205,8 +205,11 @@ class TestProposals:
         second = propose_program(db, proposal(ids, "Second"), NOW)
 
         assert programs(db).proposed == second
-        assert [tuple(row) for row in db.execute("SELECT name FROM programs")] == [("Second",)]
-        assert first.name == "First"
+        assert [tuple(row) for row in db.execute("SELECT name, status FROM programs")] == [
+            ("First", "archived"),
+            ("Second", "proposed"),
+        ]
+        assert first.id != second.id
 
     def test_unknown_exercises_are_refused(
         self, db: sqlite3.Connection, ids: dict[str, int]
@@ -242,15 +245,43 @@ class TestProposals:
 
         assert programs(db).proposed == kept
 
-    def test_decline(self, db: sqlite3.Connection, ids: dict[str, int]) -> None:
-        propose_program(db, proposal(ids), NOW)
+    def test_decline_only_the_proposal_shown(
+        self, db: sqlite3.Connection, ids: dict[str, int]
+    ) -> None:
+        shown = propose_program(db, proposal(ids, "Shown"), NOW)
+        newer = propose_program(db, proposal(ids, "Newer"), NOW)  # the coach, meanwhile
 
-        decline_proposal(db)
-        decline_proposal(db)  # nothing left: no-op
+        with pytest.raises(NoProposalError, match=rf"^program {shown.id} is not the proposal$"):
+            decline_proposal(db, shown.id)
+
+        assert programs(db).proposed == newer
+        assert not db.in_transaction
+
+    def test_a_replaced_or_declined_proposal_never_lends_its_id(
+        self, db: sqlite3.Connection, ids: dict[str, int]
+    ) -> None:
+        first = propose_program(db, proposal(ids, "First"), NOW)
+        second = propose_program(db, proposal(ids, "Second"), NOW)
+        decline_proposal(db, second.id)
+        third = propose_program(db, proposal(ids, "Third"), NOW)
+
+        assert len({first.id, second.id, third.id}) == 3
+        # A stale screen still showing the first or second cannot accept the third.
+        for stale in (first.id, second.id):
+            with pytest.raises(NoProposalError):
+                accept_proposal(db, stale, NOW)
+
+    def test_decline(self, db: sqlite3.Connection, ids: dict[str, int]) -> None:
+        shown = propose_program(db, proposal(ids), NOW)
+
+        decline_proposal(db, shown.id)
 
         assert programs(db).proposed is None
-        assert db.execute("SELECT count(*) FROM program_days").fetchone()[0] == 0
+        status = db.execute("SELECT status FROM programs WHERE id = ?", (shown.id,)).fetchone()
+        assert status[0] == "archived"
         assert not db.in_transaction
+        with pytest.raises(NoProposalError):
+            decline_proposal(db, shown.id)  # already gone
 
     def test_accept_starts_the_program(self, db: sqlite3.Connection, ids: dict[str, int]) -> None:
         proposed = propose_program(db, proposal(ids), NOW)

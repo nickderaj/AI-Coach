@@ -321,16 +321,16 @@ export type Position = z.infer<typeof positionSchema>;
 export const OFFLINE_PROGRAM = "Changing your program needs a connection.";
 
 /**
- * Accept or turn down the proposed program. Not queued offline: it changes
- * what every later screen shows, so it happens now or not at all.
+ * Accept or turn down the proposed program shown, by its id: the server refuses
+ * (409) if another has replaced it since. Not queued offline: it changes what
+ * every later screen shows, so it happens now or not at all.
  */
 export async function changeProgram(
-  change: { accept: number } | "decline",
+  change: { accept: number } | { decline: number },
 ): Promise<CoachResult<null>> {
-  const [method, path] =
-    change === "decline"
-      ? ["DELETE", "/api/programs/proposal"]
-      : ["POST", `/api/programs/${String(change.accept)}/accept`];
+  const [id, verb] = "accept" in change ? [change.accept, "accept"] : [change.decline, "decline"];
+  const path = `/api/programs/${String(id)}/${verb}`;
+  const method = "POST";
   let response: Response;
   try {
     response = await fetch(path, { method, headers: { Accept: "application/json" } });

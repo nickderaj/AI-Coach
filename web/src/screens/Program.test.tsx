@@ -234,7 +234,7 @@ describe("Program", () => {
   it("turns a proposal down after asking", async () => {
     const fetchMock = routeFetch({
       ...programsReply(null, PROPOSED, null),
-      "DELETE /api/programs/proposal": { body: null },
+      "POST /api/programs/2/decline": { body: null },
     });
     render(<App />);
 
@@ -248,8 +248,9 @@ describe("Program", () => {
     fireEvent.click(within(proposal).getByRole("button", { name: "Yes, turn it down" }));
 
     await vi.waitFor(() => {
-      expect(fetchMock).toHaveBeenCalledWith("/api/programs/proposal", {
-        method: "DELETE",
+      // The proposal on screen, by its id: never whichever came after it.
+      expect(fetchMock).toHaveBeenCalledWith("/api/programs/2/decline", {
+        method: "POST",
         headers: { Accept: "application/json" },
       });
     });
@@ -279,7 +280,7 @@ describe("Program", () => {
   it("says why turning down failed, and offers it again", async () => {
     routeFetch({
       ...programsReply(null, PROPOSED, null),
-      "DELETE /api/programs/proposal": new TypeError("offline"),
+      "POST /api/programs/2/decline": new TypeError("offline"),
     });
     render(<App />);
 
@@ -289,6 +290,106 @@ describe("Program", () => {
 
     expect(await within(proposal).findByRole("alert")).toHaveTextContent(OFFLINE_PROGRAM);
     expect(within(proposal).getByRole("button", { name: "Turn down" })).toBeInTheDocument();
+  });
+
+  it("locks every proposal button while a change is on its way", async () => {
+    let answer: (response: Response) => void = () => undefined;
+    const pending = new Promise<Response>((done) => {
+      answer = done;
+    });
+    const fetchMock = vi.fn<typeof fetch>((_input, init) =>
+      init?.method === "POST"
+        ? pending
+        : Promise.resolve(
+            new Response(JSON.stringify({ active: null, proposed: PROPOSED, next: null })),
+          ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App />);
+
+    const proposal = await screen.findByRole("region", { name: "Proposed program" });
+    const start = within(proposal).getByRole("button", { name: "Start this program" });
+    fireEvent.click(start);
+    const turnDown = within(proposal).getByRole("button", { name: "Turn down" });
+
+    expect(start).toBeDisabled();
+    expect(turnDown).toBeDisabled();
+    fireEvent.click(turnDown);
+    fireEvent.click(start);
+    expect(within(proposal).queryByRole("group")).not.toBeInTheDocument();
+    expect(fetchMock.mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(1);
+    await act(async () => {
+      answer(
+        new Response(JSON.stringify({ detail: "program 2 is not the proposal" }), { status: 409 }),
+      );
+      await pending;
+    });
+    expect(await within(proposal).findByRole("alert")).toHaveTextContent(
+      "Program 2 is not the proposal.",
+    );
+    expect(within(proposal).getByRole("button", { name: "Turn down" })).toBeEnabled();
+  });
+
+  it("locks the confirmation too while it is on its way", async () => {
+    let answer: (response: Response) => void = () => undefined;
+    const pending = new Promise<Response>((done) => {
+      answer = done;
+    });
+    const fetchMock = vi.fn<typeof fetch>((_input, init) =>
+      init?.method === "POST"
+        ? pending
+        : Promise.resolve(
+            new Response(JSON.stringify({ active: ACTIVE, proposed: PROPOSED, next: null })),
+          ),
+    );
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App />);
+
+    const proposal = await screen.findByRole("region", { name: "Proposed program" });
+    fireEvent.click(within(proposal).getByRole("button", { name: "Start this program" }));
+    const yes = within(proposal).getByRole("button", { name: "Yes, start it" });
+    fireEvent.click(yes);
+    const keep = within(proposal).getByRole("button", { name: "Keep my program" });
+
+    expect([yes, keep].map((button) => button.hasAttribute("disabled"))).toEqual([true, true]);
+    fireEvent.click(yes);
+    fireEvent.click(keep);
+    expect(within(proposal).getByRole("group", { name: "Replace" })).toBeInTheDocument();
+    expect(fetchMock.mock.calls.filter(([, init]) => init?.method === "POST")).toHaveLength(1);
+    await act(async () => {
+      answer(new Response(JSON.stringify(PROPOSED), { status: 200 }));
+      await pending;
+    });
+  });
+
+  it("offers the coach only once the programs are known", async () => {
+    let answer: (response: Response) => void = () => undefined;
+    const pending = new Promise<Response>((done) => {
+      answer = done;
+    });
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>(() => pending),
+    );
+    render(<App />);
+
+    expect(screen.getByText("Loading…")).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Ask the coach" })).not.toBeInTheDocument();
+    await act(async () => {
+      answer(new Response(JSON.stringify({ active: ACTIVE, proposed: null, next: null })));
+      await pending;
+    });
+    expect(
+      await screen.findByRole("heading", { name: "Change it with the coach" }),
+    ).toBeInTheDocument();
+  });
+
+  it("does not offer the coach when the programs cannot be read", async () => {
+    routeFetch({ [`GET ${PROGRAMS}`]: new TypeError("offline") });
+    render(<App />);
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("Could not reach the server");
+    expect(screen.queryByRole("region", { name: "Ask the coach" })).not.toBeInTheDocument();
   });
 
   it("asks the coach for a program and shows the new proposal", async () => {
