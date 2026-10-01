@@ -24,7 +24,7 @@ from trainer.storage.programs import (
     SlotSpec,
     activate_program,
     archive_program,
-    day_done,
+    day_claimed,
     day_program,
     get_program,
     insert_program,
@@ -389,12 +389,12 @@ def test_day_program_counts_the_deload_week(trained: Trained) -> None:
     assert day_program(trained.db, 999) is None
 
 
-def test_day_done_needs_a_finished_workout_of_that_week(trained: Trained) -> None:
+def test_day_claimed_by_any_workout_of_that_week(trained: Trained) -> None:
     day = trained.program.days[0].id
     trained.workout("2026-10-01T08:00:00+00:00", (1, 0), finished=False)
     trained.workout("2026-10-02T08:00:00+00:00", (2, 0), finished=True)
 
-    assert day_done(trained.db, day, 1) is False  # only started
-    assert day_done(trained.db, day, 2) is True
-    assert day_done(trained.db, day, 3) is False
-    assert day_done(trained.db, trained.program.days[1].id, 2) is False
+    assert day_claimed(trained.db, day, 1) is True  # in progress
+    assert day_claimed(trained.db, day, 2) is True  # done
+    assert day_claimed(trained.db, day, 3) is False
+    assert day_claimed(trained.db, trained.program.days[1].id, 2) is False

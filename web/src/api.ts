@@ -128,7 +128,13 @@ export async function fetchJson<T>(
 export type Loadable<T> =
   { status: "loading" } | { status: "error"; message: string } | { status: "ready"; data: T };
 
-function describe(error: unknown): string {
+/** Whether a read failed for want of a network, not because the server said no or spoke oddly. */
+export function isOffline(error: unknown): boolean {
+  return !(error instanceof ApiError || error instanceof z.ZodError);
+}
+
+/** Why a read failed, as the owner should read it. */
+export function describeFailure(error: unknown): string {
   if (error instanceof ApiError) {
     return error.message;
   }
@@ -149,7 +155,7 @@ export function useApi<T>(path: string, schema: z.ZodType<T>): Loadable<T> {
       },
       (error: unknown): void => {
         if (!controller.signal.aborted) {
-          setState({ status: "error", message: describe(error) });
+          setState({ status: "error", message: describeFailure(error) });
         }
       },
     );

@@ -307,7 +307,7 @@ class TestTraining:
         )
 
         assert again.status_code == 409
-        assert again.json() == {"detail": "week 1 of day " + str(day_id) + " is already done"}
+        assert again.json() == {"detail": f"week 1 of day {day_id} already has a workout"}
 
     def test_a_workout_of_a_missing_day(self, client: TestClient, program: dict[str, Any]) -> None:
         response = self.start(client, program["days"][1]["id"] + 100)

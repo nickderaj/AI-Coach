@@ -1,7 +1,6 @@
 import type { ReactElement } from "react";
 
-import { currentWorkoutSchema, todaySchema, useApi } from "../api";
-import type { Loadable, TodayPlan } from "../api";
+import { currentWorkoutSchema, useApi } from "../api";
 import { tone } from "../components";
 import { formatDay, formatTime, plural } from "../format";
 import type { Logging } from "../log/context";
@@ -23,27 +22,21 @@ function Resume({ draft }: { draft: Draft }): ReactElement {
   );
 }
 
-/** Whether the workout `id` is the one training the program's day, as Today has it. */
-function trainsToday(today: Loadable<TodayPlan | null>, id: string): boolean {
-  return today.status === "ready" && today.data?.workout_client_id === id;
-}
-
 /**
  * Pick up a workout started on another device, or on this one before its copy
- * was lost. A program day in progress goes through Today, which rebuilds its
- * plan (targets, supersets, rests) around the sets it has, after checking it
- * afresh; any other is rebuilt from what the server has.
+ * was lost. A program day always goes through Today, which checks it afresh
+ * and rebuilds its plan (targets, supersets, rests) around the sets it has;
+ * any other workout is rebuilt from what the server has.
  */
 function PickUp({ logging }: { logging: Logging }): ReactElement | null {
   const current = useApi("/api/workouts/current", currentWorkoutSchema);
-  const today = useApi("/api/today", todaySchema);
   const unfinished = current.status === "ready" ? current.data : null;
   const clientId = unfinished?.client_id ?? null;
   if (unfinished === null || clientId === null) {
     return null;
   }
   const when = `${formatDay(unfinished.started_at)}, ${formatTime(unfinished.started_at)}`;
-  if (trainsToday(today, clientId)) {
+  if (unfinished.program_day_id !== null) {
     return (
       <a className="link" href={href({ name: "today" })}>
         Resume the unfinished program workout from {when} ›

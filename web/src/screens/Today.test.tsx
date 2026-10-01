@@ -47,6 +47,17 @@ function pathOf(input: RequestInfo | URL): string {
   return input instanceof URL ? input.pathname : input.url;
 }
 
+/** An answer with a status other than 200. */
+class Refusal {
+  readonly status: number;
+  readonly body: unknown;
+
+  constructor(status: number, body: unknown) {
+    this.status = status;
+    this.body = body;
+  }
+}
+
 function reply(answers: Answer[], count: number): Promise<Response> {
   if (answers.length === 0) {
     return Promise.resolve(new Response("{}", { status: 404 }));
@@ -54,6 +65,9 @@ function reply(answers: Answer[], count: number): Promise<Response> {
   const answer = answers[Math.min(count, answers.length - 1)];
   if (answer instanceof Error) {
     return Promise.reject(answer);
+  }
+  if (answer instanceof Refusal) {
+    return Promise.resolve(new Response(JSON.stringify(answer.body), { status: answer.status }));
   }
   return Promise.resolve(new Response(JSON.stringify(answer), { status: 200 }));
 }
@@ -298,6 +312,35 @@ describe("Today", () => {
     });
   });
 
+  it.each([
+    [new Refusal(403, { detail: "forbidden" }), "The server answered 403"],
+    [new Refusal(500, "oops"), "The server answered 500"],
+    [{ program_id: "not a plan" }, "The server sent data this app does not understand"],
+  ])("does not start offline when the server refuses or is not understood", async (fresh, why) => {
+    // Only a network failure falls back to the saved plan; anything else is shown.
+    sequence({ "GET /api/today": [TODAY, fresh] });
+    const { drafts, outbox } = renderLogging();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Start this workout" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(why);
+    expect(drafts.get()).toBeNull();
+    expect(writes(outbox)).toEqual([]);
+  });
+
+  it("says why the server's workout could not be read", async () => {
+    sequence({
+      "GET /api/today": [{ ...TODAY, workout_client_id: "w9" }],
+      "GET /api/workouts/current": [new Refusal(500, "oops")],
+    });
+    const { drafts } = renderLogging();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Resume this workout" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent("The server answered 500");
+    expect(drafts.get()).toBeNull();
+  });
+
   it("never starts a day again that this phone has finished, without signal", async () => {
     markFinished(localStorage, 11, 2);
     sequence({ "GET /api/today": [TODAY, new TypeError("offline")] });
@@ -446,7 +489,9 @@ describe("Home", () => {
     ).not.toBeInTheDocument();
   });
 
-  it("picks up any other unfinished workout as it is", async () => {
+  it("picks up a program day through Today even when Today's copy names another", async () => {
+    // The two reads can be saved copies from different moments: the workout's own
+    // program day decides, and Today checks it afresh.
     window.location.hash = "";
     routeFetch({
       "GET /api/today": { body: TODAY },
@@ -455,12 +500,30 @@ describe("Home", () => {
     });
     const { drafts } = renderLogging();
 
+    expect(
+      await screen.findByRole("link", { name: /Resume the unfinished program workout from/ }),
+    ).toHaveAttribute("href", "#/today");
+    expect(screen.queryByRole("button", { name: /Resume the unfinished/ })).not.toBeInTheDocument();
+    expect(drafts.get()).toBeNull();
+  });
+
+  it("picks up a workout outside any program as it is", async () => {
+    window.location.hash = "";
+    routeFetch({
+      "GET /api/today": { body: null },
+      "GET /api/workouts?limit=500": { body: [] },
+      "GET /api/workouts/current": {
+        body: { ...serverWorkout(), program_day_id: null, program_week: null },
+      },
+    });
+    const { drafts } = renderLogging();
+
     fireEvent.click(
       await screen.findByRole("button", { name: /Resume the unfinished workout from/ }),
     );
 
-    // Its program day is kept, so finishing it still names it.
-    expect(drafts.get()?.program).toEqual({ day_id: 11, week: 2 });
+    expect(drafts.get()?.id).toBe("w9");
+    expect(drafts.get()?.program).toBeNull();
   });
 
   it("shows no card once the block is done", async () => {

@@ -1,7 +1,14 @@
 import { useState } from "react";
 import type { ReactElement } from "react";
 
-import { currentWorkoutSchema, fetchJson, todaySchema, useApi } from "../api";
+import {
+  currentWorkoutSchema,
+  describeFailure,
+  fetchJson,
+  isOffline,
+  todaySchema,
+  useApi,
+} from "../api";
 import type { PlannedDay, TodayPlan } from "../api";
 import { Load, tone } from "../components";
 import { formatDay, formatSet } from "../format";
@@ -98,7 +105,11 @@ async function start(logging: Logging, today: TodayPlan, day: PlannedDay): Promi
   let fresh: TodayPlan | null;
   try {
     fresh = await fetchJson("/api/today", todaySchema, undefined, true);
-  } catch {
+  } catch (error) {
+    // Only no signal falls back to the saved plan; a refusal or an odd answer is shown.
+    if (!isOffline(error)) {
+      return { error: describeFailure(error) };
+    }
     if (finishedHere(localStorage, day.id, day.week)) {
       return { error: FINISHED_HERE };
     }
@@ -130,8 +141,8 @@ async function resume(
   let detail;
   try {
     detail = await fetchJson("/api/workouts/current", currentWorkoutSchema, undefined, true);
-  } catch {
-    return { error: RESUME_OFFLINE };
+  } catch (error) {
+    return { error: isOffline(error) ? RESUME_OFFLINE : describeFailure(error) };
   }
   if (
     detail?.client_id !== id ||

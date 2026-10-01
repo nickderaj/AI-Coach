@@ -376,13 +376,10 @@ def day_program(conn: sqlite3.Connection, day_id: int) -> DayProgram | None:
     return None if row is None else DayProgram(int(row[0]), bool(row[1]))
 
 
-def day_done(conn: sqlite3.Connection, day_id: int, week: int) -> bool:
-    """Whether a finished workout has trained this program day in this week."""
+def day_claimed(conn: sqlite3.Connection, day_id: int, week: int) -> bool:
+    """Whether a workout, finished or not, trains this program day this week."""
     row = conn.execute(
-        """
-        SELECT 1 FROM workouts
-        WHERE program_day_id = ? AND program_week = ? AND ended_at IS NOT NULL
-        """,
+        """SELECT 1 FROM workouts WHERE program_day_id = ? AND program_week = ?""",
         (day_id, week),
     ).fetchone()
     return row is not None

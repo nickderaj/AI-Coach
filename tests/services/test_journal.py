@@ -307,7 +307,7 @@ class TestProgramLinks:
         assert day
         record_workout(db, W1, (START, START), None, ProgramLink(1, 2))
 
-        with pytest.raises(StaleProgramDayError, match=r"^week 2 of day 1 is already done$"):
+        with pytest.raises(StaleProgramDayError, match=r"^week 2 of day 1 already has a workout$"):
             record_workout(db, W2, (START, None), None, ProgramLink(1, 2))
 
         assert not db.in_transaction
@@ -315,6 +315,19 @@ class TestProgramLinks:
         # Its own replay (start or finish again) is still fine, and so is another week.
         record_workout(db, W1, (START, START), None, ProgramLink(1, 2))
         record_workout(db, W2, (START, None), None, ProgramLink(1, 3))
+
+    def test_a_day_in_progress_elsewhere_is_not_started_twice(
+        self, db: sqlite3.Connection, day: tuple[int, int]
+    ) -> None:
+        # Two phones, one offline, start the same day: the second to arrive is refused.
+        assert day
+        record_workout(db, W1, (START, None), None, ProgramLink(1, 1))
+
+        with pytest.raises(StaleProgramDayError, match=r"^week 1 of day 1 already has a workout$"):
+            record_workout(db, W2, (START, None), None, ProgramLink(1, 1))
+
+        assert workout_count(db) == 1
+        record_workout(db, W1, (START, None), None, ProgramLink(1, 1))  # its own replay
 
     def test_only_the_active_program_is_trained(
         self, db: sqlite3.Connection, day: tuple[int, int]
