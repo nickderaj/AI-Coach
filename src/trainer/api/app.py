@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import os
+import threading
 from contextlib import asynccontextmanager, closing
 from typing import TYPE_CHECKING
 
@@ -10,10 +11,12 @@ from fastapi import FastAPI, Request
 from fastapi.responses import JSONResponse
 from fastapi.staticfiles import StaticFiles
 
+from trainer.api.coach import router as coach_router
 from trainer.api.history import router as history_router
 from trainer.api.journal import router as journal_router
 from trainer.api.profile import router as profile_router
 from trainer.api.settings import Settings, settings_from_env
+from trainer.services.hermes import HermesGateway
 from trainer.storage.database import connect, migrate
 
 if TYPE_CHECKING:
@@ -21,16 +24,20 @@ if TYPE_CHECKING:
 
     from starlette.responses import Response
 
+    from trainer.services.coach import Gateway
+
 # Set by `tailscale serve` for requests from user-owned devices on the tailnet.
 IDENTITY_HEADER = "Tailscale-User-Login"
 PUBLIC_PATHS = frozenset({"/healthz"})
 
 
-def create_app(settings: Settings | None = None) -> FastAPI:
+def create_app(settings: Settings | None = None, coach_gateway: Gateway | None = None) -> FastAPI:
     """Build the API application.
 
     Args:
         settings: explicit settings; by default they are read from the environment.
+        coach_gateway: the coach's Hermes gateway; by default the one in the
+            settings, if any.
 
     Returns:
         The app: the database is migrated, every route except the liveness check
@@ -52,6 +59,10 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     # No schema, so no /docs or /redoc either.
     app = FastAPI(openapi_url=None, lifespan=hold_the_database_open)
     app.state.settings = settings
+    if coach_gateway is None and settings.coach is not None:
+        coach_gateway = HermesGateway(settings.coach.url, settings.coach.key)
+    app.state.coach_gateway = coach_gateway
+    app.state.coach_turn = threading.Lock()
 
     @app.middleware("http")
     async def owner_only(
@@ -71,6 +82,7 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     app.include_router(journal_router)
     app.include_router(history_router)
     app.include_router(profile_router)
+    app.include_router(coach_router)
     if settings.web_dir is not None:
         app.mount("/", StaticFiles(directory=settings.web_dir, html=True))
     return app

@@ -97,6 +97,13 @@ MIGRATIONS: tuple[str, ...] = (
     -- equipment, and one without any is a bodyweight exercise.
     UPDATE exercises SET equipment = 'bodyweight' WHERE equipment IS NULL;
     """,
+    """
+    -- The coach's one durable Hermes session: the Coach tab is one conversation.
+    CREATE TABLE coach (
+        id INTEGER PRIMARY KEY CHECK (id = 1),
+        session_id TEXT NOT NULL CHECK (session_id <> '')
+    ) STRICT;
+    """,
 )
 
 

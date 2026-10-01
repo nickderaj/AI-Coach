@@ -8,7 +8,7 @@ import pytest
 from fastapi.testclient import TestClient
 
 from trainer.api.app import create_app
-from trainer.api.settings import Settings, SettingsError, settings_from_env
+from trainer.api.settings import CoachSettings, Settings, SettingsError, settings_from_env
 from trainer.services.import_v1 import import_v1
 from trainer.storage.database import MIGRATIONS, connect, migrate, schema_version
 
@@ -42,6 +42,23 @@ class TestSettings:
         )
 
         assert settings == Settings(Path("/srv/t/trainer.db"), OWNER, Path("/opt/t/web"))
+
+    def test_the_coach_needs_its_url_and_key(self) -> None:
+        base = {"TRAINER_DATA_DIR": "/srv/t", "TRAINER_OWNER_LOGIN": OWNER}
+
+        both = settings_from_env(
+            {**base, "TRAINER_HERMES_URL": "http://127.0.0.1:8642", "API_SERVER_KEY": "k"}
+        )
+
+        assert both.coach == CoachSettings("http://127.0.0.1:8642", "k")
+        assert "k" not in repr(both)  # the key stays out of logs and tracebacks
+        assert settings_from_env(base).coach is None
+        assert settings_from_env({**base, "TRAINER_HERMES_URL": "http://x"}).coach is None
+        assert settings_from_env({**base, "API_SERVER_KEY": "k"}).coach is None
+        assert (
+            settings_from_env({**base, "TRAINER_HERMES_URL": "", "API_SERVER_KEY": "k"}).coach
+            is None
+        )
 
     def test_web_dir_is_optional(self) -> None:
         settings = settings_from_env({"TRAINER_DATA_DIR": "/srv/t", "TRAINER_OWNER_LOGIN": OWNER})

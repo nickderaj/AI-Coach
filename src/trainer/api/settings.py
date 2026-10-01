@@ -2,7 +2,7 @@
 
 from __future__ import annotations
 
-from dataclasses import dataclass
+from dataclasses import dataclass, field
 from pathlib import Path
 from typing import TYPE_CHECKING
 
@@ -17,16 +17,29 @@ class SettingsError(RuntimeError):
 
 
 @dataclass(frozen=True)
+class CoachSettings:
+    """Where the coach's Hermes gateway listens, and the key its API checks."""
+
+    url: str
+    key: str = field(repr=False)
+
+
+@dataclass(frozen=True)
 class Settings:
     """Where the data lives, what to serve, and who may use it."""
 
     database: Path
     owner_login: str
     web_dir: Path | None = None
+    # None until the coach's secrets exist; the Coach endpoints answer 503 then.
+    coach: CoachSettings | None = None
 
 
 def settings_from_env(env: Mapping[str, str]) -> Settings:
     """Build settings from ``TRAINER_*`` variables (set by the systemd unit).
+
+    The coach is configured when both ``TRAINER_HERMES_URL`` and the gateway's
+    ``API_SERVER_KEY`` (from its root-only secrets file) are set.
 
     Raises:
         SettingsError: if the data directory or the owner's login is not set.
@@ -37,8 +50,10 @@ def settings_from_env(env: Mapping[str, str]) -> Settings:
         message = "TRAINER_DATA_DIR and TRAINER_OWNER_LOGIN must be set"
         raise SettingsError(message)
     web_dir = env.get("TRAINER_WEB_DIR")
+    hermes_url, hermes_key = env.get("TRAINER_HERMES_URL"), env.get("API_SERVER_KEY")
     return Settings(
         database=Path(data_dir) / DATABASE_FILE,
         owner_login=owner,
         web_dir=Path(web_dir) if web_dir else None,
+        coach=CoachSettings(hermes_url, hermes_key) if hermes_url and hermes_key else None,
     )
