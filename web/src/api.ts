@@ -206,3 +206,65 @@ export async function createExercise(exercise: NewExercise): Promise<CreateResul
   }
   return { kind: "error", message: new ApiError(response.status).message };
 }
+
+const coachMessageSchema = z.object({
+  role: z.enum(["user", "assistant"]),
+  text: z.string(),
+  at: z.string(),
+});
+
+const coachHistorySchema = z.array(coachMessageSchema);
+
+/** The server's reason when the coach cannot answer: "the coach is not set up", say. */
+const detailSchema = z.object({ detail: z.string() });
+
+export type CoachMessage = z.infer<typeof coachMessageSchema>;
+
+export type CoachResult<T> = { kind: "ok"; value: T } | { kind: "error"; message: string };
+
+/** @internal Exported for tests. */
+export const OFFLINE_COACH = "Talking to the coach needs a connection.";
+/** @internal Exported for tests. */
+export const BUSY_COACH = "The coach is still answering your last message.";
+
+const COACH_MESSAGES = "/api/coach/messages";
+
+/** "the coach is not set up" → "The coach is not set up." */
+function sentence(text: string): string {
+  return `${text.charAt(0).toUpperCase()}${text.slice(1)}.`;
+}
+
+async function coachRequest<T>(init: RequestInit, schema: z.ZodType<T>): Promise<CoachResult<T>> {
+  let response: Response;
+  try {
+    response = await fetch(COACH_MESSAGES, {
+      ...init,
+      headers: { "Content-Type": "application/json", Accept: "application/json" },
+    });
+  } catch {
+    return { kind: "error", message: OFFLINE_COACH };
+  }
+  const body: unknown = await response.json().catch(() => null);
+  const parsed = schema.safeParse(body);
+  if (response.ok && parsed.success) {
+    return { kind: "ok", value: parsed.data };
+  }
+  if (response.status === 409) {
+    return { kind: "error", message: BUSY_COACH };
+  }
+  const detail = detailSchema.safeParse(body);
+  if (response.status === 503 && detail.success) {
+    return { kind: "error", message: sentence(detail.data.detail) };
+  }
+  return { kind: "error", message: new ApiError(response.status).message };
+}
+
+/** The conversation so far, oldest first. Needs a connection, like every coach call. */
+export function coachHistory(signal: AbortSignal): Promise<CoachResult<CoachMessage[]>> {
+  return coachRequest({ signal }, coachHistorySchema);
+}
+
+/** Say `text` to the coach and wait for its reply, which can take a while. */
+export function askCoach(text: string): Promise<CoachResult<CoachMessage>> {
+  return coachRequest({ method: "POST", body: JSON.stringify({ text }) }, coachMessageSchema);
+}

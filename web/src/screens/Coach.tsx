@@ -1,0 +1,187 @@
+import { useEffect, useRef, useState } from "react";
+import type { ReactElement } from "react";
+
+import { askCoach, coachHistory } from "../api";
+import type { CoachMessage } from "../api";
+
+/** The server refuses longer messages. */
+const MAX_MESSAGE = 4000;
+
+type History =
+  | { status: "loading" }
+  | { status: "error"; message: string }
+  | { status: "ready"; messages: CoachMessage[] };
+
+function useHistory(): History {
+  const [history, setHistory] = useState<History>({ status: "loading" });
+  useEffect(() => {
+    const controller = new AbortController();
+    void coachHistory(controller.signal).then((result) => {
+      if (controller.signal.aborted) {
+        return;
+      }
+      setHistory(
+        result.kind === "ok"
+          ? { status: "ready", messages: result.value }
+          : { status: "error", message: result.message },
+      );
+    });
+    return (): void => {
+      controller.abort();
+    };
+  }, []);
+  return history;
+}
+
+/** Loading, a failure to load, or a hint while nothing has been said. */
+function HistoryNote({
+  history,
+  empty,
+}: {
+  history: History;
+  empty: boolean;
+}): ReactElement | null {
+  if (history.status === "loading") {
+    return <p className="muted">Loading…</p>;
+  }
+  if (history.status === "error") {
+    return (
+      <p className="error" role="alert">
+        {history.message}
+      </p>
+    );
+  }
+  return empty ? (
+    <p className="muted">Nothing said yet. Try “How did my last workout go?”</p>
+  ) : null;
+}
+
+function Conversation({
+  messages,
+  waiting,
+}: {
+  messages: CoachMessage[];
+  waiting: boolean;
+}): ReactElement {
+  const end = useRef<HTMLLIElement>(null);
+  useEffect(() => {
+    end.current?.scrollIntoView({ block: "end" });
+  }, [messages.length, waiting]);
+  return (
+    <ol className="chat" aria-label="Conversation">
+      {messages.map((message) => (
+        <li
+          key={`${message.role}-${message.at}-${message.text}`}
+          className={`bubble ${message.role}`}
+        >
+          <span className="sr-only">{message.role === "user" ? "You: " : "Coach: "}</span>
+          {message.text}
+        </li>
+      ))}
+      {waiting ? (
+        <li className="bubble assistant thinking" role="status">
+          Thinking…
+        </li>
+      ) : null}
+      <li ref={end} className="chat-end" aria-hidden="true" />
+    </ol>
+  );
+}
+
+function Composer({
+  draft,
+  waiting,
+  onChange,
+  onSend,
+}: {
+  draft: string;
+  waiting: boolean;
+  onChange: (draft: string) => void;
+  onSend: () => void;
+}): ReactElement {
+  return (
+    <form
+      className="composer"
+      aria-label="Message the coach"
+      onSubmit={(event) => {
+        event.preventDefault();
+        onSend();
+      }}
+    >
+      <label className="sr-only" htmlFor="coach-message">
+        Message
+      </label>
+      <textarea
+        id="coach-message"
+        rows={2}
+        maxLength={MAX_MESSAGE}
+        placeholder="Ask your coach…"
+        value={draft}
+        onChange={(event) => {
+          onChange(event.target.value);
+        }}
+      />
+      <button type="submit" className="primary" disabled={waiting || draft.trim() === ""}>
+        Send
+      </button>
+    </form>
+  );
+}
+
+/** The Coach tab: one long conversation with the coach, which needs a connection. */
+export function Coach(): ReactElement {
+  const history = useHistory();
+  // What was said on this visit, after the history the server sent.
+  const [said, setSaid] = useState<CoachMessage[]>([]);
+  const [draft, setDraft] = useState("");
+  const [waiting, setWaiting] = useState(false);
+  const [failure, setFailure] = useState<string | null>(null);
+  const messages = [...(history.status === "ready" ? history.messages : []), ...said];
+
+  const send = async (): Promise<void> => {
+    const text = draft.trim();
+    if (text === "" || waiting) {
+      return;
+    }
+    const question: CoachMessage = { role: "user", text, at: new Date().toISOString() };
+    setSaid((current) => [...current, question]);
+    setDraft("");
+    setFailure(null);
+    setWaiting(true);
+    const result = await askCoach(text);
+    setWaiting(false);
+    if (result.kind === "ok") {
+      const reply = result.value;
+      setSaid((current) => [...current, reply]);
+      return;
+    }
+    // Take the question back, so it can be sent again as it was.
+    setSaid((current) => current.filter((message) => message !== question));
+    setDraft(text);
+    setFailure(result.message);
+  };
+
+  return (
+    <>
+      <header className="page-head">
+        <h1>Coach</h1>
+        <p className="muted">Ask about your training. It remembers what you tell it.</p>
+      </header>
+      <HistoryNote history={history} empty={messages.length === 0 && !waiting} />
+      <Conversation messages={messages} waiting={waiting} />
+      {failure === null ? null : (
+        <p className="error" role="alert">
+          {failure}
+        </p>
+      )}
+      <Composer
+        draft={draft}
+        waiting={waiting}
+        onChange={setDraft}
+        onSend={() => {
+          void send();
+        }}
+      />
+    </>
+  );
+}

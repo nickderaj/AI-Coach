@@ -3,6 +3,7 @@ import type { ReactElement } from "react";
 import { SyncBanner } from "./outbox/Sync";
 import { href, useRoute } from "./router";
 import type { FixedRouteName, Route } from "./router";
+import { Coach } from "./screens/Coach";
 import { ExerciseDetail } from "./screens/ExerciseDetail";
 import { Exercises } from "./screens/Exercises";
 import { History, WorkoutDetail } from "./screens/History";
@@ -18,6 +19,7 @@ const SCREENS: Record<FixedRouteName, () => ReactElement> = {
   log: Log,
   pick: Picker,
   settings: Settings,
+  coach: Coach,
 };
 
 function Screen({ route }: { route: Route }): ReactElement {
@@ -31,12 +33,13 @@ function Screen({ route }: { route: Route }): ReactElement {
   return <Fixed />;
 }
 
-type Tab = "home" | "history" | "exercises";
+type Tab = "home" | "history" | "exercises" | "coach";
 
 const TABS: { tab: Tab; route: Route; icon: string; label: string }[] = [
   { tab: "home", route: { name: "home" }, icon: "◉", label: "Home" },
   { tab: "history", route: { name: "history" }, icon: "☰", label: "History" },
   { tab: "exercises", route: { name: "exercises" }, icon: "✦", label: "Exercises" },
+  { tab: "coach", route: { name: "coach" }, icon: "✎", label: "Coach" },
 ];
 
 const TAB_OF: Record<Route["name"], Tab> = {
@@ -48,6 +51,7 @@ const TAB_OF: Record<Route["name"], Tab> = {
   workout: "history",
   exercises: "exercises",
   exercise: "exercises",
+  coach: "coach",
 };
 
 export function App(): ReactElement {

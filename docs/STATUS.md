@@ -163,7 +163,7 @@ that shaped the build:
 | 3a | Pinned Hermes in its own venv; `trainer-coach` unit; `hermes/` profile (config, SOUL); root-only secrets; private memory repo with a nightly commit | #17, #18 |
 | 3b | `trainer.mcp`: read-only training-history tools (recent workouts, a workout, the catalogue, an exercise's history, body weight), run by Hermes over stdio | #19 |
 | 3c | Coach endpoints in the API: one durable Hermes session, its id in SQLite; send a message, read the conversation | this PR |
-| 3d | Coach tab in the web app (needs a connection; shows the conversation) | |
+| 3d | Coach tab in the web app (needs a connection; shows the conversation) | this PR (stacked on 3c) |
 | 3e | On the host, not in git: seed the owner's stated preferences into the coach's memory, then check the exit criterion over several days | |
 
 **Where the private memory lives.** The coach's home is `<data dir>/hermes`.
@@ -252,6 +252,24 @@ were installed, but the gateway did not start, for two reasons.
 - Checked end to end: this branch's API, a copy of the log, and the live coach.
   "How many sets of pull-ups did I do last time?" was answered from the log in
   about 10 s (12 sets, 26 September), and the history showed both messages.
+
+**In this PR (3d): the Coach tab.**
+- A fourth tab, **Coach** (`#/coach`). It shows the conversation from
+  `GET /api/coach/messages`: your messages on the right, the coach's on the
+  left. Text is shown as written, never as HTML.
+- A composer at the bottom stays above the tab bar. Sending shows your message
+  at once and "Thinking…" until the reply arrives; the view scrolls to the
+  newest message. Only one message is in flight at a time, and blank messages
+  are not sent. The field takes up to 4000 characters, the server's limit.
+- If a message cannot be sent, it goes back into the box with the reason:
+  - no connection: "Talking to the coach needs a connection.";
+  - 409: the coach is still answering;
+  - 503: the server's reason, such as "The coach is not set up.".
+
+  Like adding an exercise, the coach needs a connection; nothing is queued
+  offline.
+- `hermes/SOUL.md`: the coach writes plain text, because the tab shows replies
+  exactly as written.
 
 ## Remaining phases
 

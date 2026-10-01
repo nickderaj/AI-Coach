@@ -146,7 +146,8 @@ the installed virtualenv.
 Open the served address in Safari, tap **Share → Add to Home Screen**. The app
 then opens full screen from its own icon, keeps working without signal
 (reads come from the last copy, writes wait on the phone and sync later), and
-picks up new versions on the next launch with a connection.
+picks up new versions on the next launch with a connection. The Coach tab
+needs a connection: a message that cannot be sent goes back into the box.
 
 ## Upgrade
 
