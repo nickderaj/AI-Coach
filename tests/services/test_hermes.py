@@ -95,12 +95,14 @@ def test_chat_returns_the_reply() -> None:
     assert body(fake.requests[0]) == {"input": "hello"}
 
 
-def test_messages_are_the_newest_page_oldest_first() -> None:
+def test_messages_keep_the_gateways_order_even_when_clocks_regress() -> None:
+    # Hermes orders by insertion (message id), never by timestamp, and returns
+    # the newest page oldest first. A clock set back mid-turn must not reorder it.
     page = {
         "data": [
-            {"role": "assistant", "content": "Hi", "timestamp": 2.5, "id": "2"},
             {"role": "user", "content": "hello", "timestamp": 1.0, "id": "1"},
-            {"role": "assistant", "content": None, "timestamp": 2.0, "id": "3"},
+            {"role": "assistant", "content": None, "timestamp": 2.0, "id": "2"},
+            {"role": "assistant", "content": "Hi", "timestamp": 0.5, "id": "3"},
         ]
     }
     client, fake = gateway(
@@ -110,7 +112,7 @@ def test_messages_are_the_newest_page_oldest_first() -> None:
     assert client.messages("api_1") == [
         GatewayMessage("user", "hello", 1.0),
         GatewayMessage("assistant", "", 2.0),
-        GatewayMessage("assistant", "Hi", 2.5),
+        GatewayMessage("assistant", "Hi", 0.5),
     ]
     assert fake.requests[0].data is None
     assert fake.requests[0].get_method() == "GET"

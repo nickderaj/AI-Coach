@@ -98,13 +98,14 @@ class HermesGateway:
         return _parse(_Answered, answer).message.content
 
     def messages(self, session_id: str) -> list[GatewayMessage]:
-        """The newest stored messages of ``session_id``, oldest first."""
+        """The newest stored messages of ``session_id``, oldest first.
+
+        Hermes pages by insertion order and returns the page oldest first; it is
+        kept as it is. Timestamps are not an order: clocks can be set back.
+        """
         path = f"/api/sessions/{_segment(session_id)}/messages?order=latest&limit={PAGE_LIMIT}"
         stored = _parse(_Page, self._request(path)).data
-        return sorted(
-            (GatewayMessage(item.role, item.content or "", item.timestamp) for item in stored),
-            key=lambda message: message.timestamp,
-        )
+        return [GatewayMessage(item.role, item.content or "", item.timestamp) for item in stored]
 
     def _request(self, path: str, body: object = None) -> object:
         """GET ``path``, or POST ``body`` as JSON to it; return the JSON answer."""
