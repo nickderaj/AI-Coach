@@ -21,6 +21,7 @@ function fakeOutbox(): FakeOutbox {
     send: vi.fn(() => Promise.resolve()),
     flush: () => Promise.resolve(),
     idle: () => Promise.resolve(),
+    queued: () => Promise.resolve(undefined),
     dismissRejected: () => Promise.resolve(),
     subscribe: () => () => undefined,
     status: () => CLEAR,

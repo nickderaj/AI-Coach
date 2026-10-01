@@ -1,9 +1,15 @@
-import { act, cleanup, fireEvent, screen, waitFor, within } from "@testing-library/react";
+import { act, cleanup, fireEvent, render, screen, waitFor, within } from "@testing-library/react";
+import { IDBFactory } from "fake-indexeddb";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { addBlock, addSet, newDraft, updateSet } from "../log/draft";
 import type { Draft, DraftExercise } from "../log/draft";
+import { App } from "../App";
+import { DraftContext } from "../log/context";
 import { draftStore } from "../log/store";
+import { createOutbox } from "../outbox/outbox";
+import { OutboxContext } from "../outbox/Sync";
+import { outboxStore } from "../outbox/store";
 import { renderLogging, routeFetch, writes } from "../test/logging";
 
 // Tests run in Pacific/Auckland (UTC+13): 07:30Z is 20:30 local.
@@ -764,13 +770,77 @@ describe("Settings", () => {
     fireEvent.change(kg, { target: { value: "64,5" } });
     fireEvent.submit(form);
 
+    expect(await within(form).findByRole("status")).toHaveTextContent("Saved.");
     expect(writes(outbox)).toEqual([["PUT /api/profile", { bodyweight_kg: 64.5 }]]);
-    expect(within(form).getByRole("status")).toHaveTextContent("Saved.");
     fireEvent.change(kg, { target: { value: "" } });
     expect(within(form).queryByRole("status")).not.toBeInTheDocument();
     fireEvent.submit(form);
+    await within(form).findByRole("status");
     expect(writes(outbox).at(-1)).toEqual(["PUT /api/profile", { bodyweight_kg: null }]);
     expect(screen.getByRole("link", { name: "‹ Home" })).toHaveAttribute("href", "#/");
+  });
+
+  it("keeps a change saved offline when Settings is opened again", async () => {
+    // Offline: the cached profile still says 65, and the save cannot be sent.
+    routeFetch({
+      "GET /api/profile": { body: { bodyweight_kg: 65 } },
+      "PUT /api/profile": new TypeError("offline"),
+    });
+    await go("#/settings");
+    const store = outboxStore(new IDBFactory());
+    const outbox = createOutbox(store, (task) => task());
+    const stop = outbox.start();
+    const open = (): void => {
+      render(
+        <OutboxContext value={outbox}>
+          <DraftContext value={draftStore(localStorage, window)}>
+            <App />
+          </DraftContext>
+        </OutboxContext>,
+      );
+    };
+
+    open();
+    const form = await screen.findByRole("form", { name: "Body weight" });
+    fireEvent.change(within(form).getByLabelText("kg"), { target: { value: "70" } });
+    fireEvent.submit(form);
+    expect(await within(form).findByRole("status")).toHaveTextContent("Saved.");
+    cleanup();
+
+    open(); // Settings again, still offline
+    const again = await screen.findByRole("form", { name: "Body weight" });
+    expect(within(again).getByLabelText("kg")).toHaveValue("70");
+    fireEvent.submit(again);
+    await within(again).findByRole("status");
+
+    expect((await store.queued("/api/profile"))?.body).toEqual({ bodyweight_kg: 70 });
+    stop();
+  });
+
+  it("says when the change could not be saved on the phone", async () => {
+    routeFetch({ "GET /api/profile": { body: { bodyweight_kg: 65 } } });
+    await go("#/settings");
+    const { outbox } = renderLogging();
+    outbox.send.mockRejectedValueOnce(new Error("quota exceeded"));
+
+    const form = await screen.findByRole("form", { name: "Body weight" });
+    fireEvent.submit(form);
+
+    expect(await within(form).findByRole("alert")).toHaveTextContent(
+      "Could not save on this phone.",
+    );
+    expect(within(form).queryByRole("status")).not.toBeInTheDocument();
+  });
+
+  it("cannot save where nothing can be queued", async () => {
+    routeFetch({ "GET /api/profile": { body: { bodyweight_kg: 65 } } });
+    await go("#/settings");
+    render(<App />);
+
+    const form = await screen.findByRole("form", { name: "Body weight" });
+    expect(within(form).getByRole("button", { name: "Save" })).toBeDisabled();
+    fireEvent.submit(form); // e.g. Enter in the field
+    expect(within(form).queryByRole("status")).not.toBeInTheDocument();
   });
 
   it.each(["0", "abc", "501"])("will not save %s kg", async (typed) => {

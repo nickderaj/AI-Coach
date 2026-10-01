@@ -133,6 +133,17 @@ describe("outboxStore", () => {
     expect(await store.pending()).toBe(1);
   });
 
+  it("finds the write queued for a path", async () => {
+    await store.add(put("/api/profile", { bodyweight_kg: 70 }));
+    await store.add(put("/api/sets/a"));
+
+    expect(await store.queued("/api/profile")).toMatchObject({
+      path: "/api/profile",
+      body: { bodyweight_kg: 70 },
+    });
+    expect(await store.queued("/api/workouts/w")).toBeUndefined();
+  });
+
   it("survives the app being closed", async () => {
     await store.add(put("/api/sets/a"));
 

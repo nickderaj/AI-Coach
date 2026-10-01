@@ -12,6 +12,7 @@ function fakeOutbox(initial: OutboxStatus): Outbox & { set: (status: OutboxStatu
     send: vi.fn(),
     flush: vi.fn(),
     idle: vi.fn(),
+    queued: vi.fn(),
     start: vi.fn(),
     dismissRejected: vi.fn(() => Promise.resolve()),
     status: () => status,

@@ -19,6 +19,12 @@ export interface Outbox {
   flush: () => Promise<void>;
   /** Resolves once nothing is being sent (a retry may still be scheduled). */
   idle: () => Promise<void>;
+  /**
+   * The write still waiting to be sent for `path`, if any: newer than what the
+   * server (or the cached copy of it) says, so screens editing it should start
+   * from this.
+   */
+  queued: (path: string) => Promise<Write | undefined>;
   dismissRejected: () => Promise<void>;
   subscribe: (listener: () => void) => () => void;
   status: () => OutboxStatus;
@@ -173,6 +179,7 @@ export function createOutbox(store: OutboxStore, lock: OutboxLock): Outbox {
       void flush();
     },
     flush,
+    queued: (path) => store.queued(path),
     async idle(): Promise<void> {
       while (running !== undefined) {
         await running;
