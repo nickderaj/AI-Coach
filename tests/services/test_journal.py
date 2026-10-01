@@ -329,6 +329,23 @@ class TestProgramLinks:
         assert workout_count(db) == 1
         record_workout(db, W1, (START, None), None, ProgramLink(1, 1))  # its own replay
 
+    def test_one_program_workout_at_a_time(
+        self, db: sqlite3.Connection, day: tuple[int, int]
+    ) -> None:
+        # Two phones on different days, or a workout of a program replaced before
+        # this rule existed: the next program workout waits until it is finished.
+        assert day
+        record_workout(db, W1, (START, None), None, ProgramLink(1, 1))
+
+        with pytest.raises(
+            StaleProgramDayError, match=r"^finish or discard the workout in progress first$"
+        ):
+            record_workout(db, W2, (START, None), None, ProgramLink(2, 1))
+
+        record_workout(db, W1, (START, START), None, ProgramLink(1, 1))  # finished
+        record_workout(db, W2, (START, None), None, ProgramLink(2, 1))
+        record_workout(db, "w3", (START, None), None)  # outside any program: fine
+
     def test_only_the_active_program_is_trained(
         self, db: sqlite3.Connection, day: tuple[int, int]
     ) -> None:

@@ -9,7 +9,7 @@ import { finishedHere, markFinished } from "../log/finished";
 import { renderLogging, routeFetch, writes } from "../test/logging";
 import { TODAY, UPPER } from "../test/today";
 import { targetLine } from "./Log";
-import { FINISHED_HERE, RESUME_OFFLINE } from "./Today";
+import { FINISHED_HERE, LEFT_OVER, RESUME_OFFLINE } from "./Today";
 
 const NOW = new Date("2026-10-01T07:00:00Z");
 const BENCH = { id: 7, name: "Bench Press", measure: "reps" as const, equipment: "barbell" };
@@ -240,7 +240,8 @@ describe("Today", () => {
     await go(window.location.hash);
 
     // The day was checked with the server, not a saved copy, before starting.
-    expect(fetchMock.mock.calls.map(([, init]) => init?.cache)).toEqual([undefined, "no-store"]);
+    const reads = fetchMock.mock.calls.filter(([path]) => path === "/api/today");
+    expect(reads.map(([, init]) => init?.cache)).toEqual([undefined, "no-store"]);
     const draft = drafts.get();
     expect(draft?.program).toEqual({ day_id: 11, week: 2 });
     expect(writes(outbox)).toEqual([
@@ -429,7 +430,8 @@ describe("Today", () => {
   ])("does not pick up the server's workout when %s", async (_why, current) => {
     sequence({
       "GET /api/today": [{ ...TODAY, workout_client_id: "w9" }, TODAY],
-      "GET /api/workouts/current": [current],
+      // As the screen loaded it, then as it is when asked afresh.
+      "GET /api/workouts/current": [serverWorkout(), current, null],
     });
     const { drafts, outbox } = renderLogging();
 
@@ -439,6 +441,75 @@ describe("Today", () => {
     expect(await screen.findByRole("button", { name: "Start this workout" })).toBeInTheDocument();
     expect(drafts.get()).toBeNull();
     expect(writes(outbox)).toEqual([]);
+  });
+
+  it("offers an unfinished workout of a replaced program, and holds the day for it", async () => {
+    // A database from before replacing a program mid-workout was refused.
+    const left = { ...serverWorkout(), client_id: "w5", program_day_id: 3, program_week: 6 };
+    sequence({ "GET /api/today": [TODAY], "GET /api/workouts/current": [left] });
+    const { drafts, outbox } = renderLogging();
+
+    const card = await screen.findByRole("region", { name: "Unfinished workout" });
+    expect(card).toHaveTextContent(LEFT_OVER);
+    expect(card).toHaveTextContent("Started Thu 1 Oct, 19:30");
+    expect(screen.queryByRole("button", { name: "Start this workout" })).not.toBeInTheDocument();
+
+    fireEvent.click(within(card).getByRole("button", { name: "Resume it as logged" }));
+    await vi.waitFor(() => {
+      expect(window.location.hash).toBe("#/log");
+    });
+
+    const draft = drafts.get();
+    expect([draft?.id, draft?.program]).toEqual(["w5", { day_id: 3, week: 6 }]);
+    expect(draft?.blocks[0]?.slot_id).toBe(1);
+    expect(writes(outbox)).toEqual([]);
+  });
+
+  it("re-checks the left-over workout before picking it up", async () => {
+    const left = { ...serverWorkout(), client_id: "w5", program_day_id: 3, program_week: 6 };
+    sequence({
+      "GET /api/today": [TODAY],
+      "GET /api/workouts/current": [left, null],
+    });
+    const { drafts } = renderLogging();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Resume it as logged" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent("The plan had changed");
+    expect(drafts.get()).toBeNull();
+    expect(await screen.findByRole("button", { name: "Start this workout" })).toBeInTheDocument();
+  });
+
+  it.each([
+    [new TypeError("offline"), RESUME_OFFLINE],
+    [new Refusal(500, "oops"), "The server answered 500"],
+  ])("says why the left-over workout could not be read", async (failure, why) => {
+    const left = { ...serverWorkout(), client_id: "w5", program_day_id: 3, program_week: 6 };
+    sequence({ "GET /api/today": [TODAY], "GET /api/workouts/current": [left, failure] });
+    const { drafts } = renderLogging();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Resume it as logged" }));
+
+    expect(await screen.findByRole("alert")).toHaveTextContent(why);
+    expect(drafts.get()).toBeNull();
+  });
+
+  it("shows the left-over workout even with no day to train", async () => {
+    const left = { ...serverWorkout(), client_id: "w5", program_day_id: 3, program_week: 6 };
+    sequence({ "GET /api/today": [{ ...TODAY, day: null }], "GET /api/workouts/current": [left] });
+    render(<App />);
+
+    expect(await screen.findByRole("region", { name: "Unfinished workout" })).toBeInTheDocument();
+    expect(screen.queryByRole("button", { name: "Resume it as logged" })).not.toBeInTheDocument();
+  });
+
+  it("leaves the left-over workout to Resume once this phone has a workout", async () => {
+    const left = { ...serverWorkout(), client_id: "w5", program_day_id: 3, program_week: 6 };
+    sequence({ "GET /api/today": [TODAY], "GET /api/workouts/current": [left] });
+    renderLogging(addBlock(newDraft("w5", NOW), { block: "b", set: "s" }, BENCH, []));
+
+    expect(await screen.findByRole("link", { name: "Resume ›" })).toBeInTheDocument();
+    expect(screen.queryByRole("region", { name: "Unfinished workout" })).not.toBeInTheDocument();
   });
 
   it("needs a connection to pick it back up", async () => {

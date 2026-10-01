@@ -9,12 +9,13 @@ import {
   todaySchema,
   useApi,
 } from "../api";
-import type { PlannedDay, TodayPlan } from "../api";
+import type { Loadable, PlannedDay, TodayPlan, WorkoutDetail } from "../api";
 import { Load, tone } from "../components";
-import { formatDay, formatSet } from "../format";
+import { formatDay, formatSet, formatTime } from "../format";
 import type { Logging } from "../log/context";
+import type { DraftStore } from "../log/store";
 import { useDraft, useLogging } from "../log/context";
-import { blockLabel, newDraft, startWrite, todayDraft } from "../log/draft";
+import { blockLabel, draftFromServer, newDraft, startWrite, todayDraft } from "../log/draft";
 import { finishedHere } from "../log/finished";
 import type { Draft } from "../log/draft";
 import { href, navigate } from "../router";
@@ -232,10 +233,13 @@ function Planned({
   today,
   day,
   onStale,
+  held,
 }: {
   today: TodayPlan;
   day: PlannedDay;
   onStale: () => void;
+  /** Another program workout is unfinished: this day waits for it. */
+  held: boolean;
 }): ReactElement {
   const logging = useLogging();
   const draft = useDraft(logging?.drafts ?? null);
@@ -247,7 +251,7 @@ function Planned({
         </p>
         <h1>{day.name}</h1>
         <p className={day.deload ? "deload" : "muted"}>{weekLine(today, day)}</p>
-        {logging === null ? null : (
+        {logging === null || (held && draft === null) ? null : (
           <Begin logging={logging} draft={draft} today={today} day={day} onStale={onStale} />
         )}
       </header>
@@ -268,21 +272,119 @@ function Nothing({ text }: { text: string }): ReactElement {
   );
 }
 
+/** @internal Exported for tests. */
+export const LEFT_OVER =
+  "A workout of a program you have since replaced is unfinished. Finish or discard it before the next day.";
+
+/**
+ * Pick up an unfinished workout of a replaced program (possible in data from
+ * before replacing a program mid-workout was refused). It has no plan to
+ * rebuild, so it resumes as logged, with its program day kept for its finish.
+ */
+function LeftOver({
+  workout,
+  onStale,
+}: {
+  workout: WorkoutDetail;
+  onStale: () => void;
+}): ReactElement | null {
+  const logging = useLogging();
+  const draft = useDraft(logging?.drafts ?? null);
+  const [error, setError] = useState<string | null>(null);
+  if (draft !== null) {
+    return null; // this phone has it, or another workout: Resume is offered above
+  }
+  const pickUp = async (drafts: DraftStore): Promise<void> => {
+    setError(null);
+    let detail;
+    try {
+      detail = await fetchJson("/api/workouts/current", currentWorkoutSchema, undefined, true);
+    } catch (failure) {
+      setError(isOffline(failure) ? RESUME_OFFLINE : describeFailure(failure));
+      return;
+    }
+    const id = workout.client_id;
+    if (
+      id === null ||
+      detail?.client_id !== id ||
+      detail.program_day_id !== workout.program_day_id
+    ) {
+      onStale();
+      return;
+    }
+    drafts.update((current) => current ?? draftFromServer(detail, id));
+    navigate({ name: "log" });
+  };
+  return (
+    <section className="notice tint" style={tone("peach")} aria-label="Unfinished workout">
+      <p>{LEFT_OVER}</p>
+      <p className="muted">
+        Started {formatDay(workout.started_at)}, {formatTime(workout.started_at)}
+      </p>
+      {logging === null ? null : (
+        <button
+          type="button"
+          className="primary"
+          onClick={() => {
+            void pickUp(logging.drafts);
+          }}
+        >
+          Resume it as logged
+        </button>
+      )}
+      {error === null ? null : (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
+    </section>
+  );
+}
+
+/** The unfinished program workout that is not the one Today trains, if any. */
+function leftOver(
+  current: Loadable<WorkoutDetail | null>,
+  today: TodayPlan | null,
+): WorkoutDetail | null {
+  const workout = current.status === "ready" ? current.data : null;
+  const program = workout?.program_day_id === null ? null : workout;
+  return program?.client_id === today?.workout_client_id ? null : program;
+}
+
 function Plan({ onStale }: { onStale: () => void }): ReactElement {
   const state = useApi("/api/today", todaySchema);
+  const current = useApi("/api/workouts/current", currentWorkoutSchema);
   return (
     <Load state={state}>
       {(today) => {
-        if (today === null) {
-          return <Nothing text="No program yet. Ask the coach for one." />;
-        }
-        if (today.day === null) {
-          return <Nothing text="Block complete. Ask the coach for your next program." />;
-        }
-        return <Planned today={today} day={today.day} onStale={onStale} />;
+        const left = leftOver(current, today);
+        return (
+          <>
+            {left === null ? null : <LeftOver workout={left} onStale={onStale} />}
+            <Day today={today} held={left !== null} onStale={onStale} />
+          </>
+        );
       }}
     </Load>
   );
+}
+
+function Day({
+  today,
+  held,
+  onStale,
+}: {
+  today: TodayPlan | null;
+  held: boolean;
+  onStale: () => void;
+}): ReactElement {
+  if (today === null) {
+    return <Nothing text="No program yet. Ask the coach for one." />;
+  }
+  if (today.day === null) {
+    return <Nothing text="Block complete. Ask the coach for your next program." />;
+  }
+  return <Planned today={today} day={today.day} onStale={onStale} held={held} />;
 }
 
 /** Today: the active program's next day, with every set's target and last time. */

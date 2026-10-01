@@ -565,6 +565,13 @@ workout.
     workout of the active program is unfinished. Otherwise that workout would
     be left without its plan, and Today, which plans the new program, could
     not pick it up.
+  - **One program workout at a time.** The API refuses a new program workout
+    (409, "finish or discard the workout in progress first") while another
+    is unfinished: one on another phone, or one of a program replaced before
+    that was refused. In data like that, Today shows the left-over workout
+    with **Resume it as logged**, and holds the day's Start until it is
+    finished or discarded. Resuming re-reads it afresh and keeps its program
+    day, so its finish is accepted.
   - **Superset rest:** a round ends with the last exercise that has that set,
     as the superset stands. With unequal set counts the longer one rests on
     its extra sets, and after removing the rest of a superset every set rests.

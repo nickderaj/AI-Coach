@@ -25,7 +25,13 @@ from trainer.storage.journal import (
     workout_id_for,
     workout_link,
 )
-from trainer.storage.programs import day_claimed, day_program, set_days, slot_place
+from trainer.storage.programs import (
+    day_claimed,
+    day_program,
+    other_program_workout_in_progress,
+    set_days,
+    slot_place,
+)
 
 if TYPE_CHECKING:
     import sqlite3
@@ -89,8 +95,9 @@ def record_workout(
             not exist or has no such week, or the workout has program sets for
             another day than ``program``'s.
         StaleProgramDayError: if a workout newly names a day another workout
-            already trains that week (done or in progress), or a day of a
-            program no longer active (a plan seen before it changed).
+            already trains that week (done or in progress), a day of a program
+            no longer active (a plan seen before it changed), or any program
+            day while another program workout is unfinished.
     """
     started, ended = times
     if ended is not None and ended < started:
@@ -124,6 +131,11 @@ def _check_link(conn: sqlite3.Connection, client_id: str, program: ProgramLink) 
     # workout's own claim returned above, as an unchanged link.
     if day_claimed(conn, program.day_id, program.week):
         message = f"week {program.week} of day {program.day_id} already has a workout"
+        raise StaleProgramDayError(message)
+    # One program workout at a time: another phone's, or one of a program
+    # replaced before that was refused, is finished or discarded first.
+    if other_program_workout_in_progress(conn, client_id):
+        message = "finish or discard the workout in progress first"
         raise StaleProgramDayError(message)
 
 

@@ -10,7 +10,7 @@ from pydantic import ValidationError
 
 from trainer.domain.exercises import Measure
 from trainer.domain.programs import Decision, Position, Target
-from trainer.services.journal import record_set, record_workout
+from trainer.services.journal import StaleProgramDayError, record_set, record_workout
 from trainer.services.programs import (
     NoProposalError,
     PlannedExercise,
@@ -529,6 +529,25 @@ class TestToday:
         assert (plan.program_name, plan.workout_client_id) == ("Next", None)
         assert plan.day is not None
         assert (plan.day.week, plan.day.position) == (1, 1)
+
+    def test_a_workout_of_a_replaced_program_must_be_finished_first(
+        self, gym: Gym, ids: dict[str, int]
+    ) -> None:
+        # A database from before accepting was refused mid-workout.
+        old = gym.train(1, 1, {"bench": [(10, 60.0)]}, finish=False)
+        gym.db.execute("UPDATE programs SET status = 'archived'")
+        gym.db.commit()
+        new = accept_proposal(gym.db, propose_program(gym.db, proposal(ids, "Next"), NOW).id, NOW)
+        link = ProgramLink(new.days[0].id, 1)
+
+        with pytest.raises(StaleProgramDayError):
+            record_workout(gym.db, "w-new", (NOW, None), None, link)
+
+        # The old one can still be finished, under its own program day.
+        old_link = ProgramLink(gym.program.days[0].id, 1)
+        finished = record_workout(gym.db, old, (NOW, NOW), None, old_link)
+        assert finished.ended_at is not None
+        record_workout(gym.db, "w-new", (NOW, None), None, link)
 
     def test_a_workout_outside_the_program_changes_nothing(self, gym: Gym) -> None:
         gym.train(1, 1, {})
