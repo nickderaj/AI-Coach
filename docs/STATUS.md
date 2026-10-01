@@ -35,6 +35,8 @@ Last updated: 2026-10-01.
 | Phase 3a — pinned Hermes gateway, profile, root-only secrets, private memory repo | #17 | Deploy on 2026-10-01 stopped at the gateway; fixed by #18. |
 | Coach unit renamed `trainer-coach`; Hermes run as a module | #18 | Deployed 2026-10-01; the coach answers through the provider. |
 | Phase 3b — `trainer.mcp`, the coach's read-only tools; the API holds the log open | #19 | Deployed 2026-10-01; the live coach answers from the owner's log. |
+| Phase 3c — Coach endpoints on one durable Hermes session; schema v5 | #20 | Deployed 2026-10-01. |
+| Phase 3d — Coach tab in the web app | #21 | Deployed 2026-10-01. **Phase 3 built.** |
 
 ## Phase 2 — logging: built, awaiting its exit criterion
 
@@ -162,9 +164,9 @@ that shaped the build:
 | --- | --- | --- |
 | 3a | Pinned Hermes in its own venv; `trainer-coach` unit; `hermes/` profile (config, SOUL); root-only secrets; private memory repo with a nightly commit | #17, #18 |
 | 3b | `trainer.mcp`: read-only training-history tools (recent workouts, a workout, the catalogue, an exercise's history, body weight), run by Hermes over stdio | #19 |
-| 3c | Coach endpoints in the API: one durable Hermes session, its id in SQLite; send a message, read the conversation | this PR |
-| 3d | Coach tab in the web app (needs a connection; shows the conversation) | this PR (stacked on 3c) |
-| 3e | On the host, not in git: seed the owner's stated preferences into the coach's memory, then check the exit criterion over several days | |
+| 3c | Coach endpoints in the API: one durable Hermes session, its id in SQLite; send a message, read the conversation | #20 |
+| 3d | Coach tab in the web app (needs a connection; shows the conversation) | #21 |
+| 3e | On the host, not in git: seed the owner's stated preferences into the coach's memory, then check the exit criterion over several days | seeded 2026-10-01; checking |
 
 **Where the private memory lives.** The coach's home is `<data dir>/hermes`.
 Hermes writes what it learns to `memories/` and `skills/` there.
@@ -229,7 +231,7 @@ were installed, but the gateway did not start, for two reasons.
   coach answered "what was my last workout, and my last pull-ups?" by calling
   `recent_workouts`, `list_exercises` and `exercise_history`.
 
-**In this PR (3c): the Coach endpoints.**
+**3c: the Coach endpoints (done, #20).**
 - `POST /api/coach/messages` with `{"text"}` (1–4000 characters, trimmed)
   runs one turn and returns the reply, `{"role", "text", "at"}`.
   `GET /api/coach/messages` returns the last 100 messages, oldest first: what
@@ -253,7 +255,7 @@ were installed, but the gateway did not start, for two reasons.
   "How many sets of pull-ups did I do last time?" was answered from the log in
   about 10 s (12 sets, 26 September), and the history showed both messages.
 
-**In this PR (3d): the Coach tab.**
+**3d: the Coach tab (done, #21).**
 - A fourth tab, **Coach** (`#/coach`). It shows the conversation from
   `GET /api/coach/messages`: your messages on the right, the coach's on the
   left. Text is shown as written, never as HTML.
@@ -272,6 +274,28 @@ were installed, but the gateway did not start, for two reasons.
   offline.
 - `hermes/SOUL.md`: the coach writes plain text, because the tab shows replies
   exactly as written.
+
+**3e: seeding the coach's memory (2026-10-01, on the host).** The v1 bot's
+stated preferences were told to the coach in a throwaway session (deleted
+afterwards), and it saved them as three entries in its private memory:
+warm-up, split, and progression. v1's "Telegram formatting" preference was
+dropped. The entries were committed to the private repository. Their content
+is personal and lives only there.
+
+**Exit criterion: the coach remembers across turns and days.** Across turns
+was checked in 3a, and through the API in 3c. Across days is being checked: on
+a later day, ask in the Coach tab something that needs the seeded preferences
+(say "Plan Monday's session"), and check the answer uses the warm-up, split
+and progression without being reminded. Phase 3 closes when it does.
+
+**In this PR: keep Hermes's own files out of the memory repository.** The first
+memory commit on the host recorded `skills/.curator_state`, Hermes's curator
+bookkeeping, beside the owner's memory. Hidden files at the top of `skills/`
+(`.curator_state`, `.bundled_manifest`) are now excluded. Each commit re-indexes
+the tracked directories from scratch (`git rm -r --cached`, then `git add`),
+so a file recorded before an exclude covered it leaves the repository but
+stays on disk. Checked on a copy of the host's repository: the file left the
+repository, and the next run had nothing to commit.
 
 ## Remaining phases
 

@@ -23,8 +23,10 @@ AUTHOR_NAME = "hermes-trainer"
 AUTHOR_EMAIL = "hermes@localhost"
 # Everything in the Hermes home is ignored except the tracked directories, so
 # whole-tree commands see them alone (and a deleted one is recorded as deleted).
-# Hermes's lock files ("USER.md.lock") sit beside what they guard; never record them.
-EXCLUDE = "/*\n" + "".join(f"!/{name}/\n" for name in TRACKED) + "*.lock\n"
+# Hermes's lock files ("USER.md.lock") sit beside what they guard, and its own
+# bookkeeping lives in hidden files at the top of skills/ (".curator_state",
+# ".bundled_manifest"): none of them is something the coach learned.
+EXCLUDE = "/*\n" + "".join(f"!/{name}/\n" for name in TRACKED) + "*.lock\n/skills/.*\n"
 MESSAGE = "Learned since the last commit"
 
 
@@ -53,6 +55,9 @@ def commit_memory(hermes_home: Path, repo: Path) -> str | None:
     (repo / "info").mkdir(exist_ok=True)  # pragma: no mutate  # why: info/ already exists
     (repo / "info" / "exclude").write_bytes(EXCLUDE.encode())
     work_tree = (f"--git-dir={repo}", f"--work-tree={hermes_home}")
+    # Index the tracked directories afresh, so anything recorded before the exclude
+    # covered it leaves the repository (never the disk: --cached).
+    _run(*work_tree, "rm", "-r", "--cached", "--ignore-unmatch", ".")
     _run(*work_tree, "add", "--all")
     if not _run(*work_tree, "status", "--porcelain").strip():
         return None
