@@ -56,10 +56,10 @@ tailscale serve ──▶ trainer-api (FastAPI, 127.0.0.1)
                       └─ Coach proxy ──▶ trainer-coach (127.0.0.1, session API)
                                            home: $TRAINER_DATA_DIR/hermes (profile from hermes/)
                                            memory · skills · session_search · todo · clarify
-                                           └─ MCP ──▶ trainer-mcp (reads/writes via services)
+                                           └─ MCP (stdio) ──▶ python -m trainer.mcp (reads, read-only)
 ```
 
-Processes (systemd, all as `gym`, loopback-only):
+Processes (systemd, all as the service user, loopback-only):
 
 1. **trainer-api** — serves the built web app and the JSON API.
 2. **trainer-coach** — one long-lived Hermes gateway, pinned to a Hermes
@@ -67,8 +67,12 @@ Processes (systemd, all as `gym`, loopback-only):
    addressed through its authenticated HTTP session API. The web app's Coach tab
    maps to one durable Hermes session, so turns keep context and a warm prompt
    cache.
-3. **trainer-mcp** — the tool server Hermes calls; a thin adapter over the same
-   service layer the API uses.
+3. **The tool server** (`python -m trainer.mcp`) — started by the gateway as a
+   child process and spoken to over stdin and stdout, so it shares the coach's
+   sandbox and has no unit of its own. It reads the training log through the
+   same storage functions as the API, on a read-only connection; the API holds
+   one connection open so SQLite's WAL files exist for it. Writing (programs,
+   phase 4) will go through services.
 
 Repository layout:
 

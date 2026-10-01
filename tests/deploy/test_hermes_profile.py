@@ -12,7 +12,7 @@ HERMES = Path(__file__).resolve().parents[2] / "hermes"
 EXAMPLE = Path(__file__).resolve().parents[2] / "deploy" / "local.env.example"
 EXAMPLE_TEXT = EXAMPLE.read_text(encoding="utf-8")
 CONFIG = (HERMES / "config.yaml").read_text(encoding="utf-8")
-ALLOWED = "[memory, session_search, skills, todo, clarify]"
+ALLOWED = "[memory, session_search, skills, todo, clarify, mcp-trainer]"
 
 
 def test_the_profile_is_the_config_and_the_soul() -> None:
@@ -28,6 +28,15 @@ def test_learning_is_on_and_nothing_else_is_allowed() -> None:
         assert f"    - {toolset}" in lines
     assert '    enabled: "off"' in lines  # no tool-search bridge
     assert "  allow_lazy_installs: false" in lines  # no pip installs at runtime
+
+
+def test_the_tool_server_is_the_trainers_own_module() -> None:
+    lines = CONFIG.splitlines()
+
+    assert "    command: ${TRAINER_PREFIX}/venv/bin/python" in lines
+    assert "    args: [-m, trainer.mcp]" in lines
+    assert "      TRAINER_DATA_DIR: ${TRAINER_DATA_DIR}" in lines
+    assert "      enabled: false" in lines  # no sampling: the server never calls the model
 
 
 def test_the_api_server_listens_on_loopback_only() -> None:
@@ -46,6 +55,8 @@ def test_every_placeholder_is_set_by_the_gateway_unit() -> None:
         "TRAINER_MODEL_URL",
         "TRAINER_HERMES_HOST",
         "TRAINER_HERMES_PORT",
+        "TRAINER_PREFIX",
+        "TRAINER_DATA_DIR",
     }
     assert set(re.findall(r"\$\{([A-Z_]+)\}", CONFIG)) <= environment
 

@@ -159,7 +159,7 @@ that shaped the build:
 | Step | Scope | PR |
 | --- | --- | --- |
 | 3a | Pinned Hermes in its own venv; `trainer-coach` unit; `hermes/` profile (config, SOUL); root-only secrets; private memory repo with a nightly commit | #17, and the fix below |
-| 3b | `trainer.mcp`: read-only training-history tools (recent workouts, an exercise's history and records, the catalogue, body weight), run by Hermes over stdio | next |
+| 3b | `trainer.mcp`: read-only training-history tools (recent workouts, a workout, the catalogue, an exercise's history, body weight), run by Hermes over stdio | this PR |
 | 3c | Coach proxy in the API: one durable Hermes session, its id in SQLite; send a message, read the conversation | |
 | 3d | Coach tab in the web app (needs a connection; shows the conversation) | |
 | 3e | On the host, not in git: seed the owner's stated preferences into the coach's memory, then check the exit criterion over several days | |
@@ -199,6 +199,33 @@ were installed, but the gateway did not start, for two reasons.
   the staging directory the venv was built in, which no longer exists after the
   swap. The unit now runs `python -m hermes_cli.main gateway run`. A test checks
   that every unit starts a venv's `python`, not a console script.
+
+**In this PR (3b): the trainer's tools.**
+- `python -m trainer.mcp` is an MCP server over stdio. It handles `initialize`
+  (the handshake revisions 2024-11-05 to 2025-11-25), `ping`, `tools/list`
+  and `tools/call`; other methods are refused and notifications ignored.
+- It is written here, not with the MCP SDK. The SDK (2.2.0) would add about 15
+  runtime dependencies to the trainer (cryptography, OpenTelemetry, an
+  HTTP/SSE server) for four methods. Hermes's client (mcp 2.0.0) uses the
+  `initialize` handshake.
+- Five tools, each with a pydantic argument model that also gives the input
+  schema: `recent_workouts`, `get_workout`, `list_exercises`,
+  `exercise_history`, `body_weight`. They use the storage functions the API
+  uses, on a `mode=ro` connection, and return JSON text. Bad arguments, unknown
+  ids and an unreadable log come back as tool errors the model can read.
+- **Read-only from a read-only mount.** In the coach's sandbox the data
+  directory is read-only, and SQLite cannot open a WAL database there unless
+  its `-wal` and `-shm` files already exist (checked on the host). The API now
+  holds one idle connection for its lifetime, which keeps them, and
+  `trainer-coach` starts after `trainer-api`. The coach never gets write access
+  near the database.
+- `hermes/config.yaml` adds the server as `mcp_servers.trainer` and its
+  toolset, `mcp-trainer`, to the allowed toolsets. Hermes passes a stdio server
+  only its configured `env` (`TRAINER_DATA_DIR`) plus a safe baseline, so the
+  coach's secrets never reach it.
+- Checked end to end with the pinned Hermes and a copy of the owner's log: the
+  coach answered "what was my last workout, and my last pull-ups?" by calling
+  `recent_workouts`, `list_exercises` and `exercise_history`.
 
 ## Remaining phases
 

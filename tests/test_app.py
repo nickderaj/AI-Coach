@@ -75,6 +75,22 @@ class TestSettings:
         assert client.get("/api/workouts", headers=AS_OWNER).json() == []
 
 
+def test_the_database_stays_open_while_the_app_runs(database: Path) -> None:
+    wal = database.with_name("trainer.db-wal")
+    shm = database.with_name("trainer.db-shm")
+    app = create_app(Settings(database=database, owner_login=OWNER))
+    assert not wal.exists()  # migrating closed its connection
+
+    with TestClient(app) as client:
+        assert client.get("/healthz").status_code == 200
+        # A read-only reader (the coach's tool server) needs both to exist.
+        assert wal.exists()
+        assert shm.exists()
+
+    assert not wal.exists()
+    assert not shm.exists()
+
+
 def test_create_app_migrates_a_new_database(tmp_path: Path) -> None:
     path = tmp_path / "trainer.db"
 

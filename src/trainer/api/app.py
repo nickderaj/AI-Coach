@@ -3,7 +3,7 @@
 from __future__ import annotations
 
 import os
-from contextlib import closing
+from contextlib import asynccontextmanager, closing
 from typing import TYPE_CHECKING
 
 from fastapi import FastAPI, Request
@@ -17,7 +17,7 @@ from trainer.api.settings import Settings, settings_from_env
 from trainer.storage.database import connect, migrate
 
 if TYPE_CHECKING:
-    from collections.abc import Awaitable, Callable
+    from collections.abc import AsyncIterator, Awaitable, Callable
 
     from starlette.responses import Response
 
@@ -41,7 +41,16 @@ def create_app(settings: Settings | None = None) -> FastAPI:
     with closing(connect(settings.database)) as conn:
         migrate(conn)
 
-    app = FastAPI(openapi_url=None)  # no schema, so no /docs or /redoc either
+    @asynccontextmanager
+    async def hold_the_database_open(_app: FastAPI) -> AsyncIterator[None]:
+        # SQLite removes the -wal and -shm files when its last connection closes.
+        # The coach's tool server reads from a read-only mount, where it cannot
+        # create them, so one idle connection keeps them for as long as the API runs.
+        with closing(connect(settings.database)):
+            yield
+
+    # No schema, so no /docs or /redoc either.
+    app = FastAPI(openapi_url=None, lifespan=hold_the_database_open)
     app.state.settings = settings
 
     @app.middleware("http")

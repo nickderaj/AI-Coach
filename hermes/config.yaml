@@ -20,9 +20,9 @@ providers:
 # What the coach can do. Learning is on from day one (D11): memory, skills and
 # session search. It has no terminal, files, web, browser or code execution:
 # training facts reach it only through the trainer's MCP tools (D10).
-toolsets: [memory, session_search, skills, todo, clarify]
+toolsets: [memory, session_search, skills, todo, clarify, mcp-trainer]
 platform_toolsets:
-  api_server: [memory, session_search, skills, todo, clarify]
+  api_server: [memory, session_search, skills, todo, clarify, mcp-trainer]
 agent:
   # Belt and braces: removed everywhere, whatever a platform lists.
   disabled_toolsets:
@@ -43,6 +43,22 @@ tools:
 security:
   # The installed Hermes is fixed and root-owned: never pip-install at runtime.
   allow_lazy_installs: false
+
+# The trainer's tool server (python -m trainer.mcp): Hermes starts it as a child
+# process and talks to it over stdin and stdout. It reads the training log
+# read-only. Tools only: no resources, prompts or sampling.
+mcp_servers:
+  trainer:
+    command: ${TRAINER_PREFIX}/venv/bin/python
+    args: [-m, trainer.mcp]
+    env:
+      TRAINER_DATA_DIR: ${TRAINER_DATA_DIR}
+    timeout: 30
+    tools:
+      resources: false
+      prompts: false
+    sampling:
+      enabled: false
 
 # The web app's Coach tab talks to this, through the API, on loopback only: the
 # API's own address (TRAINER_BIND_HOST, validated as loopback), so the API and

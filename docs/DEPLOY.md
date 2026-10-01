@@ -94,10 +94,19 @@ systemd hands to the gateway as environment variables:
 Run the script again to change the provider key. Until both files exist,
 `install.sh` leaves the gateway stopped.
 
-**What it can do.** Memory, skills, session search, a to-do list and
-clarifying questions. That's all: no terminal, files, web, browser or code
-execution (`hermes/config.yaml` allows these toolsets and removes the rest).
-Training data will reach it only through the trainer's MCP tools (phase 3).
+**What it can do.** Memory, skills, session search, a to-do list, clarifying
+questions, and the trainer's tools. That's all: no terminal, files, web,
+browser or code execution (`hermes/config.yaml` allows these toolsets and
+removes the rest).
+
+**The trainer's tools.** The gateway starts `python -m trainer.mcp` from the
+trainer's virtualenv and talks MCP to it over stdin and stdout. It reads the
+training log read-only, through five tools: `recent_workouts`, `get_workout`,
+`list_exercises`, `exercise_history` and `body_weight`. It runs in the coach's
+sandbox, where the data directory is read-only. SQLite can read a WAL database
+from there only while its `-wal` and `-shm` files exist, so the API holds one
+connection open for as long as it runs, and `trainer-coach` starts after it.
+If the API is down, the tools answer that the log cannot be read.
 
 **Memory.** What the coach learns is written straight to `memories/` and
 `skills/` in its home. Every night at 03:15, `trainer-memory.timer` commits
