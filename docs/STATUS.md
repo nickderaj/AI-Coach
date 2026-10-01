@@ -549,9 +549,10 @@ workout.
     network: such a read gets the server's answer or fails, never a saved copy.
   - **Start** reads Today afresh and starts only if the day and week shown are
     still due and nothing trains them yet. Otherwise the plan reloads, with a
-    note. Only a network failure falls back to the saved plan, and not for a
-    day this phone has finished (it remembers the days it finishes). A refusal
-    (401, 403, 5xx) or an answer it cannot read is shown, and nothing starts.
+    note. Only a network failure (fetch's TypeError) falls back to the saved
+    plan, and not for a day this phone has finished (it remembers the days it
+    finishes). A refusal (401, 403, 5xx), an answer that is not JSON (a
+    proxy's error page) or not the expected shape is shown, and nothing starts.
   - **Resume** reads the workout in progress afresh. It picks it up only if it
     is the same workout, day and week; otherwise the plan reloads.
   - **Partial pick-up:** logged sets take their places, and the sets still to
@@ -559,6 +560,11 @@ workout.
   - **Home's Resume** of any workout with a program day goes through Today,
     which checks it afresh and rebuilds the plan around the logged sets. Only
     a workout outside any program is rebuilt from the server's copy.
+  - **A program is not replaced mid-workout.** Accepting a proposal is
+    refused (409, "finish or discard the workout in progress first") while a
+    workout of the active program is unfinished. Otherwise that workout would
+    be left without its plan, and Today, which plans the new program, could
+    not pick it up.
   - **Superset rest:** a round ends with the last exercise that has that set,
     as the superset stands. With unequal set counts the longer one rests on
     its extra sets, and after removing the rest of a superset every set rests.

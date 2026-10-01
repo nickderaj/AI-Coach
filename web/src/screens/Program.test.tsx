@@ -266,6 +266,10 @@ describe("Program", () => {
     ],
     [{ status: 500, body: "oops" }, "The server answered 500"],
     [new TypeError("offline"), OFFLINE_PROGRAM],
+    [
+      { status: 409, body: { detail: "finish or discard the workout in progress first" } },
+      "Finish or discard the workout in progress first.",
+    ],
   ])("says why a change failed", async (reply, message) => {
     routeFetch({ ...programsReply(null, PROPOSED, null), "POST /api/programs/2/accept": reply });
     render(<App />);

@@ -13,6 +13,7 @@ from trainer.services.programs import (
     NoProposalError,
     ProgramError,
     ProgramIn,
+    ProgramInUseError,
     Programs,
     Today,
     accept_proposal,
@@ -63,11 +64,14 @@ def decline(request: Request, program_id: Annotated[int, Path(ge=1, le=MAX_ROW_I
 
 @router.post("/programs/{program_id}/accept")
 def accept(request: Request, program_id: Annotated[int, Path(ge=1, le=MAX_ROW_ID)]) -> Program:
-    """Start the proposed program; 409 if it is no longer the proposal."""
+    """Start the proposed program.
+
+    409 if it is no longer the proposal, or the active program has a workout in progress.
+    """
     try:
         with closing(connect(_database(request))) as conn:
             return accept_proposal(conn, program_id, datetime.now(UTC))
-    except NoProposalError as error:
+    except (NoProposalError, ProgramInUseError) as error:
         raise HTTPException(status_code=409, detail=str(error)) from error
 
 

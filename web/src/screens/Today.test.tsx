@@ -58,6 +58,15 @@ class Refusal {
   }
 }
 
+/** A 200 answer that is not JSON, as from a proxy's error page. */
+class Raw {
+  readonly text: string;
+
+  constructor(text: string) {
+    this.text = text;
+  }
+}
+
 function reply(answers: Answer[], count: number): Promise<Response> {
   if (answers.length === 0) {
     return Promise.resolve(new Response("{}", { status: 404 }));
@@ -65,6 +74,9 @@ function reply(answers: Answer[], count: number): Promise<Response> {
   const answer = answers[Math.min(count, answers.length - 1)];
   if (answer instanceof Error) {
     return Promise.reject(answer);
+  }
+  if (answer instanceof Raw) {
+    return Promise.resolve(new Response(answer.text, { status: 200 }));
   }
   if (answer instanceof Refusal) {
     return Promise.resolve(new Response(JSON.stringify(answer.body), { status: answer.status }));
@@ -316,6 +328,7 @@ describe("Today", () => {
     [new Refusal(403, { detail: "forbidden" }), "The server answered 403"],
     [new Refusal(500, "oops"), "The server answered 500"],
     [{ program_id: "not a plan" }, "The server sent data this app does not understand"],
+    [new Raw("<html>Bad gateway</html>"), "The server sent data this app does not understand"],
   ])("does not start offline when the server refuses or is not understood", async (fresh, why) => {
     // Only a network failure falls back to the saved plan; anything else is shown.
     sequence({ "GET /api/today": [TODAY, fresh] });

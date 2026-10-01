@@ -156,6 +156,21 @@ def test_propose_then_accept(client: TestClient, ids: tuple[int, int]) -> None:
     )
 
 
+def test_accepting_while_the_program_is_being_trained(
+    client: TestClient, ids: tuple[int, int]
+) -> None:
+    active = accept(client, propose(client, ids)["id"])
+    link = {"day_id": active["days"][0]["id"], "week": 1}
+    started = {"started_at": "2026-10-01T09:00:00Z", "program": link}
+    client.put(f"/api/workouts/{W1}", json=started, headers=OWNER)
+    new = propose(client, ids)
+
+    response = client.post(f"/api/programs/{new['id']}/accept", headers=OWNER)
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": "finish or discard the workout in progress first"}
+
+
 def test_accepting_what_is_not_the_proposal(client: TestClient, ids: tuple[int, int]) -> None:
     active = accept(client, propose(client, ids)["id"])
 

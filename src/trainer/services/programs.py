@@ -44,6 +44,7 @@ from trainer.storage.programs import (
     insert_program,
     last_position,
     last_slot_sets,
+    program_in_progress,
     program_with_status,
 )
 
@@ -144,6 +145,10 @@ class NoProposalError(LookupError):
     """There is no such proposed program."""
 
 
+class ProgramInUseError(RuntimeError):
+    """The active program has a workout in progress, so it cannot be replaced yet."""
+
+
 def _spec(program: ProgramIn) -> ProgramSpec:
     return ProgramSpec(
         program.name,
@@ -228,9 +233,15 @@ def accept_proposal(conn: sqlite3.Connection, program_id: int, now: datetime) ->
 
     Raises:
         NoProposalError: if ``program_id`` is not the proposed program.
+        ProgramInUseError: if a workout of the active program is in progress:
+            replacing the program then would leave that workout without a plan.
     """
     with write_transaction(conn):
         _check_proposal(conn, program_id)
+        active = program_with_status(conn, ProgramStatus.ACTIVE)
+        if active is not None and program_in_progress(conn, active):
+            message = "finish or discard the workout in progress first"
+            raise ProgramInUseError(message)
         activate_program(conn, program_id, utc_iso(now))
     return get_program(conn, program_id)
 

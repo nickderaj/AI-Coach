@@ -128,9 +128,14 @@ export async function fetchJson<T>(
 export type Loadable<T> =
   { status: "loading" } | { status: "error"; message: string } | { status: "ready"; data: T };
 
-/** Whether a read failed for want of a network, not because the server said no or spoke oddly. */
+/**
+ * Whether a read failed for want of a network: the browser's fetch rejects
+ * with a TypeError then. A refusal (an ApiError), an answer that is not JSON
+ * (a SyntaxError, say from a proxy's error page) or not the expected shape
+ * (a ZodError) are the server's answer, not an absence of one.
+ */
 export function isOffline(error: unknown): boolean {
-  return !(error instanceof ApiError || error instanceof z.ZodError);
+  return error instanceof TypeError;
 }
 
 /** Why a read failed, as the owner should read it. */
@@ -138,7 +143,7 @@ export function describeFailure(error: unknown): string {
   if (error instanceof ApiError) {
     return error.message;
   }
-  if (error instanceof z.ZodError) {
+  if (error instanceof z.ZodError || error instanceof SyntaxError) {
     return "The server sent data this app does not understand";
   }
   return "Could not reach the server";

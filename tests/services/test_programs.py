@@ -16,6 +16,7 @@ from trainer.services.programs import (
     PlannedExercise,
     ProgramError,
     ProgramIn,
+    ProgramInUseError,
     SlotIn,
     accept_proposal,
     decline_proposal,
@@ -312,6 +313,33 @@ class TestProposals:
         assert active is not None
         assert active.name == "New"
 
+    def test_a_program_in_progress_is_not_replaced(
+        self, db: sqlite3.Connection, ids: dict[str, int]
+    ) -> None:
+        active = accept_proposal(db, propose_program(db, proposal(ids, "Old"), NOW).id, NOW)
+        link = ProgramLink(active.days[0].id, 1)
+        record_workout(db, "w1", (NOW, None), None, link)
+        new = propose_program(db, proposal(ids, "New"), NOW)
+
+        with pytest.raises(
+            ProgramInUseError, match=r"^finish or discard the workout in progress first$"
+        ):
+            accept_proposal(db, new.id, NOW)
+
+        assert not db.in_transaction
+        assert programs(db).proposed == new
+        record_workout(db, "w1", (NOW, NOW + timedelta(hours=1)), None, link)
+        assert accept_proposal(db, new.id, NOW).status is ProgramStatus.ACTIVE
+
+    def test_a_workout_outside_the_program_does_not_hold_it(
+        self, db: sqlite3.Connection, ids: dict[str, int]
+    ) -> None:
+        accept_proposal(db, propose_program(db, proposal(ids, "Old"), NOW).id, NOW)
+        record_workout(db, "w1", (NOW, None), None)
+        new = propose_program(db, proposal(ids, "New"), NOW)
+
+        assert accept_proposal(db, new.id, NOW).status is ProgramStatus.ACTIVE
+
     def test_accept_only_the_proposal(self, db: sqlite3.Connection, ids: dict[str, int]) -> None:
         active = accept_proposal(db, propose_program(db, proposal(ids), NOW).id, NOW)
 
@@ -489,7 +517,10 @@ class TestToday:
     def test_a_workout_of_a_replaced_program_changes_nothing(
         self, gym: Gym, ids: dict[str, int]
     ) -> None:
+        # The app no longer lets this happen (see accepting below); older data might.
         gym.train(1, 1, {}, finish=False)
+        gym.db.execute("UPDATE programs SET status = 'archived'")
+        gym.db.commit()
         accept_proposal(gym.db, propose_program(gym.db, proposal(ids, "Next"), NOW).id, NOW)
 
         plan = today(gym.db)

@@ -376,6 +376,18 @@ def day_program(conn: sqlite3.Connection, day_id: int) -> DayProgram | None:
     return None if row is None else DayProgram(int(row[0]), bool(row[1]))
 
 
+def program_in_progress(conn: sqlite3.Connection, program_id: int) -> bool:
+    """Whether an unfinished workout trains a day of the program."""
+    row = conn.execute(
+        """
+        SELECT 1 FROM workouts w JOIN program_days d ON d.id = w.program_day_id
+        WHERE d.program_id = ? AND w.ended_at IS NULL
+        """,
+        (program_id,),
+    ).fetchone()
+    return row is not None
+
+
 def day_claimed(conn: sqlite3.Connection, day_id: int, week: int) -> bool:
     """Whether a workout, finished or not, trains this program day this week."""
     row = conn.execute(
