@@ -726,13 +726,150 @@ h2 {
   outline: none;
 }
 
+/* ---------------------------------------------------------------- programs */
+
+/* Inside a card, the composer flows with the page instead of sticking. */
+.composer.inline {
+  position: static;
+  box-shadow: none;
+  background: var(--mantle);
+}
+
+.eyebrow {
+  margin: 0;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+
+/* Tinted, so a proposal never reads as the program being trained. */
+.card.proposal {
+  display: grid;
+  gap: 0.6rem;
+  background: color-mix(in srgb, var(--peach) 10%, var(--card));
+}
+
+.proposal h2,
+.program-head h2 {
+  margin: 0;
+}
+
+.proposal .program-days {
+  color: var(--text);
+}
+
+.program-head {
+  display: grid;
+  gap: 0.5rem;
+}
+
+.program-head p {
+  margin: 0;
+}
+
+.program-head .deload {
+  color: var(--teal);
+  font-weight: 700;
+}
+
+.weeks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  grid-template-columns: repeat(auto-fit, minmax(2rem, 1fr));
+  gap: 0.35rem;
+}
+
+.weeks li {
+  display: grid;
+  place-items: center;
+  height: 2rem;
+  border-radius: 0.6rem;
+  background: var(--mantle);
+  color: var(--subtext0);
+  font-weight: 700;
+  font-variant-numeric: tabular-nums;
+}
+
+.weeks li.done {
+  background: color-mix(in srgb, var(--green) 20%, var(--card));
+  color: var(--green);
+}
+
+.weeks li[aria-current="step"] {
+  background: var(--accent);
+  color: var(--card);
+}
+
+.weeks li:last-child:not([aria-current]) {
+  background: color-mix(in srgb, var(--teal) 16%, var(--card));
+  color: var(--teal);
+}
+
+.program-day h3 {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 0.5rem;
+  align-items: center;
+  margin: 0 0 0.4rem;
+  font-size: 1.05rem;
+}
+
+.program-day[aria-current="step"] {
+  outline: 2px solid var(--green);
+}
+
+.blocks {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: grid;
+  gap: 0.5rem;
+}
+
+.block {
+  padding-top: 0.4rem;
+  border-top: 1px solid var(--mantle);
+}
+
+.block:first-child {
+  border-top: 0;
+  padding-top: 0;
+}
+
+/* A superset reads as one unit: its exercises side by side on a shared rail. */
+.block.superset .lines {
+  padding-left: 0.6rem;
+  border-left: 3px solid var(--mauve);
+}
+
+.block-kind,
+.block .block-rest {
+  margin: 0.1rem 0;
+  font-size: 0.8rem;
+}
+
+.block-letter {
+  display: inline-block;
+  min-width: 1.7rem;
+  color: var(--mauve);
+  font-weight: 700;
+}
+
+.reply {
+  margin: 0.6rem 0 0;
+  max-width: none;
+}
+
 /* ---------------------------------------------------------------- tabs */
 
 .tabs {
   position: fixed;
   inset: auto 0 0 0;
   display: grid;
-  grid-template-columns: repeat(4, 1fr);
+  grid-template-columns: repeat(5, 1fr);
   background: color-mix(in srgb, var(--card) 88%, transparent);
   backdrop-filter: blur(12px);
   border-top: 1px solid var(--crust);

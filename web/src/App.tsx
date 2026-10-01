@@ -10,6 +10,7 @@ import { History, WorkoutDetail } from "./screens/History";
 import { Home } from "./screens/Home";
 import { Log } from "./screens/Log";
 import { Picker } from "./screens/Picker";
+import { Program } from "./screens/Program";
 import { Settings } from "./screens/Settings";
 
 const SCREENS: Record<FixedRouteName, () => ReactElement> = {
@@ -20,6 +21,7 @@ const SCREENS: Record<FixedRouteName, () => ReactElement> = {
   pick: Picker,
   settings: Settings,
   coach: Coach,
+  program: Program,
 };
 
 function Screen({ route }: { route: Route }): ReactElement {
@@ -33,10 +35,11 @@ function Screen({ route }: { route: Route }): ReactElement {
   return <Fixed />;
 }
 
-type Tab = "home" | "history" | "exercises" | "coach";
+type Tab = "home" | "program" | "history" | "exercises" | "coach";
 
 const TABS: { tab: Tab; route: Route; icon: string; label: string }[] = [
   { tab: "home", route: { name: "home" }, icon: "◉", label: "Home" },
+  { tab: "program", route: { name: "program" }, icon: "▦", label: "Program" },
   { tab: "history", route: { name: "history" }, icon: "☰", label: "History" },
   { tab: "exercises", route: { name: "exercises" }, icon: "✦", label: "Exercises" },
   { tab: "coach", route: { name: "coach" }, icon: "✎", label: "Coach" },
@@ -52,6 +55,7 @@ const TAB_OF: Record<Route["name"], Tab> = {
   exercises: "exercises",
   exercise: "exercises",
   coach: "coach",
+  program: "program",
 };
 
 export function App(): ReactElement {

@@ -268,3 +268,81 @@ export function coachHistory(signal: AbortSignal): Promise<CoachResult<CoachMess
 export function askCoach(text: string): Promise<CoachResult<CoachMessage>> {
   return coachRequest({ method: "POST", body: JSON.stringify({ text }) }, coachMessageSchema);
 }
+
+const programExerciseSchema = z.object({
+  /** The program exercise: what a set logged for it names. */
+  id: z.number().int(),
+  exercise_id: z.number().int(),
+  name: z.string(),
+  equipment: z.string().nullable(),
+  measure: measureSchema,
+  sets: z.number().int(),
+  /** The range each set aims for: reps, or seconds for a timed exercise. */
+  rep_min: z.number().int(),
+  rep_max: z.number().int(),
+  start_load_kg: z.number().nullable(),
+  notes: z.string().nullable(),
+});
+
+const programSchema = z.object({
+  id: z.number().int(),
+  name: z.string(),
+  notes: z.string().nullable(),
+  training_weeks: z.number().int(),
+  status: z.enum(["proposed", "active", "archived"]),
+  started_at: z.string().nullable(),
+  /** In order: day 1 first, and each day's blocks in order. */
+  days: z.array(
+    z.object({
+      id: z.number().int(),
+      name: z.string(),
+      blocks: z.array(
+        z.object({ rest_s: z.number().int(), exercises: z.array(programExerciseSchema) }),
+      ),
+    }),
+  ),
+});
+
+/** A week (from 1; the one after the training weeks is the deload) and a day (from 1). */
+const positionSchema = z.object({ week: z.number().int(), day: z.number().int() });
+
+export const programsSchema = z.object({
+  active: programSchema.nullable(),
+  proposed: programSchema.nullable(),
+  /** The active program's next day; null without one, or once its block is done. */
+  next: positionSchema.nullable(),
+});
+
+export type Program = z.infer<typeof programSchema>;
+export type ProgramDay = Program["days"][number];
+export type Position = z.infer<typeof positionSchema>;
+
+/** @internal Exported for tests. */
+export const OFFLINE_PROGRAM = "Changing your program needs a connection.";
+
+/**
+ * Accept or turn down the proposed program. Not queued offline: it changes
+ * what every later screen shows, so it happens now or not at all.
+ */
+export async function changeProgram(
+  change: { accept: number } | "decline",
+): Promise<CoachResult<null>> {
+  const [method, path] =
+    change === "decline"
+      ? ["DELETE", "/api/programs/proposal"]
+      : ["POST", `/api/programs/${String(change.accept)}/accept`];
+  let response: Response;
+  try {
+    response = await fetch(path, { method, headers: { Accept: "application/json" } });
+  } catch {
+    return { kind: "error", message: OFFLINE_PROGRAM };
+  }
+  if (response.ok) {
+    return { kind: "ok", value: null };
+  }
+  const detail = detailSchema.safeParse(await response.json().catch(() => null));
+  return {
+    kind: "error",
+    message: detail.success ? sentence(detail.data.detail) : new ApiError(response.status).message,
+  };
+}

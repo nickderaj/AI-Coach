@@ -516,10 +516,13 @@ describe("Navigation", () => {
 
     await go("#/coach");
     expect(current()).toEqual(["✎Coach"]);
+
+    await go("#/program");
+    expect(current()).toEqual(["▦Program"]);
     expect(
       within(nav)
         .getAllByRole("link")
         .map((l) => l.getAttribute("href")),
-    ).toEqual(["#/", "#/history", "#/exercises", "#/coach"]);
+    ).toEqual(["#/", "#/program", "#/history", "#/exercises", "#/coach"]);
   });
 });
