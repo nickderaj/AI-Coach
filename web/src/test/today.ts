@@ -80,4 +80,5 @@ export const TODAY: TodayPlan = {
   days: 4,
   day: UPPER,
   workout_client_id: null,
+  left_over: null,
 };

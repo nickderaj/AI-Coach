@@ -135,6 +135,11 @@ function expectResumed(draft: Draft | null): void {
   expect(draft?.blocks.map((block) => block.sets.length)).toEqual([3, 2, 2]);
 }
 
+/** A workout of a replaced program, left unfinished. */
+function leftOver(): Record<string, unknown> {
+  return { ...serverWorkout(), client_id: "w5", program_day_id: 3, program_week: 6 };
+}
+
 let counter = 0;
 function ids(): string {
   counter += 1;
@@ -430,8 +435,7 @@ describe("Today", () => {
   ])("does not pick up the server's workout when %s", async (_why, current) => {
     sequence({
       "GET /api/today": [{ ...TODAY, workout_client_id: "w9" }, TODAY],
-      // As the screen loaded it, then as it is when asked afresh.
-      "GET /api/workouts/current": [serverWorkout(), current, null],
+      "GET /api/workouts/current": [current],
     });
     const { drafts, outbox } = renderLogging();
 
@@ -445,8 +449,8 @@ describe("Today", () => {
 
   it("offers an unfinished workout of a replaced program, and holds the day for it", async () => {
     // A database from before replacing a program mid-workout was refused.
-    const left = { ...serverWorkout(), client_id: "w5", program_day_id: 3, program_week: 6 };
-    sequence({ "GET /api/today": [TODAY], "GET /api/workouts/current": [left] });
+    const left = { ...TODAY, left_over: leftOver() };
+    sequence({ "GET /api/today": [left, left] });
     const { drafts, outbox } = renderLogging();
 
     const card = await screen.findByRole("region", { name: "Unfinished workout" });
@@ -465,11 +469,15 @@ describe("Today", () => {
     expect(writes(outbox)).toEqual([]);
   });
 
-  it("re-checks the left-over workout before picking it up", async () => {
-    const left = { ...serverWorkout(), client_id: "w5", program_day_id: 3, program_week: 6 };
+  it.each([
+    ["it has been finished since", null],
+    ["another is left over now", { ...leftOver(), client_id: "w4" }],
+  ])("re-checks the left-over workout when %s", async (_why, now) => {
     sequence({
-      "GET /api/today": [TODAY],
-      "GET /api/workouts/current": [left, null],
+      "GET /api/today": [
+        { ...TODAY, left_over: leftOver() },
+        { ...TODAY, left_over: now },
+      ],
     });
     const { drafts } = renderLogging();
 
@@ -477,15 +485,26 @@ describe("Today", () => {
 
     expect(await screen.findByRole("status")).toHaveTextContent("The plan had changed");
     expect(drafts.get()).toBeNull();
-    expect(await screen.findByRole("button", { name: "Start this workout" })).toBeInTheDocument();
+  });
+
+  it("does not start while the server has a left-over the saved plan did not", async () => {
+    // The screen's copy of Today is older than the server's state.
+    sequence({ "GET /api/today": [TODAY, { ...TODAY, left_over: leftOver() }] });
+    const { drafts, outbox } = renderLogging();
+
+    fireEvent.click(await screen.findByRole("button", { name: "Start this workout" }));
+
+    expect(await screen.findByRole("status")).toHaveTextContent("The plan had changed");
+    expect(await screen.findByRole("region", { name: "Unfinished workout" })).toBeInTheDocument();
+    expect(drafts.get()).toBeNull();
+    expect(writes(outbox)).toEqual([]);
   });
 
   it.each([
     [new TypeError("offline"), RESUME_OFFLINE],
     [new Refusal(500, "oops"), "The server answered 500"],
-  ])("says why the left-over workout could not be read", async (failure, why) => {
-    const left = { ...serverWorkout(), client_id: "w5", program_day_id: 3, program_week: 6 };
-    sequence({ "GET /api/today": [TODAY], "GET /api/workouts/current": [left, failure] });
+  ])("says why the left-over workout could not be checked", async (failure, why) => {
+    sequence({ "GET /api/today": [{ ...TODAY, left_over: leftOver() }, failure] });
     const { drafts } = renderLogging();
 
     fireEvent.click(await screen.findByRole("button", { name: "Resume it as logged" }));
@@ -495,8 +514,7 @@ describe("Today", () => {
   });
 
   it("shows the left-over workout even with no day to train", async () => {
-    const left = { ...serverWorkout(), client_id: "w5", program_day_id: 3, program_week: 6 };
-    sequence({ "GET /api/today": [{ ...TODAY, day: null }], "GET /api/workouts/current": [left] });
+    sequence({ "GET /api/today": [{ ...TODAY, day: null, left_over: leftOver() }] });
     render(<App />);
 
     expect(await screen.findByRole("region", { name: "Unfinished workout" })).toBeInTheDocument();
@@ -504,8 +522,7 @@ describe("Today", () => {
   });
 
   it("leaves the left-over workout to Resume once this phone has a workout", async () => {
-    const left = { ...serverWorkout(), client_id: "w5", program_day_id: 3, program_week: 6 };
-    sequence({ "GET /api/today": [TODAY], "GET /api/workouts/current": [left] });
+    sequence({ "GET /api/today": [{ ...TODAY, left_over: leftOver() }] });
     renderLogging(addBlock(newDraft("w5", NOW), { block: "b", set: "s" }, BENCH, []));
 
     expect(await screen.findByRole("link", { name: "Resume ›" })).toBeInTheDocument();

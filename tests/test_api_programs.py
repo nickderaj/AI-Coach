@@ -254,7 +254,7 @@ class TestTraining:
             "days": 2,
         }
         assert today["training_weeks"] == 6
-        assert today["workout_client_id"] is None
+        assert (today["workout_client_id"], today["left_over"]) == (None, None)
         day = today["day"]
         assert (day["name"], day["week"], day["deload"]) == ("A", 1, False)
         exercise = day["blocks"][0]["exercises"][0]

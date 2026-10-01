@@ -529,6 +529,9 @@ class TestToday:
         assert (plan.program_name, plan.workout_client_id) == ("Next", None)
         assert plan.day is not None
         assert (plan.day.week, plan.day.position) == (1, 1)
+        # Told in the same answer, so the screen never pairs two separate reads.
+        assert plan.left_over is not None
+        assert plan.left_over.program_day_id == gym.program.days[0].id
 
     def test_a_workout_of_a_replaced_program_must_be_finished_first(
         self, gym: Gym, ids: dict[str, int]
@@ -549,6 +552,20 @@ class TestToday:
         assert finished.ended_at is not None
         record_workout(gym.db, "w-new", (NOW, None), None, link)
 
+    def test_a_later_workout_outside_the_program_hides_nothing(self, gym: Gym) -> None:
+        going = gym.train(1, 1, {"bench": [(4, 60.0)]}, finish=False)
+        record_workout(gym.db, "ad-hoc", (NOW + timedelta(days=9), None), None)
+
+        plan = today(gym.db)
+
+        assert plan is not None
+        assert (plan.workout_client_id, plan.left_over) == (going, None)
+        assert plan.day is not None
+        assert plan.day.name == "Upper"
+        assert programs(gym.db).next == Position(1, 1)
+        # Today's own sets are not "last time", whichever workout is the latest.
+        assert planned(gym.db)["bench"].last is None
+
     def test_a_workout_outside_the_program_changes_nothing(self, gym: Gym) -> None:
         gym.train(1, 1, {})
         record_workout(gym.db, "ad-hoc", (NOW + timedelta(days=9), None), None)
@@ -556,7 +573,7 @@ class TestToday:
         plan = today(gym.db)
 
         assert plan is not None
-        assert plan.workout_client_id is None
+        assert (plan.workout_client_id, plan.left_over) == (None, None)
         assert plan.day is not None
         assert plan.day.name == "Lower"
 

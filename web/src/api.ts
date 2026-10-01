@@ -413,6 +413,11 @@ export const todaySchema = z
     day: plannedDaySchema.nullable(),
     /** An unfinished workout already training that day. */
     workout_client_id: z.string().nullable(),
+    /**
+     * An unfinished workout of a replaced program, to finish first. Told in
+     * the same answer, so the screen never pairs two separate reads.
+     */
+    left_over: workoutDetailSchema.nullable().default(null),
   })
   .nullable();
 

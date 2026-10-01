@@ -568,10 +568,15 @@ workout.
   - **One program workout at a time.** The API refuses a new program workout
     (409, "finish or discard the workout in progress first") while another
     is unfinished: one on another phone, or one of a program replaced before
-    that was refused. In data like that, Today shows the left-over workout
-    with **Resume it as logged**, and holds the day's Start until it is
-    finished or discarded. Resuming re-reads it afresh and keeps its program
-    day, so its finish is accepted.
+    that was refused. In data like that, `/api/today` names the left-over
+    workout (`left_over`) in the same answer as the day, so the screen never
+    pairs two separately saved reads. Today shows it with **Resume it as
+    logged** and holds the day's Start until it is finished or discarded.
+    Resuming re-reads `/api/today` afresh and needs the same left-over, and
+    the rebuild keeps its program day, so its finish is accepted. Start
+    likewise needs no left-over in its fresh read. The day in progress is
+    the latest unfinished *program* workout, so a later workout outside the
+    program hides nothing.
   - **Superset rest:** a round ends with the last exercise that has that set,
     as the superset stands. With unequal set counts the longer one rests on
     its extra sets, and after removing the rest of a superset every set rests.

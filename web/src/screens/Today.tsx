@@ -9,7 +9,7 @@ import {
   todaySchema,
   useApi,
 } from "../api";
-import type { Loadable, PlannedDay, TodayPlan, WorkoutDetail } from "../api";
+import type { PlannedDay, TodayPlan, WorkoutDetail } from "../api";
 import { Load, tone } from "../components";
 import { formatDay, formatSet, formatTime } from "../format";
 import type { Logging } from "../log/context";
@@ -120,13 +120,11 @@ async function start(logging: Logging, today: TodayPlan, day: PlannedDay): Promi
   return due === null ? "stale" : startDay(logging, today.program_name, due);
 }
 
-/** The day in a fresh plan, if it is still `day` and no workout trains it yet. */
+/** The day in a fresh plan, if it is still `day` and no program workout is unfinished. */
 function stillDue(fresh: TodayPlan | null, day: PlannedDay): PlannedDay | null {
   const due = fresh?.day;
-  if (due?.id !== day.id || due.week !== day.week || fresh?.workout_client_id !== null) {
-    return null;
-  }
-  return due;
+  const free = fresh?.workout_client_id === null && fresh.left_over === null;
+  return due?.id === day.id && due.week === day.week && free ? due : null;
 }
 
 /**
@@ -296,23 +294,21 @@ function LeftOver({
   }
   const pickUp = async (drafts: DraftStore): Promise<void> => {
     setError(null);
-    let detail;
+    let fresh;
     try {
-      detail = await fetchJson("/api/workouts/current", currentWorkoutSchema, undefined, true);
+      fresh = await fetchJson("/api/today", todaySchema, undefined, true);
     } catch (failure) {
       setError(isOffline(failure) ? RESUME_OFFLINE : describeFailure(failure));
       return;
     }
+    // The server's left-over, read now, must still be this one.
+    const left = fresh?.left_over ?? null;
     const id = workout.client_id;
-    if (
-      id === null ||
-      detail?.client_id !== id ||
-      detail.program_day_id !== workout.program_day_id
-    ) {
+    if (id === null || left?.client_id !== id) {
       onStale();
       return;
     }
-    drafts.update((current) => current ?? draftFromServer(detail, id));
+    drafts.update((current) => current ?? draftFromServer(left, id));
     navigate({ name: "log" });
   };
   return (
@@ -341,23 +337,13 @@ function LeftOver({
   );
 }
 
-/** The unfinished program workout that is not the one Today trains, if any. */
-function leftOver(
-  current: Loadable<WorkoutDetail | null>,
-  today: TodayPlan | null,
-): WorkoutDetail | null {
-  const workout = current.status === "ready" ? current.data : null;
-  const program = workout?.program_day_id === null ? null : workout;
-  return program?.client_id === today?.workout_client_id ? null : program;
-}
-
 function Plan({ onStale }: { onStale: () => void }): ReactElement {
   const state = useApi("/api/today", todaySchema);
-  const current = useApi("/api/workouts/current", currentWorkoutSchema);
   return (
     <Load state={state}>
       {(today) => {
-        const left = leftOver(current, today);
+        // Both from the one answer: the day's workout and any left-over.
+        const left = today?.left_over ?? null;
         return (
           <>
             {left === null ? null : <LeftOver workout={left} onStale={onStale} />}
