@@ -101,15 +101,16 @@ removes the rest).
 
 **The trainer's tools.** The gateway starts `python -m trainer.mcp` from the
 trainer's virtualenv and talks MCP to it over stdin and stdout. It reads the
-training log read-only, through five tools: `recent_workouts`, `get_workout`,
-`list_exercises`, `exercise_history` and `body_weight`. It runs in the coach's
+training log read-only, through six tools: `recent_workouts`, `get_workout`,
+`list_exercises`, `exercise_history`, `body_weight` and `current_program` (the
+program being trained, its next day, and any proposal). It runs in the coach's
 sandbox, where the data directory is read-only. SQLite can read a WAL database
 from there only while its `-wal` and `-shm` files exist, so the API holds one
 connection open for as long as it runs, and `trainer-coach` starts after it.
 If the API is down, the tools answer that the log cannot be read.
 
-**Proposing a program.** The sixth tool, `propose_program`, is the coach's only
-write. It sends the program to the API at `TRAINER_API_URL` (the API's loopback
+**Proposing a program.** The seventh tool, `propose_program`, is the coach's
+only write. It sends the program to the API at `TRAINER_API_URL` (the API's loopback
 address, set by `trainer-coach.service`) with the gateway's key, which the API
 accepts on `PUT /api/programs/proposal` and nowhere else. The API saves it as a
 proposal; the owner accepts it in the app. `hermes/config.yaml` passes the URL
