@@ -6,8 +6,11 @@ from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING, Literal, Protocol
 
+from trainer.domain.notices import coach_answered
 from trainer.services.hermes import SessionNotFoundError
+from trainer.services.notices import HOLD, post
 from trainer.storage.coach import read_session_id, save_session_id
+from trainer.storage.programs import ProgramStatus, get_program, program_with_status
 
 if TYPE_CHECKING:
     import sqlite3
@@ -64,6 +67,35 @@ def send(
     except SessionNotFoundError:
         reply = gateway.chat(_start(conn, gateway), text)
     return CoachMessage("assistant", reply, clock().astimezone(UTC).isoformat(timespec="seconds"))
+
+
+@dataclass(frozen=True)
+class Turn:
+    """The coach's reply, and the notice held for it until the app claims it."""
+
+    reply: CoachMessage
+    notice_id: int
+
+
+def take_turn(
+    conn: sqlite3.Connection, gateway: Gateway, text: str, clock: Callable[[], datetime]
+) -> Turn:
+    """Say ``text`` to the coach, and post a notice of its answer.
+
+    The notice is held (``HOLD``): if the app shows the reply as it arrives, it
+    claims the notice and nothing is pushed; otherwise the owner hears of it.
+    A program proposed during the turn is named in the notice, which then opens
+    the Program screen.
+
+    Raises:
+        GatewayError: if the gateway cannot be reached or refuses.
+    """
+    before = program_with_status(conn, ProgramStatus.PROPOSED)
+    reply = send(conn, gateway, text, clock)
+    after = program_with_status(conn, ProgramStatus.PROPOSED)
+    proposal = None if after in {None, before} else get_program(conn, after).name
+    notice = coach_answered(reply.text, proposal)
+    return Turn(reply, post(conn, notice, datetime.fromisoformat(reply.at), HOLD))
 
 
 def history(conn: sqlite3.Connection, gateway: Gateway) -> list[CoachMessage]:

@@ -11,6 +11,7 @@ from trainer.storage.notices import (
     claim_unsent,
     delete_held_notice,
     delete_subscription,
+    forget_other_subscriptions,
     insert_notice,
     list_subscriptions,
     mark_all_read,
@@ -27,7 +28,7 @@ T2 = "2026-10-02T09:01:00+00:00"
 COACH = Notice(NoticeKind.COACH, "Your coach answered", "Rest tomorrow.")
 TEST = Notice(NoticeKind.TEST, "Notifications are on", "")
 INBOX = "INSERT INTO inbox (kind, title, body, created_at, due_at)"
-APPLE = Subscription("https://web.push.apple.com/one", "BKey", "auth")
+APPLE = Subscription("https://web.push.apple.com/one", "BKey", "auth", "BServer")
 
 
 def test_a_notice_shows_from_when_it_is_due(db: sqlite3.Connection) -> None:
@@ -99,11 +100,14 @@ def test_unsent_notices_are_due_and_oldest_first(db: sqlite3.Connection) -> None
 
 def test_a_subscription_is_saved_once_per_endpoint(db: sqlite3.Connection) -> None:
     save_subscription(db, APPLE, T0)
-    save_subscription(db, Subscription(APPLE.endpoint, "BNew", "fresh"), T1)
-    other = Subscription("https://fcm.googleapis.com/fcm/send/x", "BOther", "a2")
+    save_subscription(db, Subscription(APPLE.endpoint, "BNew", "fresh", "BServer2"), T1)
+    other = Subscription("https://fcm.googleapis.com/fcm/send/x", "BOther", "a2", "BServer")
     save_subscription(db, other, T1)
 
-    assert list_subscriptions(db) == [Subscription(APPLE.endpoint, "BNew", "fresh"), other]
+    assert list_subscriptions(db) == [
+        Subscription(APPLE.endpoint, "BNew", "fresh", "BServer2"),
+        other,
+    ]
     created = db.execute("SELECT created_at FROM push_subscriptions ORDER BY id").fetchall()
     assert [row[0] for row in created] == [T0, T1]
 
@@ -157,3 +161,17 @@ def test_a_notice_read_is_claimed_but_not_to_push(db: sqlite3.Connection) -> Non
 
     assert db.execute("SELECT sent_at FROM inbox").fetchone()[0] == T1
     assert unsent_notices(db, T2) == []
+
+
+def test_subscriptions_made_with_another_server_key_are_forgotten(db: sqlite3.Connection) -> None:
+    save_subscription(db, APPLE, T0)
+    current = Subscription("https://fcm.googleapis.com/fcm/send/x", "BOther", "a2", "BNewServer")
+    save_subscription(db, current, T0)
+    db.execute(
+        "INSERT INTO push_subscriptions (endpoint, p256dh, auth, created_at) "
+        "VALUES ('https://web.push.apple.com/old', 'k', 'a', 't')"  # from before v8: no key
+    )
+
+    assert forget_other_subscriptions(db, "BNewServer") == 2
+    assert list_subscriptions(db) == [current]
+    assert forget_other_subscriptions(db, "BNewServer") == 0

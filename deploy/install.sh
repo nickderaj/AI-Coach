@@ -10,7 +10,8 @@
 #    (config.yaml, SOUL.md) into its home in the data directory
 #  - creates the private, local-only memory repository (nightly commits)
 #  - installs, verifies and (re)starts the systemd units; the coach's gateway
-#    starts only once its secrets exist (deploy/hermes-secrets.sh)
+#    starts only once its secrets exist (deploy/hermes-secrets.sh), and the
+#    push sender once its VAPID key does (deploy/push-secrets.sh)
 #  - checks /healthz and the gateway's /health on loopback
 set -euo pipefail
 umask 022
@@ -111,10 +112,19 @@ for unit in "$bundle"/systemd/*; do
   install -m 0644 -o root -g root "$unit" /etc/systemd/system/
   units+=("/etc/systemd/system/$(basename "$unit")")
 done
+# The push sender may reach the internet but nothing nearer, which would include
+# the host's resolvers: allow exactly the ones /etc/resolv.conf names. Re-run
+# the install if they change.
+dropin=/etc/systemd/system/trainer-push.service.d
+install -d -o root -g root -m 0755 "$dropin"
+resolvers=$(awk '$1 == "nameserver" { printf " %s", $2 }' /etc/resolv.conf)
+printf '[Service]\n# Written by install.sh from /etc/resolv.conf.\nIPAddressAllow=%s\n' \
+  "${resolvers# }" > "$dropin/resolvers.conf"
+chmod 0644 "$dropin/resolvers.conf"
 systemd-analyze verify "${units[@]}"
 systemctl daemon-reload
 systemctl enable --now trainer-backup.timer trainer-memory.timer
-systemctl enable trainer-api.service trainer-coach.service
+systemctl enable trainer-api.service trainer-coach.service trainer-push.service
 systemctl restart trainer-api.service
 
 # wait_healthy <unit> <url> <seconds>: wait for a service to answer, else show its logs.
@@ -137,4 +147,16 @@ if [ -f "$TRAINER_SECRETS_DIR/model.env" ] && [ -f "$TRAINER_SECRETS_DIR/gateway
   wait_healthy trainer-coach.service "http://$TRAINER_HERMES_UPSTREAM/health" 60
 else
   echo "trainer-coach not started: run sudo ./deploy/hermes-secrets.sh first" >&2
+fi
+if [ -f "$TRAINER_SECRETS_DIR/push.env" ]; then
+  systemctl restart trainer-push.service
+  sleep 3
+  if ! systemctl is-active --quiet trainer-push.service; then
+    echo "trainer-push.service did not stay up; recent logs:" >&2
+    journalctl --unit trainer-push.service --lines 40 --no-pager >&2
+    exit 1
+  fi
+  echo "installed: trainer-push.service is running"
+else
+  echo "trainer-push not started: run sudo ./deploy/push-secrets.sh first" >&2
 fi

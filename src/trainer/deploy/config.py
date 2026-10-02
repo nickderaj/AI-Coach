@@ -18,6 +18,7 @@ KEYS = (
     "TRAINER_HERMES_PORT",
     "TRAINER_MODEL_URL",
     "TRAINER_MODEL",
+    "TRAINER_PUSH_CONTACT",
 )
 USER_NAME = re.compile(r"^[a-z_][a-z0-9_-]{0,31}$")
 # A Tailscale login (e.g. an email address). No "%": systemd expands it in units.
@@ -27,6 +28,12 @@ SAFE_PATH = re.compile(r"^(?:/[A-Za-z0-9._-]+)+$")
 # No "%" or "$": systemd and Hermes's config would expand them.
 MODEL_URL = re.compile(r"^https://[A-Za-z0-9.-]+(?::[0-9]{1,5})?(?:/[A-Za-z0-9._~-]+)*/?$")
 MODEL_ID = re.compile(r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,99}$")
+# Who the push services can reach about this server's pushes (VAPID's "sub"):
+# a mailto: address or an HTTPS page. No "%" or "$", which systemd expands.
+PUSH_CONTACT = re.compile(
+    r"^(?:mailto:[A-Za-z0-9._+-]+@[A-Za-z0-9-]+(?:\.[A-Za-z0-9-]+)+"
+    r"|https://[A-Za-z0-9.-]+(?:/[A-Za-z0-9._~-]+)*/?)$"
+)
 # Dedicated locations only. The two sets are disjoint, so the service-writable
 # data directory and the root-owned code prefix can never be equal or nested.
 DATA_ROOTS = ("/srv", "/var/lib", "/mnt", "/media")
@@ -58,6 +65,7 @@ class DeployConfig:
     hermes_port: int
     model_url: str
     model: str
+    push_contact: str
 
     @property
     def upstream(self) -> str:
@@ -134,6 +142,9 @@ def load(text: str) -> DeployConfig:
         hermes_port=_hermes_port(values["TRAINER_HERMES_PORT"], bind_port),
         model_url=_matching("TRAINER_MODEL_URL", values["TRAINER_MODEL_URL"], MODEL_URL),
         model=_matching("TRAINER_MODEL", values["TRAINER_MODEL"], MODEL_ID),
+        push_contact=_matching(
+            "TRAINER_PUSH_CONTACT", values["TRAINER_PUSH_CONTACT"], PUSH_CONTACT
+        ),
     )
 
 
@@ -150,6 +161,7 @@ def to_env(config: DeployConfig) -> str:
         "TRAINER_HERMES_PORT": str(config.hermes_port),
         "TRAINER_MODEL_URL": config.model_url,
         "TRAINER_MODEL": config.model,
+        "TRAINER_PUSH_CONTACT": config.push_contact,
     }
     return "".join(f"{key}={value}\n" for key, value in values.items())
 

@@ -21,6 +21,7 @@ cp deploy/local.env.example deploy/local.env   # then edit every value
 ./deploy/build.sh                              # as your user: wheels, locked requirements, units
 sudo ./deploy/install.sh                       # user, data dir, venvs, units, health checks
 sudo ./deploy/hermes-secrets.sh                # the model API key (asked for), starts the coach
+sudo ./deploy/push-secrets.sh                  # the VAPID key pair for notifications, starts the sender
 sudo ./deploy/tailscale-serve.sh               # publish on https://<host>.<tailnet>.ts.net/
 ```
 
@@ -140,6 +141,42 @@ sudo -u <user> git --git-dir=<data dir>/hermes-memory.git log -p
 To revert a fact, check out the old version of the file into the coach's home
 with `--work-tree=<data dir>/hermes`, then restart the gateway.
 
+## Notifications (Web Push)
+
+The app tells the owner when the coach has answered and they were not watching,
+through Web Push to the phone, and always in the app's inbox. The design and
+what is notified are in [STATUS.md](STATUS.md) (phase 5).
+
+**Keys.** `sudo ./deploy/push-secrets.sh` makes the server's VAPID key pair
+(P-256) with the installed virtualenv, once, into two root-only files:
+- `/etc/hermes-trainer/push.env`, the private key, which signs every push;
+  only `trainer-push.service` gets it;
+- `/etc/hermes-trainer/push-public.env`, the public key, which browsers
+  subscribe with; `trainer-api.service` serves it.
+
+Running it again keeps the pair, and writes the public file again if it does not
+match the private key (the private key decides). `--rotate` makes a new pair:
+the sender then forgets every subscription made with the old key, and each
+phone has to turn notifications on again in Settings. Until the files exist the app
+says notifications are not set up, and `install.sh` leaves the sender stopped.
+
+`TRAINER_PUSH_CONTACT` in `deploy/local.env` (a `mailto:` address or an HTTPS
+page) is sent, signed, with every push, so a push service can reach the sender.
+
+**The sender.** `trainer-push.service` runs `python -m trainer.push serve`. Every
+2 seconds it pushes the notices that have come due to every subscribed browser:
+encrypted for that browser (RFC 8291), signed (RFC 8292), over HTTPS with no
+proxy and no redirects, and only to Apple's, Google's, Mozilla's or Microsoft's
+push services. A browser whose subscription has ended is forgotten.
+
+**Its network.** The API keeps `IPAddressDeny=any`: it never talks to the
+internet. The sender is the one unit of the app's own with a route out, and it
+is refused everything nearer than the internet: loopback (so neither the API
+nor the coach), link-local, multicast, the private ranges and the tailnet's
+range. It still needs DNS, so `install.sh` writes a drop-in,
+`/etc/systemd/system/trainer-push.service.d/resolvers.conf`, allowing exactly
+the resolvers `/etc/resolv.conf` names. If they change, run `install.sh` again.
+
 ## Common exercises
 
 `python -m trainer.manage seed-exercises --database <data dir>/trainer.db` adds
@@ -179,6 +216,7 @@ build names any that are missing.
 | `trainer-api.service` | `python -m trainer.api` (JSON API under `/api`, the built web app at `/`) | Loopback only (`IPAddressAllow=localhost`), read-only system, writable data directory only, no capabilities, `@system-service` syscalls |
 | `trainer-backup.timer` → `trainer-backup.service` | `python -m trainer.deploy backup` nightly at 03:30 | SQLite online backup into `<data dir>/backups`, keeps `TRAINER_BACKUP_KEEP`; no network at all |
 | `trainer-coach.service` | `hermes gateway run` (the coach; its API on loopback) | Writes only `<data dir>/hermes`; secrets from root-only `EnvironmentFile`s; outbound network for the model provider; read-only system, no capabilities, `@system-service` syscalls |
+| `trainer-push.service` | `python -m trainer.push serve` (the push sender) | Pushes due notices to subscribed browsers; VAPID key from a root-only `EnvironmentFile`; outbound network to the internet only (loopback, LAN and tailnet denied; the resolvers allowed by a drop-in); writes the data directory only |
 | `trainer-memory.timer` → `trainer-memory.service` | `python -m trainer.deploy memory-commit` nightly at 03:15 | Commits `memories/` and `skills/` to `<data dir>/hermes-memory.git`; writes only that repository; no network at all |
 
 Code is root-owned under `TRAINER_PREFIX`; the service user can write only
@@ -217,6 +255,7 @@ systemctl list-timers trainer-backup.timer trainer-memory.timer
 sudo systemctl start trainer-backup.service     # back up now
 systemctl status trainer-coach.service
 journalctl -u trainer-coach.service -f
+journalctl -u trainer-push.service -f          # pushes sent, failed, subscriptions ended
 sudo systemctl start trainer-memory.service     # commit the coach's memory now
 tailscale serve status
 ```

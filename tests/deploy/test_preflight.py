@@ -35,6 +35,7 @@ CONFIG = DeployConfig(
     hermes_port=8642,
     model_url="https://api.example.com/v1",
     model="model-1",
+    push_contact="mailto:owner@example.com",
 )
 GOOD_ACCOUNT = Account(
     uid=SERVICE, gid=SERVICE, home="/nonexistent", login_shell="/usr/sbin/nologin"

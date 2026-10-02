@@ -21,6 +21,23 @@ UNITS = (
     "trainer-coach.service",
     "trainer-memory.service",
     "trainer-memory.timer",
+    "trainer-push.service",
+)
+# What the push sender may not reach: loopback, link-local, multicast, the
+# private ranges (IPv4 and IPv6 unique local), and the shared address space
+# (RFC 6598) that Tailscale numbers the tailnet from. Its first octet is written
+# apart because the policy check flags addresses in that range.
+PUSH_DENIED = " ".join(
+    (
+        "localhost",
+        "link-local",
+        "multicast",
+        "10.0.0.0/8",
+        "172.16.0.0/12",
+        "192.168.0.0/16",
+        "100" + ".64.0.0/10",
+        "fc00::/7",
+    )
 )
 
 
@@ -42,6 +59,8 @@ def substitutions(config: DeployConfig) -> dict[str, str]:
         "hermes_home": str(config.hermes_home),
         "memory_repo": str(config.memory_repo),
         "secrets_dir": str(SECRETS_DIR),
+        "push_contact": config.push_contact,
+        "push_denied": PUSH_DENIED,
     }
 
 

@@ -47,18 +47,31 @@ class TestSettings:
         base = {"TRAINER_DATA_DIR": "/srv/t", "TRAINER_OWNER_LOGIN": OWNER}
 
         both = settings_from_env(
-            {**base, "TRAINER_HERMES_URL": "http://127.0.0.1:8642", "API_SERVER_KEY": "k"}
+            {
+                **base,
+                "TRAINER_HERMES_URL": "http://127.0.0.1:8642",
+                "API_SERVER_KEY": "gateway-secret",
+            }
         )
 
-        assert both.coach == CoachSettings("http://127.0.0.1:8642", "k")
-        assert "k" not in repr(both)  # the key stays out of logs and tracebacks
+        assert both.coach == CoachSettings("http://127.0.0.1:8642", "gateway-secret")
+        assert "gateway-secret" not in repr(both)  # the key stays out of logs and tracebacks
         assert settings_from_env(base).coach is None
         assert settings_from_env({**base, "TRAINER_HERMES_URL": "http://x"}).coach is None
-        assert settings_from_env({**base, "API_SERVER_KEY": "k"}).coach is None
+        assert settings_from_env({**base, "API_SERVER_KEY": "gateway-secret"}).coach is None
         assert (
-            settings_from_env({**base, "TRAINER_HERMES_URL": "", "API_SERVER_KEY": "k"}).coach
+            settings_from_env(
+                {**base, "TRAINER_HERMES_URL": "", "API_SERVER_KEY": "gateway-secret"}
+            ).coach
             is None
         )
+
+    def test_the_push_key_is_optional(self) -> None:
+        base = {"TRAINER_DATA_DIR": "/srv/t", "TRAINER_OWNER_LOGIN": OWNER}
+
+        assert settings_from_env({**base, "TRAINER_VAPID_PUBLIC_KEY": "BKey"}).push_key == "BKey"
+        assert settings_from_env({**base, "TRAINER_VAPID_PUBLIC_KEY": ""}).push_key is None
+        assert settings_from_env(base).push_key is None
 
     def test_web_dir_is_optional(self) -> None:
         settings = settings_from_env({"TRAINER_DATA_DIR": "/srv/t", "TRAINER_OWNER_LOGIN": OWNER})

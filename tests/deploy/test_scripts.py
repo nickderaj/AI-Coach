@@ -19,6 +19,7 @@ def test_there_are_deploy_scripts() -> None:
         "hermes-secrets.sh",
         "import-v1.sh",
         "install.sh",
+        "push-secrets.sh",
         "tailscale-serve.sh",
     ]
 
@@ -35,7 +36,8 @@ def test_script_parses_and_is_strict(script: Path) -> None:
 
 
 @pytest.mark.parametrize(
-    "script", ["hermes-secrets.sh", "import-v1.sh", "install.sh", "tailscale-serve.sh"]
+    "script",
+    ["hermes-secrets.sh", "import-v1.sh", "install.sh", "push-secrets.sh", "tailscale-serve.sh"],
 )
 def test_root_scripts_refuse_to_run_unprivileged(script: str) -> None:
     text = (DEPLOY / script).read_text(encoding="utf-8")
@@ -88,3 +90,23 @@ def test_the_v1_snapshot_is_read_only_and_made_as_its_owner() -> None:
     assert 'runuser -u "$owner" -- sqlite3 "file:$source_db?mode=ro"' in text
     assert 'owner=$(stat -c %U "$source_db")' in text
     assert '"${dry_run[@]}"' in text
+
+
+def test_the_push_keys_are_kept_by_write_keys_root_only() -> None:
+    # The pair itself is handled, and tested, in trainer.push.keys.
+    text = (DEPLOY / "push-secrets.sh").read_text(encoding="utf-8")
+
+    assert "umask 077" in text
+    assert 'install -d -o root -g root -m 0700 "$TRAINER_SECRETS_DIR"' in text
+    assert '"$python" -m trainer.push write-keys "${args[@]}"' in text
+    assert "--rotate) rotate=yes" in text
+    assert "args+=(--rotate)" in text
+
+
+def test_the_push_sender_starts_only_with_its_key_and_its_resolvers() -> None:
+    text = (DEPLOY / "install.sh").read_text(encoding="utf-8")
+
+    assert '[ -f "$TRAINER_SECRETS_DIR/push.env" ]' in text
+    assert "trainer-push.service.d" in text
+    assert "/etc/resolv.conf" in text
+    assert "IPAddressAllow=%s" in text

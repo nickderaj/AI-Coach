@@ -28,6 +28,7 @@ from trainer.storage.notices import (
     claim_unsent,
     delete_held_notice,
     delete_subscription,
+    forget_other_subscriptions,
     insert_notice,
     list_subscriptions,
     mark_all_read,
@@ -66,6 +67,10 @@ AUTH_LENGTH = 16
 
 class NoticeNotFoundError(LookupError):
     """No notice has that id."""
+
+
+class OtherServerKeyError(ValueError):
+    """A browser subscribed with a server key other than the current one."""
 
 
 def is_push_endpoint(url: str) -> bool:
@@ -153,15 +158,31 @@ class SubscriptionIn(BaseModel):
         str, StringConstraints(max_length=MAX_ENDPOINT_LENGTH), AfterValidator(_endpoint)
     ]
     keys: SubscriptionKeys
+    # The server's public key the browser subscribed with (its applicationServerKey).
+    server_key: Key
+
+    @field_validator("server_key")
+    @classmethod
+    def _server_point(cls, text: str) -> str:
+        return _sized(text, P256DH_LENGTH, b"\x04")
 
 
-def subscribe(conn: sqlite3.Connection, subscription: SubscriptionIn, now: datetime) -> None:
-    """Push notices to this browser from now on (again, if it subscribed before)."""
+def subscribe(
+    conn: sqlite3.Connection, subscription: SubscriptionIn, server_key: str, now: datetime
+) -> None:
+    """Push notices to this browser from now on (again, if it subscribed before).
+
+    Raises:
+        OtherServerKeyError: if it subscribed with a key other than ``server_key``,
+            the one pushes are signed with: they would all be refused.
+    """
+    if decode_key(subscription.server_key) != decode_key(server_key):
+        message = "subscribed with another server key; subscribe again"
+        raise OtherServerKeyError(message)
     keys = subscription.keys
+    saved = Subscription(subscription.endpoint, keys.p256dh, keys.auth, server_key)
     with write_transaction(conn):
-        save_subscription(
-            conn, Subscription(subscription.endpoint, keys.p256dh, keys.auth), utc_iso(now)
-        )
+        save_subscription(conn, saved, utc_iso(now))
 
 
 def unsubscribe(conn: sqlite3.Connection, endpoint: str) -> bool:
@@ -225,6 +246,11 @@ class PushOutcome(StrEnum):
 class PushSender(Protocol):
     """Encrypts and sends one push (``trainer.services.webpush``); never raises."""
 
+    @property
+    def server_key(self) -> str:
+        """The public key the sender signs with (base64url)."""
+        ...
+
     def send(self, subscription: Subscription, payload: bytes) -> PushOutcome:
         """Push ``payload`` to ``subscription``."""
         ...
@@ -258,7 +284,8 @@ def deliver(conn: sqlite3.Connection, sender: PushSender, now: datetime) -> Deli
     skips it. If the process stops mid-push the notice is not pushed again; it
     is in the inbox. A notice read in the app by the time it is claimed, or due
     more than ``STALE_AFTER`` ago, is not pushed at all. A browser whose subscription has
-    ended is forgotten. No transaction is held while a push is on its way.
+    ended, or was made with a key other than the sender's (an old key, before it
+    was replaced), is forgotten. No transaction is held while a push is on its way.
     """
     stamp = utc_iso(now)
     stale = utc_iso(now - STALE_AFTER)
@@ -273,6 +300,8 @@ def deliver(conn: sqlite3.Connection, sender: PushSender, now: datetime) -> Deli
 
 def _push(conn: sqlite3.Connection, sender: PushSender, notice: StoredNotice) -> Delivery:
     body = payload(notice)
+    with write_transaction(conn):
+        forgotten = forget_other_subscriptions(conn, sender.server_key)
     outcomes = [
         (subscription, sender.send(subscription, body)) for subscription in list_subscriptions(conn)
     ]
@@ -282,7 +311,9 @@ def _push(conn: sqlite3.Connection, sender: PushSender, notice: StoredNotice) ->
             delete_subscription(conn, subscription.endpoint)
     results = [outcome for _, outcome in outcomes]
     return Delivery(
-        results.count(PushOutcome.DELIVERED), results.count(PushOutcome.FAILED), len(gone)
+        results.count(PushOutcome.DELIVERED),
+        results.count(PushOutcome.FAILED),
+        forgotten + len(gone),
     )
 
 

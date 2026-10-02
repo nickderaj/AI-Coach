@@ -44,6 +44,9 @@ Last updated: 2026-10-02.
 | `current_program`: the coach reads the program it changes | #29 | Deployed 2026-10-01. A live turn in a throwaway session called `current_program`; session deleted, no memory written. |
 | v1's Telegram gym bot (`gym.service`) stopped and disabled, at the owner's request | — | 2026-10-02, on the host: `sudo systemctl disable --now gym.service`. Nothing deleted (its code, database and user stay); roll back with `sudo systemctl enable --now gym.service`. **Phase 2's exit criterion met**; phase 5's "retire v1" step done early. |
 | Phase 4e — the Today screen: train the program's next day from the app | #28 | Deployed 2026-10-02 (backup first). Live: `/api/today` answered the owner (null, no program yet); the served bundle has Today, the left-over recovery and the fresh (`no-store`) reads. **Phase 4 built.** |
+| `ci:` MIT-0 on the licence allow-list (`cffi` 2.1, for `cryptography`) | #31 | Gate only; nothing to deploy. |
+| Phase 5a — the inbox and push subscriptions; what to notify; pushing at most once; schema v7 | #32 | Deployed 2026-10-02 (backup first); schema v7 live, `inbox` and `push_subscriptions` empty, the 24 workouts untouched. |
+| Phase 5d — dry run of the v1 import; v1 snapshotted read-only as its owner | #34 | Deployed 2026-10-02 (backup first). The live dry run found nothing to import or change, so the write was not run (as agreed in #34): v1's history is fully imported. |
 
 ## Phase 2 — logging: done
 
@@ -620,10 +623,10 @@ v1 since phase 1. Phase 5 is split into PRs that each stand on their own:
 
 | Step | Scope | PR |
 | --- | --- | --- |
-| 5a | Schema v7 (`push_subscriptions`, `inbox`); what to notify (pure, `trainer.domain.notices`); the inbox, holding and claiming a notice, subscriptions, and pushing through a sender interface | this PR |
-| 5b | API: subscribe and unsubscribe, the inbox, a test notice; the coach's answer posts its notice. Web Push itself (RFC 8291 encryption, RFC 8292 VAPID) on `cryptography`; a small sender unit with outbound network, the API kept without; `deploy/push-secrets.sh` for the VAPID keys | |
+| 5a | Schema v7 (`push_subscriptions`, `inbox`); what to notify (pure, `trainer.domain.notices`); the inbox, holding and claiming a notice, subscriptions, and pushing through a sender interface | #32 |
+| 5b | API: subscribe and unsubscribe, the inbox, a test notice; the coach's answer posts its notice. Web Push itself (RFC 8291 encryption, RFC 8292 VAPID) on `cryptography`; a small sender unit with outbound network, the API kept without; `deploy/push-secrets.sh` for the VAPID keys | this PR |
 | 5c | Web: the service worker shows pushes and opens the right screen; a Settings switch and a test; the Inbox screen with unread state | |
-| 5d | The last v1 import: a dry run in the PR, then one re-run after deploy, backup first | this PR |
+| 5d | The last v1 import: a dry run in the PR, then one re-run after deploy, backup first | #34 |
 | 5e | Exit criterion, by the owner: push and the inbox working on the phone; v1's history fully imported | |
 
 **What is notified.** As little as possible; v1's daily "not imported" nudge
@@ -644,7 +647,7 @@ was dropped on purpose, and nothing here runs on a timer.
   Today and Home already show it.
 - **A test**, sent from Settings, to check a phone receives pushes.
 
-**5a: the inbox and its storage (this PR).**
+**5a: the inbox and its storage (done, #32).**
 - **Schema v7.** `push_subscriptions`: one row per browser, by its push
   service address (`https` only, unique), with its two keys as it gave them.
   `inbox`: a notice's kind (`coach`, `proposal` or `test`), title and text,
@@ -676,7 +679,73 @@ was dropped on purpose, and nothing here runs on a timer.
   `http-ece` and `py-vapid`, the last two under MPL-2.0, for about 80 lines
   of code that the RFC's own test vector checks.
 
-**5d: the last v1 import, a dry run first (this PR).**
+**5b: pushing, and the API (this PR).**
+- **Endpoints**, all owner-only:
+  - `GET /api/push/key`: the VAPID public key to subscribe with (503 "notifications
+    are not set up" until `push-secrets.sh` has run);
+  - `PUT /api/push/subscription` with the browser's `{endpoint, keys}` and the
+    `server_key` it subscribed with (409 if that is not the current key), and
+    `DELETE /api/push/subscription?endpoint=…`; both 204 and idempotent;
+  - `POST /api/push/test`: a test notice, in the inbox at once and pushed;
+  - `GET /api/inbox`: `{unread, notices}`, each notice with the `route` it opens;
+  - `POST /api/inbox/{id}/seen` (claim a held notice, or mark one read; 404 if
+    there is none) and `POST /api/inbox/read` (all of them).
+- **The coach's answer.** `POST /api/coach/messages` now also posts the
+  answer's notice, held for 15 s, and returns its `notice_id` beside the reply.
+  The Coach and Program screens will claim it while they show the reply (5c).
+  Until 5c is deployed nothing claims them, so each answer also lands in the
+  inbox; no browser can subscribe before 5c, so nothing is pushed.
+- **Web Push** (`trainer.services.webpush`), on `cryptography` alone:
+  - the payload is encrypted for the browser (RFC 8291, `aes128gcm`, one
+    record of at most 4079 bytes) with a fresh key pair and salt per push;
+    the test is the RFC's own worked example, byte for byte;
+  - each request carries a VAPID token (RFC 8292, ES256) for the push
+    service's origin, valid 12 hours, with `TRAINER_PUSH_CONTACT`;
+  - `TTL` is a day, so a phone that is off still gets it later;
+  - urllib with no proxies, no redirects (a redirect is a failure) and a 10 s
+    timeout; 2xx is delivered, 404 or 410 means the subscription has ended,
+    anything else is a failure, logged by host only (an endpoint is a
+    capability, so it is never logged);
+  - an endpoint is checked again before anything is sent.
+- **The sender** (`python -m trainer.push serve`, `trainer-push.service`) runs
+  a round of `deliver` every 2 seconds. `python -m trainer.push write-keys`
+  keeps the VAPID key pair for `push-secrets.sh` (below).
+- **Why a unit of its own.** `trainer-api` keeps `IPAddressDeny=any`: the
+  process that answers the tailnet never gets a route out. The sender has
+  the same sandbox as the API (read-only system, the data directory writable,
+  no capabilities, `@system-service`), but its network is the internet only.
+  `IPAddressDeny` refuses loopback (so it cannot reach the API or the coach),
+  link-local, multicast, the private ranges, the tailnet's range and IPv6 ULAs.
+  DNS needs the host's resolvers, so `install.sh` writes a drop-in that allows
+  exactly those named in `/etc/resolv.conf`. systemd cannot filter by host
+  name or port, so the hosts are checked in code: an endpoint must be HTTPS on
+  Apple's, Google's, Mozilla's or Microsoft's push service. Checked on the host
+  with `systemd-run` and those properties: names resolved and Apple's push
+  service answered on 443, while loopback and the LAN were refused; without
+  the drop-in, names did not resolve. The encryption and signing also ran
+  under the unit's `MemoryDenyWriteExecute` and syscall filter.
+- **Secrets.** `deploy/push-secrets.sh` runs `python -m trainer.push
+  write-keys` as root. It writes `push.env` (the private key, for the sender)
+  and `push-public.env` (the public key, for the API) to `/etc/hermes-trainer`,
+  owner-only, each replaced at once. The private key is the source of truth:
+  the public file is derived from it and written again whenever it does not
+  match, so a run cut short between the two files (mid-rotation, say) is put
+  right by the next run. `--rotate` makes a new pair. Keys never appear in an
+  argument list (from review).
+- **Schema v8: the server key on each subscription** (from review). A browser
+  sends the server key it subscribed with (`server_key`); the API refuses (409)
+  one made with another key, and the app subscribes again. The sender forgets
+  every subscription not made with its own key, so a rotation invalidates the
+  old subscriptions however the rotation ended, instead of their pushes
+  failing (401/403) on every notice.
+- **New in `deploy/local.env`:** `TRAINER_PUSH_CONTACT`, a `mailto:` address or
+  an HTTPS page.
+- **Dependencies:** `cryptography` 50.0.2 (Apache-2.0 OR BSD-3-Clause), with
+  `cffi` 2.1.1 (MIT-0, allowed by #31) and `pycparser` 3.0 (BSD-3-Clause).
+  The layering contract gains `trainer.push` beside `trainer.api` and
+  `trainer.mcp`.
+
+**5d: the last v1 import, a dry run first (done, #34).**
 - `python -m trainer.manage import-v1 --dry-run` (and `import-v1.sh --dry-run`)
   re-imports into an in-memory copy of the database, read through a read-only
   connection, and compares it with what the last import wrote. It lists every
@@ -696,6 +765,13 @@ was dropped on purpose, and nothing here runs on a timer.
   workout, set, metric or cardio session would be added or removed, and no
   exercise or alias would change. v1's last session is 28 September, before
   phase 1's import.
+- **After deploy (2026-10-02, backup first)**, `sudo ./deploy/import-v1.sh
+  --dry-run` against the live database and v1 found the same: nothing to add,
+  remove or change. As agreed in #34, the write was not run: it would only
+  have replaced the 22 v1 workouts with identical ones under new ids. **v1's
+  history is fully imported.** The v1 database file was not written (its last
+  change is the bot's own shutdown); only SQLite's shared-memory file beside
+  it, owned by v1's user, was touched by the read-only reader.
 
 ## Remaining phases
 
