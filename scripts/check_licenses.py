@@ -29,6 +29,7 @@ ALLOWED = frozenset(
         "BSD-3-Clause",
         "ISC",
         "MIT",
+        "MIT-0",  # MIT without the attribution condition
         "PSF-2.0",
     }
 )

@@ -67,6 +67,7 @@ def test_licenses_reads_expression_then_classifiers(meta: Message, expected: set
     ("declared", "expected"),
     [
         ({"MIT"}, None),
+        ({"MIT-0"}, None),
         ({"GPL-3.0-only"}, "x: GPL-3.0-only is not allow-listed"),
         (set(), "x: declares no recognisable licence"),
     ],
