@@ -618,7 +618,7 @@ program with every day, block and exercise, its next week and day, and any
 proposal waiting. `hermes/SOUL.md` tells the coach to read it before
 proposing.
 
-## Phase 5 — Cut-over: built, awaiting its exit criterion
+## Phase 5 — Cut-over: done
 
 v1's bot is already stopped (see Done). What is left is how the app reaches
 the owner when it is closed (D1), and one last import of anything logged in
@@ -630,7 +630,7 @@ v1 since phase 1. Phase 5 is split into PRs that each stand on their own:
 | 5b | API: subscribe and unsubscribe, the inbox, a test notice; the coach's answer posts its notice. Web Push itself (RFC 8291 encryption, RFC 8292 VAPID) on `cryptography`; a small sender unit with outbound network, the API kept without; `deploy/push-secrets.sh` for the VAPID keys | #33 |
 | 5c | Web: the service worker shows pushes and opens the right screen; a Settings switch and a test; the Inbox screen with unread state | #35 |
 | 5d | The last v1 import: a dry run in the PR, then one re-run after deploy, backup first | #34 |
-| 5e | Exit criterion, by the owner: push and the inbox working on the phone; v1's history fully imported | ready; steps 1–2 seen 2026-10-02, step 3 to do |
+| 5e | Exit criterion, by the owner: push and the inbox working on the phone; v1's history fully imported | met 2026-10-02 |
 
 **What is notified.** As little as possible; v1's daily "not imported" nudge
 was dropped on purpose, and nothing here runs on a timer.
@@ -693,15 +693,20 @@ a tapped notice read *before* showing its screen, so the screen loads it read,
 but waits 2 seconds at most (`SEEN_WAIT_MS`): a phone can get a push while it
 cannot reach the server, and the tap must still open the app (from review).
 
-**Exit criterion so far (2026-10-02).** v1's history is fully imported (5d).
-On the owner's phone, steps 1 and 2 below are done: notifications are on in
-the Home Screen app, test pushes arrive, and tapping one opens the Inbox with
-it read (after #37). **Step 3 is still to do**: a coach answer, asked with the
-phone locked, arriving as a notification and opening the Coach tab. Tests and
-a throwaway turn on a backup copy cover that path, but not the live delivery
-and opening on the phone, which is what this check is for.
+**Exit criterion: met on 2026-10-02.** v1's history is fully imported (5d).
+On the owner's phone, all three steps below were seen:
+1. notifications turned on in the Home Screen app;
+2. test pushes arrived, and tapping one opened the Inbox with it read (after
+   #37);
+3. a coach answer asked with the phone locked arrived as "Your coach answered".
+   Its notice was held 15 s and not claimed (the phone had gone: the API never
+   sent the reply on that request), and was pushed. Tapping it marked it read and
+   opened the Coach tab, which loaded the conversation with the answer.
 
-**Exit criterion (5e, ready for the owner).** v1's history is fully imported
+**Phase 5 complete.** Every phase of the plan is built; phase 4's exit
+criterion (a full week trained from the app) is still with the owner.
+
+**The exit check (5e).** v1's history is fully imported
 (5d, checked against the live database). For push and the inbox:
 1. Open the app **from the Home Screen** (Safari tabs cannot receive pushes on
    an iPhone), then **⚙ Settings → Notifications**, turn on **Notify me on
@@ -712,7 +717,7 @@ and opening on the phone, which is what this check is for.
    arrives as "Your coach answered", and tapping it opens the Coach tab. Asked
    with the Coach tab open and the phone awake, it does not notify.
 
-Phase 5 closes when that works on the phone.
+All three worked on 2026-10-02 (above).
 
 **5b: pushing, and the API (done, #33).**
 - **Endpoints**, all owner-only:
@@ -844,7 +849,7 @@ Phase 5 closes when that works on the phone.
 | 2 — Logging | 2a write API, 2b-1 visual design, 2c offline queue and PWA install, 2b-2 logging screens (all done) | Owner stops logging in v1 |
 | 3 — Hermes | `trainer-coach` unit, `hermes/` profile templates (SOUL, config), MCP tool server, Coach tab on one durable session, **private local git repo** for memory/skills with a nightly commit (never this repo) | Coach remembers across turns and days |
 | 4 — Programs | Domain engine (`# coverage-critical`): double progression per D5, deload per D6, sequence-based "next day"; `propose_program` via Hermes; Today screen with blocks/supersets, targets, "last time", rest timer | A full week trained from the app |
-| 5 — Cut-over | Web Push + in-app inbox; a last catch-up import from v1's database (v1's bot is already stopped, 2026-10-02); built, above | Push and inbox working; v1's history fully imported |
+| 5 — Cut-over | Web Push + in-app inbox; a last catch-up import from v1's database (v1's bot is already stopped, 2026-10-02); done, above | Push and inbox working; v1's history fully imported |
 
 ## Facts a new session needs
 
