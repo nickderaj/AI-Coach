@@ -11,26 +11,33 @@ older ultron bot) without one; values without an offset are UTC.
 
 from __future__ import annotations
 
+from collections import Counter
+from contextlib import closing
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from trainer.domain.exercises import Equipment, Measure
 from trainer.storage.catalogue import ExerciseSpec, add_alias, resolve, upsert_exercise
+from trainer.storage.database import connect, migrate
 from trainer.storage.log import (
     BodyMetricRecord,
     CardioRecord,
     SetRecord,
     WorkoutRecord,
     delete_source,
+    exercise_names,
     insert_body_metric,
     insert_cardio,
     insert_set,
     insert_workout,
+    source_rows,
 )
 
 if TYPE_CHECKING:
     import sqlite3
+
+    from trainer.storage.log import Row
 
 SOURCE = "v1"
 
@@ -92,6 +99,57 @@ def import_v1(source: sqlite3.Connection, target: sqlite3.Connection) -> ImportS
         metrics = _import_body_metrics(source, target)
         cardio = _import_cardio(source, target)
     return ImportSummary(len(exercise_ids), aliases, workouts, sets, metrics, cardio)
+
+
+@dataclass(frozen=True)
+class Changes:
+    """Rows a re-import would add and remove, each as one readable line."""
+
+    added: list[str]
+    removed: list[str]
+
+
+@dataclass(frozen=True)
+class ImportPreview:
+    """What re-importing would write, and how that differs from the last import."""
+
+    summary: ImportSummary
+    workouts: Changes
+    sets: Changes
+    body_metrics: Changes
+    cardio_sessions: Changes
+    new_exercises: list[str]
+
+
+def preview_import(source: sqlite3.Connection, target: sqlite3.Connection) -> ImportPreview:
+    """Re-import into a copy of ``target`` held in memory, and compare.
+
+    ``target`` is only read, and may be a read-only connection.
+    """
+    with closing(connect(":memory:")) as scratch:
+        target.backup(scratch)
+        migrate(scratch)
+        before, names = source_rows(scratch, SOURCE), exercise_names(scratch)
+        summary = import_v1(source, scratch)
+        after = source_rows(scratch, SOURCE)
+        new_exercises = sorted(exercise_names(scratch) - names)
+    return ImportPreview(
+        summary,
+        _changes(before.workouts, after.workouts),
+        _changes(before.sets, after.sets),
+        _changes(before.body_metrics, after.body_metrics),
+        _changes(before.cardio_sessions, after.cardio_sessions),
+        new_exercises,
+    )
+
+
+def _changes(before: list[Row], after: list[Row]) -> Changes:
+    old, new = Counter(map(_line, before)), Counter(map(_line, after))
+    return Changes(sorted((new - old).elements()), sorted((old - new).elements()))
+
+
+def _line(row: Row) -> str:
+    return " | ".join("-" if value is None else str(value) for value in row)
 
 
 def _import_exercises(source: sqlite3.Connection, target: sqlite3.Connection) -> dict[int, int]:

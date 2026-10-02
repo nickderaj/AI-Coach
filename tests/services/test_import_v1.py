@@ -1,16 +1,27 @@
 """Importing history from the v1 gym bot."""
 
 import sqlite3
+from contextlib import closing
+from pathlib import Path
 
 import pytest
 
 from trainer.services.import_v1 import (
     HISTORICAL_ALIASES,
+    Changes,
     ImportSummary,
     import_v1,
+    preview_import,
     to_utc,
 )
 from trainer.storage.catalogue import resolve
+from trainer.storage.database import (
+    MIGRATIONS,
+    connect,
+    connect_readonly,
+    migrate,
+    schema_version,
+)
 
 # Timestamps must not depend on the host's timezone (CI runs in UTC).
 pytestmark = pytest.mark.usefixtures("far_east_timezone")
@@ -175,3 +186,145 @@ def test_a_failed_import_changes_nothing(v1: sqlite3.Connection, db: sqlite3.Con
 def test_every_historical_alias_targets_a_distinct_name() -> None:
     assert set(HISTORICAL_ALIASES).isdisjoint(HISTORICAL_ALIASES.values())
     assert all(alias == alias.lower().strip() for alias in HISTORICAL_ALIASES)
+
+
+# ---------------------------------------------------------------- dry run
+
+
+def test_a_preview_against_an_empty_log_adds_everything(
+    v1: sqlite3.Connection, db: sqlite3.Connection
+) -> None:
+    preview = preview_import(v1, db)
+
+    assert preview.summary == EXPECTED
+    assert preview.workouts == Changes(
+        [
+            "2026-07-09T10:47:23+00:00 | - | first | 3",
+            "2026-08-17T11:36:06+00:00 | 2026-08-17T12:09:54+00:00 | good | 2",
+        ],
+        [],
+    )
+    assert preview.sets.added == [
+        "2026-07-09T10:47:23+00:00 | barbell bench press | 1 | 1 | 8 | 60.0 | - | - | -",
+        "2026-07-09T10:47:23+00:00 | barbell bench press | 1 | 2 | 6 | 70.0 | - | 8 | grindy",
+        "2026-07-09T10:47:23+00:00 | dead hang | 2 | 1 | - | - | 50.0 | - | -",
+        "2026-08-17T11:36:06+00:00 | lat pulldown | 1 | 1 | 12 | 50.0 | - | - | -",
+        "2026-08-17T11:36:06+00:00 | pullup | 2 | 1 | 8 | - | - | - | -",
+    ]
+    assert preview.body_metrics == Changes(
+        ["2026-07-08T10:16:29+00:00 | weight_kg | 64.25 | kg"], []
+    )
+    assert preview.cardio_sessions == Changes(
+        ["2026-08-06T14:50:50+00:00 | Pilates | 3600.0 | 1200.0 | reformer"], []
+    )
+    assert preview.new_exercises == [
+        "barbell bench press",
+        "dead hang",
+        "lat pulldown",
+        "pullup",
+    ]
+    # Nothing was written.
+    assert db.execute("SELECT count(*) FROM exercises").fetchone()[0] == 0
+    assert db.execute("SELECT count(*) FROM workouts").fetchone()[0] == 0
+    assert not db.in_transaction
+
+
+def test_a_preview_after_the_same_import_changes_nothing(
+    v1: sqlite3.Connection, imported: sqlite3.Connection
+) -> None:
+    preview = preview_import(v1, imported)
+
+    assert preview.summary == EXPECTED
+    for changes in (
+        preview.workouts,
+        preview.sets,
+        preview.body_metrics,
+        preview.cardio_sessions,
+    ):
+        assert changes == Changes([], [])
+    assert preview.new_exercises == []
+
+
+def test_a_preview_shows_what_v1_gained_and_lost(
+    v1: sqlite3.Connection, imported: sqlite3.Connection
+) -> None:
+    v1.executescript(
+        """
+        INSERT INTO movements VALUES
+            (70, 'goblet squat', 'Goblet Squat', 'strength', 'legs', 'kettlebell', 'kg');
+        INSERT INTO sessions VALUES (4, '2026-09-29T18:00:00+01:00', NULL, 'strength', NULL);
+        INSERT INTO session_items VALUES (40, 4, 1, 70);
+        INSERT INTO efforts VALUES (400, 40, 1, 10, 16.0, NULL, NULL, NULL, NULL);
+        UPDATE efforts SET reps = 9 WHERE id = 100;
+        DELETE FROM body_metrics;
+        """
+    )
+
+    preview = preview_import(v1, imported)
+
+    assert preview.workouts.added == ["2026-09-29T17:00:00+00:00 | - | - | 1"]
+    assert preview.workouts.removed == []
+    assert preview.sets.added == [
+        "2026-07-09T10:47:23+00:00 | barbell bench press | 1 | 1 | 9 | 60.0 | - | - | -",
+        "2026-09-29T17:00:00+00:00 | goblet squat | 1 | 1 | 10 | 16.0 | - | - | -",
+    ]
+    assert preview.sets.removed == [
+        "2026-07-09T10:47:23+00:00 | barbell bench press | 1 | 1 | 8 | 60.0 | - | - | -"
+    ]
+    assert preview.body_metrics == Changes(
+        [], ["2026-07-08T10:16:29+00:00 | weight_kg | 64.25 | kg"]
+    )
+    assert preview.new_exercises == ["goblet squat"]
+    assert imported.execute("SELECT count(*) FROM workouts").fetchone()[0] == 2
+
+
+def test_a_preview_counts_repeated_rows(v1: sqlite3.Connection, db: sqlite3.Connection) -> None:
+    v1.execute(
+        "INSERT INTO body_metrics VALUES (2, '2026-07-08 10:16:29', 'weight_kg', 64.25, 'kg')"
+    )
+
+    preview = preview_import(v1, db)
+
+    assert preview.body_metrics.added == ["2026-07-08T10:16:29+00:00 | weight_kg | 64.25 | kg"] * 2
+
+
+def test_a_preview_reads_a_read_only_log(v1: sqlite3.Connection, tmp_path: Path) -> None:
+    path = tmp_path / "trainer.db"
+    with closing(connect(path)) as conn:
+        migrate(conn)
+        import_v1(v1, conn)
+    before = path.read_bytes()
+
+    with closing(connect_readonly(path)) as target:
+        preview = preview_import(v1, target)
+
+    assert preview.workouts == Changes([], [])
+    assert path.read_bytes() == before
+
+
+def test_a_preview_brings_an_older_log_up_to_date_in_memory_only(
+    v1: sqlite3.Connection, tmp_path: Path
+) -> None:
+    path = tmp_path / "old.db"
+    with closing(connect(path)) as conn:
+        for sql in MIGRATIONS[:5]:
+            conn.executescript(sql)
+        conn.execute("PRAGMA user_version = 5")
+
+    with closing(connect_readonly(path)) as target:
+        assert preview_import(v1, target).summary == EXPECTED
+
+    with closing(connect_readonly(path)) as target:
+        assert schema_version(target) == 5
+
+
+def test_a_preview_leaves_no_file_behind(
+    v1: sqlite3.Connection, db: sqlite3.Connection, tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    work = tmp_path / "work"
+    work.mkdir()
+    monkeypatch.chdir(work)
+
+    preview_import(v1, db)
+
+    assert list(work.iterdir()) == []  # the copy was held in memory

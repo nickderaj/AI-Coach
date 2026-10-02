@@ -126,3 +126,61 @@ def insert_cardio(conn: sqlite3.Connection, record: CardioRecord) -> None:
             record.source,
         ),
     )
+
+
+type Row = tuple[object, ...]
+
+
+@dataclass(frozen=True)
+class SourceRows:
+    """Everything one source wrote, as plain rows that compare by content.
+
+    Ids are left out, since a re-import gives new ones; exercises are named.
+    """
+
+    workouts: list[Row]  # started, ended, notes, number of sets
+    sets: list[Row]  # workout start, exercise, position, set, reps, load, time, RPE, notes
+    body_metrics: list[Row]  # measured, metric, value, unit
+    cardio_sessions: list[Row]  # started, activity, duration, distance, notes
+
+
+def source_rows(conn: sqlite3.Connection, source: str) -> SourceRows:
+    """The rows ``source`` wrote, in a stable order."""
+    workouts = conn.execute(
+        """
+        SELECT w.started_at, w.ended_at, w.notes, count(s.id) FROM workouts w
+        LEFT JOIN workout_sets s ON s.workout_id = w.id
+        WHERE w.source = ? GROUP BY w.id ORDER BY w.started_at, w.id
+        """,
+        (source,),
+    ).fetchall()
+    sets = conn.execute(
+        """
+        SELECT w.started_at, e.name, s.exercise_position, s.set_number, s.reps, s.load_kg,
+            s.duration_s, s.rpe, s.notes
+        FROM workout_sets s JOIN workouts w ON w.id = s.workout_id
+        JOIN exercises e ON e.id = s.exercise_id
+        WHERE w.source = ? ORDER BY w.started_at, s.exercise_position, s.set_number
+        """,
+        (source,),
+    ).fetchall()
+    metrics = conn.execute(
+        """
+        SELECT measured_at, metric, value, unit FROM body_metrics WHERE source = ?
+        ORDER BY measured_at, id
+        """,
+        (source,),
+    ).fetchall()
+    cardio = conn.execute(
+        """
+        SELECT started_at, activity, duration_s, distance_m, notes FROM cardio_sessions
+        WHERE source = ? ORDER BY started_at, id
+        """,
+        (source,),
+    ).fetchall()
+    return SourceRows(*([tuple(row) for row in rows] for rows in (workouts, sets, metrics, cardio)))
+
+
+def exercise_names(conn: sqlite3.Connection) -> set[str]:
+    """The name of every exercise in the catalogue."""
+    return {row[0] for row in conn.execute("""SELECT name FROM exercises""")}

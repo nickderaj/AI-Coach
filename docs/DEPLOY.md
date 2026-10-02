@@ -190,15 +190,23 @@ Code is root-owned under `TRAINER_PREFIX`; the service user can write only
 After an install, import (or re-import) the v1 gym bot's history:
 
 ```console
+sudo ./deploy/import-v1.sh --dry-run <path to the v1 gym.db>   # what would change; writes nothing
 sudo ./deploy/import-v1.sh <path to the v1 gym.db>
 ```
 
 The script takes an online SQLite backup of the v1 database into a private
-temporary directory and runs `python -m trainer.manage import-v1` as the service
-user against that copy; the v1 database is never written. Never copy a live
-SQLite file with `cp`/`cat`: in WAL mode recent changes live in the `-wal` file,
-and a raw copy silently misses them. Re-running replaces everything previously
-imported from v1 in one transaction; exercise ids stay stable.
+temporary directory, and runs `python -m trainer.manage import-v1` as the
+service user against that copy. The backup is read through a read-only
+connection (`mode=ro`) made as the v1 database's own owner, so the v1
+database is never written and any file SQLite keeps beside it stays that
+owner's. Never copy a live SQLite file with `cp`/`cat`: in WAL mode recent
+changes live in the `-wal` file, and a raw copy silently misses them.
+
+Re-running replaces everything previously imported from v1 in one
+transaction; exercise ids stay stable, but the v1 workouts get new ids.
+`--dry-run` re-imports into a copy of the database held in memory and lists
+every workout, set, body metric and cardio session that would be added or
+removed, and any exercise new to the catalogue.
 
 ## Operations
 
