@@ -21,5 +21,5 @@
     "noUnusedParameters": true,
     "erasableSyntaxOnly": true
   },
-  "include": ["src/sw/worker.ts", "src/sw/strategy.ts"]
+  "include": ["src/sw/worker.ts", "src/sw/strategy.ts", "src/sw/notify.ts", "src/sw/message.ts"]
 }

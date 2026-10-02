@@ -3,7 +3,16 @@ import type { ReactElement } from "react";
 import { describe, expect, it, vi } from "vitest";
 import { z } from "zod";
 
-import { ApiError, OFFLINE_CREATE, createExercise, fetchJson, useApi } from "./api";
+import {
+  ApiError,
+  OFFLINE_CREATE,
+  askCoach,
+  createExercise,
+  fetchJson,
+  readAllNotices,
+  seeNotice,
+  useApi,
+} from "./api";
 import type { NewExercise } from "./api";
 import { mockFetch } from "./test/fetch";
 
@@ -191,5 +200,43 @@ describe("createExercise", () => {
     mockFetch({ "/api/exercises": new TypeError("offline") });
 
     expect(await createExercise(request)).toEqual({ kind: "error", message: OFFLINE_CREATE });
+  });
+});
+
+describe("notices", () => {
+  it("tells the server a notice was seen, and shrugs off a failure", async () => {
+    const fetchMock = vi.fn(() => Promise.reject(new TypeError("offline")));
+    vi.stubGlobal("fetch", fetchMock);
+
+    await expect(seeNotice(5)).resolves.toBeUndefined();
+    expect(fetchMock).toHaveBeenCalledWith("/api/inbox/5/seen", { method: "POST" });
+  });
+
+  it.each([
+    [new Response(null, { status: 204 }), true],
+    [new Response("{}", { status: 500 }), false],
+    [new TypeError("offline"), false],
+  ])("marks everything read (%#)", async (reply, done) => {
+    vi.stubGlobal(
+      "fetch",
+      vi.fn(() => (reply instanceof Error ? Promise.reject(reply) : Promise.resolve(reply))),
+    );
+
+    await expect(readAllNotices()).resolves.toBe(done);
+  });
+
+  it("takes a coach reply with or without its notice", async () => {
+    const reply = { role: "assistant", text: "Hi.", at: "2026-10-01T13:14:31+00:00" };
+    mockFetch({ "/api/coach/messages": { body: { ...reply, notice_id: 5 } } });
+    await expect(askCoach("hi")).resolves.toEqual({
+      kind: "ok",
+      value: { ...reply, notice_id: 5 },
+    });
+
+    mockFetch({ "/api/coach/messages": { body: reply } });
+    await expect(askCoach("hi")).resolves.toEqual({
+      kind: "ok",
+      value: { ...reply, notice_id: null },
+    });
   });
 });

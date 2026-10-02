@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useRef, useState } from "react";
 import { z } from "zod";
 
 export const measureSchema = z.enum(["reps", "seconds", "distance"]);
@@ -235,10 +235,16 @@ const coachMessageSchema = z.object({
 
 const coachHistorySchema = z.array(coachMessageSchema);
 
+/** The coach's reply, and the notice of it the app claims if it shows the reply. */
+const coachReplySchema = coachMessageSchema.extend({
+  notice_id: z.number().int().nullable().default(null),
+});
+
 /** The server's reason when the coach cannot answer: "the coach is not set up", say. */
 const detailSchema = z.object({ detail: z.string() });
 
 export type CoachMessage = z.infer<typeof coachMessageSchema>;
+export type CoachReply = z.infer<typeof coachReplySchema>;
 
 export type CoachResult<T> = { kind: "ok"; value: T } | { kind: "error"; message: string };
 
@@ -285,8 +291,62 @@ export function coachHistory(signal: AbortSignal): Promise<CoachResult<CoachMess
 }
 
 /** Say `text` to the coach and wait for its reply, which can take a while. */
-export function askCoach(text: string): Promise<CoachResult<CoachMessage>> {
-  return coachRequest({ method: "POST", body: JSON.stringify({ text }) }, coachMessageSchema);
+export function askCoach(text: string): Promise<CoachResult<CoachReply>> {
+  return coachRequest({ method: "POST", body: JSON.stringify({ text }) }, coachReplySchema);
+}
+
+/**
+ * Tell the server the owner has seen what notice `id` is about. A notice still
+ * held is then never pushed; any other is marked read. Best effort: if it fails,
+ * the owner simply hears of it.
+ */
+export async function seeNotice(id: number): Promise<void> {
+  await fetch(`/api/inbox/${String(id)}/seen`, { method: "POST" }).catch(() => undefined);
+}
+
+/**
+ * For a screen that shows the coach's replies: claim a reply's notice as it
+ * arrives, so the owner is not told of it again. Only while the page is visible
+ * and the screen is still there; otherwise the notice reaches them.
+ */
+export function useReplyClaim(): (reply: CoachReply) => void {
+  const showing = useRef(true);
+  useEffect(() => {
+    showing.current = true;
+    return (): void => {
+      showing.current = false;
+    };
+  }, []);
+  return useCallback((reply: CoachReply): void => {
+    if (reply.notice_id !== null && showing.current && document.visibilityState === "visible") {
+      void seeNotice(reply.notice_id);
+    }
+  }, []);
+}
+
+const noticeSchema = z.object({
+  id: z.number().int(),
+  kind: z.enum(["coach", "proposal", "test"]),
+  title: z.string(),
+  body: z.string(),
+  at: z.string(),
+  read: z.boolean(),
+  /** The screen it opens, as a hash route of this app. */
+  route: z.string().regex(/^#\/[a-z/]*$/),
+});
+
+export const inboxSchema = z.object({ unread: z.number().int(), notices: z.array(noticeSchema) });
+
+export type Notice = z.infer<typeof noticeSchema>;
+export type InboxData = z.infer<typeof inboxSchema>;
+
+/** Mark every notice in the inbox read; whether the server took it. */
+export async function readAllNotices(): Promise<boolean> {
+  try {
+    return (await fetch("/api/inbox/read", { method: "POST" })).ok;
+  } catch {
+    return false;
+  }
 }
 
 const programExerciseSchema = z.object({

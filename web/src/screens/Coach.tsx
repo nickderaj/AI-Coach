@@ -1,7 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import type { ReactElement } from "react";
 
-import { askCoach, coachHistory } from "../api";
+import { askCoach, coachHistory, useReplyClaim } from "../api";
 import type { CoachMessage } from "../api";
 
 /** The server refuses longer messages. */
@@ -158,6 +158,7 @@ function FailureNote({
 /** The Coach tab: one long conversation with the coach, which needs a connection. */
 export function Coach(): ReactElement {
   const history = useHistory();
+  const claim = useReplyClaim();
   // What was said on this visit, after the history the server sent.
   const [said, setSaid] = useState<CoachMessage[]>([]);
   const [draft, setDraft] = useState("");
@@ -179,6 +180,7 @@ export function Coach(): ReactElement {
     setWaiting(false);
     if (result.kind === "ok") {
       const reply = result.value;
+      claim(reply);
       setSaid((current) => [...current, reply]);
       return;
     }

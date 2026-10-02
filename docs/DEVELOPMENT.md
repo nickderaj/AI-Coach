@@ -67,7 +67,11 @@ the phone applies its own mask). Commit the SVG and the PNGs together.
 `web/src/sw/worker.ts` is built to `/sw.js` (see `vite.config.ts`) and only wires
 browser events to `strategy.ts`, which holds the tested logic. Only production
 builds register it, so `pnpm dev` is never served from a cache. Bump `CACHE_NAME`
-to drop every cached response on the next update.
+to drop every cached response on the next update. It is a classic script, which
+cannot `import`: app code must not import a value from `src/sw/` (the bundler
+would split it into a chunk `sw.js` imports, and the worker would not start),
+except from `src/sw/message.ts`, of which the worker imports only types.
+`src/sw/isolation.test.ts` checks this.
 
 ## Rules the tools cannot enforce
 

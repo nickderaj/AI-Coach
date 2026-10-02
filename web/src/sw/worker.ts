@@ -13,6 +13,7 @@ import {
   strategyFor,
 } from "./strategy";
 import type { Deps } from "./strategy";
+import { notificationFor, onTap, readPush, readTapped } from "./notify";
 
 declare const self: ServiceWorkerGlobalScope;
 
@@ -54,4 +55,20 @@ self.addEventListener("fetch", (event) => {
       return;
     }
   }
+});
+
+self.addEventListener("push", (event) => {
+  const { title, options } = notificationFor(readPush(event.data?.text() ?? null));
+  event.waitUntil(self.registration.showNotification(title, options));
+});
+
+self.addEventListener("notificationclick", (event) => {
+  event.notification.close();
+  event.waitUntil(
+    onTap(readTapped(event.notification.data), {
+      windows: () => self.clients.matchAll({ type: "window", includeUncontrolled: true }),
+      open: (url) => self.clients.openWindow(url),
+      seen: (id) => fetch(`/api/inbox/${String(id)}/seen`, { method: "POST" }),
+    }),
+  );
 });
