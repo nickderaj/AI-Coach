@@ -12,6 +12,8 @@ from enum import StrEnum
 
 # The longest preview of a reply; a push shows a few lines at most.
 PREVIEW_LENGTH = 140
+# The longest program name in a title, which a push shows on one line.
+NAME_LENGTH = 40
 ELLIPSIS = "…"
 
 
@@ -55,7 +57,8 @@ def coach_answered(reply: str, proposal: str | None) -> Notice:
     """The notice for a coach's reply; ``proposal`` names a program it proposed."""
     if proposal is None:
         return Notice(NoticeKind.COACH, "Your coach answered", preview(reply))
-    return Notice(NoticeKind.PROPOSAL, f"Your coach proposed {proposal}", preview(reply))
+    title = f"Your coach proposed {preview(proposal, NAME_LENGTH)}"
+    return Notice(NoticeKind.PROPOSAL, title, preview(reply))
 
 
 TEST_NOTICE = Notice(

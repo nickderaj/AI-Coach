@@ -17,6 +17,7 @@ CONFIG = DeployConfig(
     hermes_port=8642,
     model_url="https://api.example.com/v1",
     model="model-1",
+    push_contact="mailto:owner@example.com",
 )
 
 
@@ -37,6 +38,12 @@ def test_substitutions() -> None:
         "hermes_home": "/srv/trainer/hermes",
         "memory_repo": "/srv/trainer/hermes-memory.git",
         "secrets_dir": "/etc/hermes-trainer",
+        "push_contact": "mailto:owner@example.com",
+        "push_denied": (
+            "localhost link-local multicast 10.0.0.0/8 172.16.0.0/12 192.168.0.0/16 "
+            "100"
+            ".64.0.0/10 fc00::/7"
+        ),
     }
 
 
@@ -59,6 +66,7 @@ def test_api_unit_runs_the_app_as_the_service_user_on_loopback() -> None:
         "Environment=TRAINER_OWNER_LOGIN=owner@example.com",
         "Environment=TRAINER_HERMES_URL=http://127.0.0.1:8642",
         "EnvironmentFile=-/etc/hermes-trainer/gateway.env",
+        "EnvironmentFile=-/etc/hermes-trainer/push-public.env",
         "ExecStart=/opt/trainer/venv/bin/python -m trainer.api --host 127.0.0.1 --port 8000",
         "ReadWritePaths=/srv/trainer",
         "ProtectSystem=strict",
@@ -130,6 +138,44 @@ def test_gateway_unit_runs_hermes_with_root_only_secrets() -> None:
     assert "ReadWritePaths=/srv/trainer" not in lines
 
 
+def test_push_unit_reaches_the_internet_but_nothing_nearer() -> None:
+    lines = render_units(CONFIG)["trainer-push.service"].splitlines()
+
+    for expected in (
+        "Wants=network-online.target trainer-api.service",
+        "After=network-online.target trainer-api.service",
+        "User=trainer",
+        "Group=trainer",
+        "Environment=TRAINER_DATA_DIR=/srv/trainer",
+        "Environment=TRAINER_PUSH_CONTACT=mailto:owner@example.com",
+        "EnvironmentFile=/etc/hermes-trainer/push.env",
+        "ExecStart=/opt/trainer/venv/bin/python -m trainer.push serve",
+        "ReadWritePaths=/srv/trainer",
+        "ProtectSystem=strict",
+        "ProtectHome=yes",
+        "NoNewPrivileges=yes",
+        "CapabilityBoundingSet=",
+        "MemoryDenyWriteExecute=yes",
+        "SystemCallFilter=@system-service",
+        "SystemCallFilter=~@privileged @resources",
+        "RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX",
+        "WantedBy=multi-user.target",
+    ):
+        assert expected in lines
+    denied = [line for line in lines if line.startswith("IPAddressDeny=")]
+    assert denied == ["IPAddressDeny=" + substitutions(CONFIG)["push_denied"]]
+    # No address is allowed in the unit itself; install.sh allows the resolvers.
+    assert not [line for line in lines if line.startswith("IPAddressAllow=")]
+
+
+def test_only_the_push_unit_has_a_route_out_besides_the_coach() -> None:
+    units = render_units(CONFIG)
+
+    assert "IPAddressDeny=any" in units["trainer-api.service"].splitlines()
+    for name in ("trainer-backup.service", "trainer-memory.service"):
+        assert "PrivateNetwork=yes" in units[name].splitlines()
+
+
 def test_no_unit_takes_the_name_hermes_installs_its_own_gateway_under() -> None:
     # `hermes gateway install` creates hermes-gateway.service, and other Hermes
     # installs on the host (with drop-ins of their own) may already use it.
@@ -182,6 +228,7 @@ def test_install_env_is_shell_quoted() -> None:
         hermes_port=8642,
         model_url="https://api.example.com/v1",
         model="model-1",
+        push_contact="mailto:owner@example.com",
     )
 
     text = install_env(config)
@@ -208,6 +255,7 @@ def test_write_bundle(tmp_path: Path) -> None:
         "out/systemd/trainer-coach.service",
         "out/systemd/trainer-memory.service",
         "out/systemd/trainer-memory.timer",
+        "out/systemd/trainer-push.service",
         "out/install.env",
         "out/config.env",
     ]

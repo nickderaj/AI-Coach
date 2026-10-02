@@ -30,6 +30,7 @@ def test_render_writes_the_bundle(tmp_path: Path, capsys: pytest.CaptureFixture[
         "trainer-coach.service",
         "trainer-memory.service",
         "trainer-memory.timer",
+        "trainer-push.service",
     ]
     assert capsys.readouterr().out.splitlines() == [
         f"rendered {out}/systemd/trainer-api.service",
@@ -38,6 +39,7 @@ def test_render_writes_the_bundle(tmp_path: Path, capsys: pytest.CaptureFixture[
         f"rendered {out}/systemd/trainer-coach.service",
         f"rendered {out}/systemd/trainer-memory.service",
         f"rendered {out}/systemd/trainer-memory.timer",
+        f"rendered {out}/systemd/trainer-push.service",
         f"rendered {out}/install.env",
         f"rendered {out}/config.env",
     ]

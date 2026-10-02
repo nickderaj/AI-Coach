@@ -6,6 +6,7 @@ readme = "README.md"
 requires-python = "==3.13.*"
 license = "LicenseRef-Proprietary"
 dependencies = [
+    "cryptography==50.0.2",
     "fastapi==0.142.0",
     "pydantic==2.13.5",
     "uvicorn==0.54.0",
@@ -157,7 +158,7 @@ include_external_packages = true
 name = "Layered architecture"
 type = "layers"
 layers = [
-    "(trainer.api) | (trainer.mcp)",
+    "(trainer.api) | (trainer.mcp) | (trainer.push)",
     "(trainer.services)",
     "(trainer.storage)",
     "(trainer.domain)",

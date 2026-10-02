@@ -33,13 +33,16 @@ class Settings:
     web_dir: Path | None = None
     # None until the coach's secrets exist; the Coach endpoints answer 503 then.
     coach: CoachSettings | None = None
+    # The VAPID public key browsers subscribe with; None until push is set up.
+    push_key: str | None = None
 
 
 def settings_from_env(env: Mapping[str, str]) -> Settings:
     """Build settings from ``TRAINER_*`` variables (set by the systemd unit).
 
     The coach is configured when both ``TRAINER_HERMES_URL`` and the gateway's
-    ``API_SERVER_KEY`` (from its root-only secrets file) are set.
+    ``API_SERVER_KEY`` (from its root-only secrets file) are set. Push is
+    configured when ``TRAINER_VAPID_PUBLIC_KEY`` is (``deploy/push-secrets.sh``).
 
     Raises:
         SettingsError: if the data directory or the owner's login is not set.
@@ -56,4 +59,5 @@ def settings_from_env(env: Mapping[str, str]) -> Settings:
         owner_login=owner,
         web_dir=Path(web_dir) if web_dir else None,
         coach=CoachSettings(hermes_url, hermes_key) if hermes_url and hermes_key else None,
+        push_key=env.get("TRAINER_VAPID_PUBLIC_KEY") or None,
     )

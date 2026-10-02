@@ -12,6 +12,7 @@ from trainer.services.coach import (
     CoachMessage,
     history,
     send,
+    take_turn,
 )
 from trainer.services.hermes import GatewayError, GatewayMessage, SessionNotFoundError
 from trainer.storage.coach import read_session_id, save_session_id
@@ -165,3 +166,106 @@ def test_a_lost_session_has_no_history(db: sqlite3.Connection) -> None:
     save_session_id(db, "gone")
 
     assert history(db, FakeGateway()) == []
+
+
+# ---------------------------------------------------------------- a turn's notice
+
+
+def propose(db: sqlite3.Connection, name: str) -> None:
+    """What the coach's tool does mid-turn, through the API: replace the proposal."""
+    db.execute("UPDATE programs SET status = 'archived' WHERE status = 'proposed'")
+    db.execute(
+        "INSERT INTO programs (name, training_weeks, status, created_at) "
+        "VALUES (?, 6, 'proposed', 't')",
+        (name,),
+    )
+    db.commit()
+
+
+class Proposing(FakeGateway):
+    """A turn in which the coach proposes ``name`` (or does nothing, given ``None``)."""
+
+    def __init__(self, db: sqlite3.Connection, name: str | None) -> None:
+        """Propose ``name`` during each turn."""
+        super().__init__()
+        self.db = db
+        self.name = name
+
+    @override
+    def chat(self, session_id: str, text: str) -> str:
+        if self.name is not None:
+            propose(self.db, self.name)
+        return super().chat(session_id, text)
+
+
+def notices(db: sqlite3.Connection) -> list[tuple[str, str, str, str, str]]:
+    rows = db.execute("SELECT kind, title, body, created_at, due_at FROM inbox ORDER BY id")
+    return [tuple(row) for row in rows]
+
+
+def test_a_turn_holds_a_notice_of_the_answer(db: sqlite3.Connection) -> None:
+    turn = take_turn(db, FakeGateway(), "plan\nMonday", lambda: NOW)
+
+    assert turn.reply == CoachMessage("assistant", "re: plan\nMonday", "2026-10-01T13:00:05+00:00")
+    assert notices(db) == [
+        (
+            "coach",
+            "Your coach answered",
+            "re: plan Monday",
+            "2026-10-01T13:00:05+00:00",
+            "2026-10-01T13:00:20+00:00",  # held for HOLD, 15 s
+        )
+    ]
+    assert turn.notice_id == db.execute("SELECT id FROM inbox").fetchone()[0]
+    assert not db.in_transaction
+
+
+def test_a_turn_that_proposed_a_program_says_so(db: sqlite3.Connection) -> None:
+    turn = take_turn(db, Proposing(db, "Upper/Lower"), "plan one", lambda: NOW)
+
+    assert notices(db)[0][:3] == ("proposal", "Your coach proposed Upper/Lower", "re: plan one")
+    assert turn.notice_id >= 1
+
+
+def test_a_new_proposal_replacing_one_is_named(db: sqlite3.Connection) -> None:
+    propose(db, "Old")
+
+    take_turn(db, Proposing(db, "New"), "change it", lambda: NOW)
+
+    assert notices(db)[0][:2] == ("proposal", "Your coach proposed New")
+
+
+def test_a_proposal_already_waiting_is_not_news(db: sqlite3.Connection) -> None:
+    propose(db, "Old")
+
+    take_turn(db, Proposing(db, None), "how is it going?", lambda: NOW)
+
+    assert notices(db)[0][:2] == ("coach", "Your coach answered")
+
+
+def test_a_proposal_gone_during_the_turn_is_not_news(db: sqlite3.Connection) -> None:
+    propose(db, "Old")
+
+    class Accepting(FakeGateway):
+        @override
+        def chat(self, session_id: str, text: str) -> str:
+            db.execute("UPDATE programs SET status = 'active'")
+            db.commit()
+            return super().chat(session_id, text)
+
+    take_turn(db, Accepting(), "thanks", lambda: NOW)
+
+    assert notices(db)[0][:2] == ("coach", "Your coach answered")
+
+
+def test_a_failed_turn_posts_nothing(db: sqlite3.Connection) -> None:
+    class Down(FakeGateway):
+        @override
+        def chat(self, session_id: str, text: str) -> str:
+            message = "unreachable"
+            raise GatewayError(message)
+
+    with pytest.raises(GatewayError):
+        take_turn(db, Down(), "x", lambda: NOW)
+
+    assert notices(db) == []

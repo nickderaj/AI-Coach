@@ -1,25 +1,22 @@
 [Unit]
-Description=hermes-trainer API
+Description=hermes-trainer push sender
 Documentation=https://github.com/nickderaj/hermes-trainer
-After=network.target
+Wants=network-online.target trainer-api.service
+# The API migrates the database the sender reads.
+After=network-online.target trainer-api.service
 
 [Service]
 Type=exec
 User=${user}
 Group=${user}
 Environment=TRAINER_DATA_DIR=${data_dir}
-Environment=TRAINER_WEB_DIR=${prefix}/web
-Environment=TRAINER_OWNER_LOGIN=${owner_login}
-# The coach's gateway, for the Coach tab. The key it checks comes from the coach's
-# root-only secrets; "-" lets the API start before they exist (the tab says so).
-Environment=TRAINER_HERMES_URL=http://${hermes_upstream}
-EnvironmentFile=-${secrets_dir}/gateway.env
-# The VAPID public key browsers subscribe with (deploy/push-secrets.sh); until
-# it exists the app says notifications are not set up.
-EnvironmentFile=-${secrets_dir}/push-public.env
-ExecStart=${prefix}/venv/bin/python -m trainer.api --host ${bind_host} --port ${bind_port}
+Environment=TRAINER_PUSH_CONTACT=${push_contact}
+# Root-only (deploy/push-secrets.sh): the VAPID private key that signs pushes.
+# Without it the unit does not start.
+EnvironmentFile=${secrets_dir}/push.env
+ExecStart=${prefix}/venv/bin/python -m trainer.push serve
 Restart=on-failure
-RestartSec=5
+RestartSec=10
 UMask=0077
 
 # Code is root-owned and read-only; the data directory is the only writable path.
@@ -48,9 +45,11 @@ SystemCallArchitectures=native
 SystemCallFilter=@system-service
 SystemCallFilter=~@privileged @resources
 RestrictAddressFamilies=AF_INET AF_INET6 AF_UNIX
-# Reached only through tailscale serve on loopback; no other network access yet.
-IPAddressDeny=any
-IPAddressAllow=localhost
+# The push services are on the internet, so this is the one unit of the app's
+# own with a route out; nothing here listens. Everything nearer is refused:
+# loopback (the API and the coach), the LAN and the tailnet. The resolvers in
+# /etc/resolv.conf are allowed by a drop-in install.sh writes (resolvers.conf).
+IPAddressDeny=${push_denied}
 
 [Install]
 WantedBy=multi-user.target

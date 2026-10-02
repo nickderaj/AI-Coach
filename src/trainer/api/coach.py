@@ -5,12 +5,12 @@ from __future__ import annotations
 import logging
 from contextlib import closing
 from datetime import UTC, datetime
-from typing import TYPE_CHECKING, Annotated
+from typing import TYPE_CHECKING, Annotated, Literal
 
 from fastapi import APIRouter, HTTPException, Request
 from pydantic import BaseModel, StringConstraints
 
-from trainer.services.coach import CoachMessage, Gateway, history, send
+from trainer.services.coach import CoachMessage, Gateway, history, take_turn
 from trainer.services.hermes import GatewayError
 from trainer.storage.database import connect
 
@@ -55,17 +55,33 @@ def messages(request: Request) -> list[CoachMessage]:
         raise _unavailable(error) from error
 
 
+class ReplyOut(BaseModel):
+    """The coach's reply, and the notice of it the app claims if it shows the reply."""
+
+    role: Literal["assistant"]
+    text: str
+    at: str
+    notice_id: int
+
+
 @router.post("/messages")
-def post_message(request: Request, body: MessageIn) -> CoachMessage:
-    """Say something to the coach and wait for its reply; one turn at a time."""
+def post_message(request: Request, body: MessageIn) -> ReplyOut:
+    """Say something to the coach and wait for its reply; one turn at a time.
+
+    The reply comes with a held notice: ``POST /api/inbox/{notice_id}/seen``
+    while the reply is on screen, or the owner is told of it.
+    """
     gateway = _gateway(request)
     turn: Lock = request.app.state.coach_turn
     if not turn.acquire(blocking=False):
         raise HTTPException(status_code=409, detail="the coach is still answering")
     try:
         with closing(connect(request.app.state.settings.database)) as conn:
-            return send(conn, gateway, body.text, lambda: datetime.now(UTC))
+            done = take_turn(conn, gateway, body.text, lambda: datetime.now(UTC))
     except GatewayError as error:
         raise _unavailable(error) from error
     finally:
         turn.release()
+    return ReplyOut(
+        role="assistant", text=done.reply.text, at=done.reply.at, notice_id=done.notice_id
+    )

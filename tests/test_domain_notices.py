@@ -3,6 +3,7 @@
 import pytest
 
 from trainer.domain.notices import (
+    NAME_LENGTH,
     PREVIEW_LENGTH,
     ROUTES,
     TEST_NOTICE,
@@ -72,3 +73,10 @@ def test_the_test_notice() -> None:
     )
 
     assert expected == TEST_NOTICE
+
+
+def test_a_long_program_name_is_cut_in_the_title() -> None:
+    notice = coach_answered("x", "Upper Lower Hypertrophy Block for the Winter Months")
+
+    assert NAME_LENGTH == 40
+    assert notice.title == "Your coach proposed Upper Lower Hypertrophy Block for the…"

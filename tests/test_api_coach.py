@@ -75,6 +75,7 @@ def test_a_conversation(client: TestClient, database: Path) -> None:
     assert sent.json()["role"] == "assistant"
     assert sent.json()["text"] == "re: hello (Coach-1)"  # stripped, in the durable session
     assert sent.json()["at"].endswith("+00:00")
+    assert set(sent.json()) == {"role", "text", "at", "notice_id"}
     with closing(sqlite3.connect(database)) as conn:
         assert read_session_id(conn) == "Coach-1"
     assert client.get("/api/coach/messages", headers=AS_OWNER).json() == [
@@ -157,3 +158,26 @@ def test_the_gateway_comes_from_the_settings(database: Path) -> None:
     assert isinstance(app.state.coach_gateway, HermesGateway)
     assert app.state.coach_gateway._base_url == "http://127.0.0.1:8642"  # noqa: SLF001  # why: checking the wiring
     assert app.state.coach_gateway._key == "k"  # noqa: SLF001  # why: checking the wiring
+
+
+def test_a_reply_shown_as_it_arrives_is_claimed(client: TestClient) -> None:
+    sent = client.post("/api/coach/messages", json={"text": "hello"}, headers=AS_OWNER).json()
+
+    claimed = client.post(f"/api/inbox/{sent['notice_id']}/seen", headers=AS_OWNER)
+
+    assert claimed.status_code == 204
+    assert client.get("/api/inbox", headers=AS_OWNER).json() == {"unread": 0, "notices": []}
+    gone = client.post(f"/api/inbox/{sent['notice_id']}/seen", headers=AS_OWNER)
+    assert gone.status_code == 404
+
+
+def test_a_reply_is_held_from_the_inbox_for_a_moment(client: TestClient, database: Path) -> None:
+    sent = client.post("/api/coach/messages", json={"text": "hello"}, headers=AS_OWNER).json()
+
+    assert client.get("/api/inbox", headers=AS_OWNER).json()["notices"] == []
+    with closing(sqlite3.connect(database)) as conn:
+        row = conn.execute(
+            "SELECT kind, body, created_at, due_at FROM inbox WHERE id = ?", (sent["notice_id"],)
+        ).fetchone()
+    assert row[:3] == ("coach", "re: hello (Coach-1)", sent["at"])
+    assert row[3] > sent["at"]

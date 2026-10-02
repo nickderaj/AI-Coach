@@ -51,7 +51,7 @@ iPhone (home-screen PWA, offline queue)
    ▼
 tailscale serve ──▶ trainer-api (FastAPI, 127.0.0.1)
                       ├─ REST API for the web app
-                      ├─ Web Push sender
+                      ├─ inbox + push subscriptions (SQLite)
                       ├─ SQLite  $TRAINER_DATA_DIR/trainer.db
                       └─ Coach proxy ──▶ trainer-coach (127.0.0.1, session API)
                                            home: $TRAINER_DATA_DIR/hermes (profile from hermes/)
@@ -67,7 +67,11 @@ Processes (systemd, all as the service user, loopback-only):
    addressed through its authenticated HTTP session API. The web app's Coach tab
    maps to one durable Hermes session, so turns keep context and a warm prompt
    cache.
-3. **The tool server** (`python -m trainer.mcp`) — started by the gateway as a
+3. **trainer-push** — the Web Push sender: pushes the notices that come due
+   to subscribed browsers. The only process of the app's own with a route to
+   the internet, and only to it (loopback, LAN and tailnet are denied), so the
+   API never needs one.
+4. **The tool server** (`python -m trainer.mcp`) — started by the gateway as a
    child process and spoken to over stdin and stdout, so it shares the coach's
    sandbox and has no unit of its own. It reads the training log through the
    same storage functions as the API, on a read-only connection; the API holds

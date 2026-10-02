@@ -25,6 +25,7 @@ VALID = {
     "TRAINER_HERMES_PORT": "8642",
     "TRAINER_MODEL_URL": "https://api.example.com/v1",
     "TRAINER_MODEL": "model-1",
+    "TRAINER_PUSH_CONTACT": "mailto:owner@example.com",
 }
 
 
@@ -67,6 +68,7 @@ class TestLoad:
             hermes_port=8642,
             model_url="https://api.example.com/v1",
             model="model-1",
+            push_contact="mailto:owner@example.com",
         )
 
     def test_missing_keys_are_listed_in_order(self) -> None:
@@ -230,6 +232,42 @@ class TestLoad:
         expected = r"^[A-Za-z0-9][A-Za-z0-9._:/-]{0,99}$"
         assert error_for(TRAINER_MODEL=model) == (
             f"TRAINER_MODEL {model!r} is not allowed (expected {expected})"
+        )
+
+    @pytest.mark.parametrize(
+        "contact",
+        [
+            "mailto:owner@example.com",
+            "mailto:first.last+push@example.co.uk",
+            "https://example.com",
+            "https://example.com/",
+            "https://trainer.example.com/about/push",
+        ],
+    )
+    def test_valid_push_contacts(self, contact: str) -> None:
+        assert load(document(TRAINER_PUSH_CONTACT=contact)).push_contact == contact
+
+    @pytest.mark.parametrize(
+        "contact",
+        [
+            "",
+            "owner@example.com",  # no scheme
+            "mailto:owner",
+            "mailto:owner@localhost",
+            "mailto:@example.com",
+            "mailto:a%b@example.com",
+            "mailto:owner@example.com?subject=x",
+            "http://example.com",
+            "https://",
+            "https://$HOST/x",
+            "https://example.com/%2e",
+            "https://example.com?x=1",
+            "x" + "mailto:owner@example.com",
+        ],
+    )
+    def test_invalid_push_contacts(self, contact: str) -> None:
+        assert error_for(TRAINER_PUSH_CONTACT=contact).startswith(
+            f"TRAINER_PUSH_CONTACT {contact!r} is not allowed (expected ^(?:mailto:"
         )
 
 
