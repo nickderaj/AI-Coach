@@ -2,6 +2,7 @@ import { act, fireEvent, render, screen, within } from "@testing-library/react";
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import { App } from "../App";
+import { INBOX_CHANGED } from "../sw/message";
 import { at } from "../test/fetch";
 import { routeFetch } from "../test/logging";
 import { fakePush, removePush } from "../test/push";
@@ -14,6 +15,15 @@ const COACH = {
   at: "2026-10-01T21:15:00+00:00",
   read: false,
   route: "#/coach",
+};
+const TEST = {
+  id: 1,
+  kind: "test",
+  title: "Notifications are on",
+  body: "This is how the trainer will reach you.",
+  at: "2026-10-02T14:10:03+00:00",
+  read: false,
+  route: "#/inbox",
 };
 const PROPOSAL = {
   id: 2,
@@ -73,6 +83,78 @@ describe("Inbox", () => {
 
     expect(fetchMock).toHaveBeenCalledWith("/api/inbox/3/seen", { method: "POST" });
     expect(window.location.hash).toBe("#/coach");
+  });
+
+  it("shows a notice read once opened, even one that opens the Inbox itself", async () => {
+    // From the owner: a test notice opens #/inbox, the screen already shown, so
+    // nothing reloaded and it stayed unread until "Mark all read".
+    let read = false;
+    const fetchMock = vi.fn<typeof fetch>((input, init) => {
+      if (input === "/api/inbox/1/seen" && init?.method === "POST") {
+        read = true;
+        return Promise.resolve(new Response(null, { status: 204 }));
+      }
+      const notice = { ...TEST, read };
+      const body = { unread: read ? 0 : 1, notices: [notice] };
+      return Promise.resolve(new Response(JSON.stringify(body), { status: 200 }));
+    });
+    vi.stubGlobal("fetch", fetchMock);
+    render(<App />);
+
+    fireEvent.click(await screen.findByRole("link", { name: /Notifications are on/ }));
+    await settle();
+
+    expect(window.location.hash).toBe("#/inbox");
+    expect(screen.queryByLabelText("Unread")).toBeNull();
+    expect(screen.queryByText("1 unread")).toBeNull();
+  });
+
+  it("reads the inbox again when the app comes back to the front", async () => {
+    let unread = 1;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ unread, notices: [{ ...TEST, read: unread === 0 }] }), {
+            status: 200,
+          }),
+        ),
+      ),
+    );
+    render(<App />);
+    expect(await screen.findByText("1 unread")).toBeInTheDocument();
+
+    unread = 0; // read elsewhere: tapped as a notification, say
+    await act(async () => {
+      document.dispatchEvent(new Event("visibilitychange"));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(screen.queryByText("1 unread")).toBeNull();
+  });
+
+  it("reads the inbox again when a tapped notification opens it", async () => {
+    let unread = 1;
+    vi.stubGlobal(
+      "fetch",
+      vi.fn<typeof fetch>(() =>
+        Promise.resolve(
+          new Response(JSON.stringify({ unread, notices: [{ ...TEST, read: unread === 0 }] }), {
+            status: 200,
+          }),
+        ),
+      ),
+    );
+    render(<App />);
+    expect(await screen.findByText("1 unread")).toBeInTheDocument();
+
+    unread = 0;
+    await act(async () => {
+      window.dispatchEvent(new Event(INBOX_CHANGED));
+      await new Promise((resolve) => setTimeout(resolve, 0));
+    });
+
+    expect(screen.queryByText("1 unread")).toBeNull();
   });
 
   it("marks everything read, then reads the inbox again", async () => {

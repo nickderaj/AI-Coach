@@ -7,7 +7,7 @@ import { draftStore } from "./log/store";
 import { createOutbox, webLock } from "./outbox/outbox";
 import { OutboxContext } from "./outbox/Sync";
 import { outboxStore } from "./outbox/store";
-import { routeToOpen } from "./sw/message";
+import { INBOX_CHANGED, routeToOpen } from "./sw/message";
 import "./index.css";
 
 const root = document.getElementById("root");
@@ -31,6 +31,8 @@ if (import.meta.env.PROD && "serviceWorker" in navigator) {
     const route = routeToOpen(event.data);
     if (route !== null) {
       window.location.hash = route;
+      // The screen may be the one already shown (a test opens the Inbox).
+      window.dispatchEvent(new Event(INBOX_CHANGED));
     }
   });
 }

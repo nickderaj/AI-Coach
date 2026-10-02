@@ -4,7 +4,7 @@ import { describe, expect, it, vi } from "vitest";
 import type { OpenMessage } from "./message";
 import { routeToOpen } from "./message";
 import type { TapDeps } from "./notify";
-import { notificationFor, onTap, readPush, readTapped } from "./notify";
+import { SEEN_WAIT_MS, notificationFor, onTap, readPush, readTapped } from "./notify";
 
 const FALLBACK = { id: null, title: "Trainer", body: "", route: "#/inbox" };
 
@@ -134,6 +134,51 @@ describe("onTap", () => {
 
     expect(tap.seen).not.toHaveBeenCalled();
     expect(tap.open).toHaveBeenCalledWith("/#/inbox");
+  });
+
+  it("marks the notice read before it shows the screen", async () => {
+    // So the screen, loading as it opens, already finds it read.
+    const order: string[] = [];
+    let finish: () => void = () => undefined;
+    const tap: TapDeps = {
+      windows: () => Promise.resolve([]),
+      open: () => {
+        order.push("open");
+        return Promise.resolve(null);
+      },
+      seen: () =>
+        new Promise((resolve) => {
+          finish = (): void => {
+            order.push("seen");
+            resolve(null);
+          };
+        }),
+    };
+
+    const tapped = onTap({ id: 7, route: "#/inbox" }, tap);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    finish();
+    await tapped;
+
+    expect(order).toEqual(["seen", "open"]);
+  });
+
+  it("opens the screen anyway if the server does not answer in time", async () => {
+    // From review: fetch has no timeout, and a phone can get a push while it
+    // cannot reach the tailnet; the tap must still open the app.
+    vi.useFakeTimers();
+    const tap = deps([]);
+    tap.seen.mockReturnValue(new Promise(() => undefined)); // never settles
+
+    const tapped = onTap({ id: 7, route: "#/coach" }, tap);
+    await vi.advanceTimersByTimeAsync(SEEN_WAIT_MS - 1);
+    expect(tap.open).not.toHaveBeenCalled(); // still giving the read its chance
+    await vi.advanceTimersByTimeAsync(1);
+    await tapped;
+
+    expect(tap.open).toHaveBeenCalledWith("/#/coach");
+    expect(SEEN_WAIT_MS).toBe(2_000);
+    vi.useRealTimers();
   });
 
   it("still opens the screen if the server cannot be told", async () => {

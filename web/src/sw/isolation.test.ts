@@ -34,10 +34,11 @@ describe("the service worker stays a single script", () => {
     const reached = FILES.filter((file) => !file.startsWith("sw/")).flatMap((file) =>
       imports(file)
         .filter(({ from }) => /(^|\/)sw\//u.test(from))
-        .map(({ from }) => `${file} → ${from}`),
+        .map(({ from }) => ({ file, module: from.replace(/^.*\bsw\//u, "sw/") })),
     );
 
-    expect(reached).toEqual(["main.tsx → ./sw/message"]);
+    expect(reached.map(({ file }) => file)).toContain("main.tsx");
+    expect(reached.filter(({ module }) => module !== "sw/message")).toEqual([]);
   });
 
   it("the worker imports only types from sw/message.ts", () => {
