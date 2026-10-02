@@ -103,16 +103,19 @@ def test_import_v1_dry_run_reports_and_writes_nothing(
         "changes against the last import (nothing written):\n"
         "  workouts: 0 added, 0 removed\n"
         "  sets: 1 added, 1 removed\n"
-        "    + 2026-07-09T10:47:23+00:00 | barbell bench press | 1 | 1 | 9 | 60.0 | - | - | -\n"
-        "    - 2026-07-09T10:47:23+00:00 | barbell bench press | 1 | 1 | 8 | 60.0 | - | - | -\n"
+        '    + "2026-07-09T10:47:23+00:00" | "barbell bench press" | 1 | 1 | 9 | 60.0'
+        " | null | null | null\n"
+        '    - "2026-07-09T10:47:23+00:00" | "barbell bench press" | 1 | 1 | 8 | 60.0'
+        " | null | null | null\n"
         "  body metrics: 0 added, 0 removed\n"
         "  cardio sessions: 0 added, 0 removed\n"
-        "  exercises new to the catalogue: none\n"
+        "  exercises: 0 added, 0 removed\n"
+        "  aliases: 0 added, 0 removed\n"
     )
     assert hashlib.sha256(database.read_bytes()).hexdigest() == before
 
 
-def test_import_v1_dry_run_names_new_exercises(
+def test_import_v1_dry_run_lists_catalogue_changes(
     tmp_path: Path, v1_path: Path, capsys: pytest.CaptureFixture[str]
 ) -> None:
     database = tmp_path / "trainer.db"
@@ -124,9 +127,12 @@ def test_import_v1_dry_run_names_new_exercises(
 
     out = capsys.readouterr().out
     assert "  workouts: 2 added, 0 removed\n" in out
-    assert out.endswith(
-        "  exercises new to the catalogue: barbell bench press, dead hang, lat pulldown, pullup\n"
-    )
+    assert "  exercises: 4 added, 0 removed\n" in out
+    assert (
+        '    + "barbell bench press" | "Barbell Bench Press" | "barbell" | "chest,triceps"'
+        ' | "reps" | null\n'
+    ) in out
+    assert out.endswith('    + "pulldown machine" | "lat pulldown"\n')
 
 
 def test_import_v1_help_explains_the_dry_run(

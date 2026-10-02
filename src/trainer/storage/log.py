@@ -181,6 +181,26 @@ def source_rows(conn: sqlite3.Connection, source: str) -> SourceRows:
     return SourceRows(*([tuple(row) for row in rows] for rows in (workouts, sets, metrics, cardio)))
 
 
-def exercise_names(conn: sqlite3.Connection) -> set[str]:
-    """The name of every exercise in the catalogue."""
-    return {row[0] for row in conn.execute("""SELECT name FROM exercises""")}
+@dataclass(frozen=True)
+class CatalogueRows:
+    """The catalogue as rows that compare by content: what an import can change."""
+
+    exercises: list[Row]  # name, display name, equipment, muscle groups, measure, load step
+    aliases: list[Row]  # alias, the exercise's name
+
+
+def catalogue_rows(conn: sqlite3.Connection) -> CatalogueRows:
+    """Every exercise and alias, in a stable order."""
+    exercises = conn.execute(
+        """
+        SELECT name, display_name, equipment, muscle_groups, measure, load_increment_kg
+        FROM exercises ORDER BY name
+        """
+    ).fetchall()
+    aliases = conn.execute(
+        """
+        SELECT a.alias, e.name FROM exercise_aliases a JOIN exercises e ON e.id = a.exercise_id
+        ORDER BY a.alias
+        """
+    ).fetchall()
+    return CatalogueRows([tuple(row) for row in exercises], [tuple(row) for row in aliases])

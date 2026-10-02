@@ -681,8 +681,10 @@ was dropped on purpose, and nothing here runs on a timer.
   re-imports into an in-memory copy of the database, read through a read-only
   connection, and compares it with what the last import wrote. It lists every
   workout, set, body metric and cardio session that would be added or removed,
-  by content rather than id, and the exercises new to the catalogue. Nothing
-  is written.
+  and every exercise (its details) and alias the import would add or change.
+  Rows are compared as they are, by content rather than id, and only the
+  differences are written out, one line of JSON values each, so a NULL and a
+  "-" differ (from review). Nothing is written.
 - `import-v1.sh` now snapshots the v1 database through a read-only connection
   (`file:…?mode=ro`) made as that database's owner. Before, it opened the
   source read-write as root. In WAL mode that can checkpoint into the source
@@ -692,7 +694,8 @@ was dropped on purpose, and nothing here runs on a timer.
   import 35 exercises, 22 aliases, 22 workouts, 361 sets, 2 body metrics and
   1 cardio session, and **nothing differs** from the phase 1 import. No
   workout, set, metric or cardio session would be added or removed, and no
-  exercise is new. v1's last session is 28 September, before phase 1's import.
+  exercise or alias would change. v1's last session is 28 September, before
+  phase 1's import.
 
 ## Remaining phases
 

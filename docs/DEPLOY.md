@@ -206,7 +206,7 @@ Re-running replaces everything previously imported from v1 in one
 transaction; exercise ids stay stable, but the v1 workouts get new ids.
 `--dry-run` re-imports into a copy of the database held in memory and lists
 every workout, set, body metric and cardio session that would be added or
-removed, and any exercise new to the catalogue.
+removed, and every exercise and alias the import would add or change.
 
 ## Operations
 

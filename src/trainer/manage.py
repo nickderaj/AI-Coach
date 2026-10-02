@@ -78,12 +78,13 @@ def _report(preview: ImportPreview) -> None:
         "sets": preview.sets,
         "body metrics": preview.body_metrics,
         "cardio sessions": preview.cardio_sessions,
+        "exercises": preview.exercises,
+        "aliases": preview.aliases,
     }
     for kind, changes in kinds.items():
         lines.append(f"  {kind}: {len(changes.added)} added, {len(changes.removed)} removed")
         lines += [f"    + {line}" for line in changes.added]
         lines += [f"    - {line}" for line in changes.removed]
-    lines.append(f"  exercises new to the catalogue: {', '.join(preview.new_exercises) or 'none'}")
     sys.stdout.write("".join(f"{line}\n" for line in lines))
 
 
