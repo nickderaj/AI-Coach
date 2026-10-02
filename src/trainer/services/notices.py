@@ -256,8 +256,8 @@ def deliver(conn: sqlite3.Connection, sender: PushSender, now: datetime) -> Deli
     Each notice is pushed at most once: it is claimed, in a transaction of its
     own, before anything is sent, and a round that loses the claim to another
     skips it. If the process stops mid-push the notice is not pushed again; it
-    is in the inbox. A notice already read in the app, or due more than
-    ``STALE_AFTER`` ago, is not pushed at all. A browser whose subscription has
+    is in the inbox. A notice read in the app by the time it is claimed, or due
+    more than ``STALE_AFTER`` ago, is not pushed at all. A browser whose subscription has
     ended is forgotten. No transaction is held while a push is on its way.
     """
     stamp = utc_iso(now)
@@ -265,8 +265,8 @@ def deliver(conn: sqlite3.Connection, sender: PushSender, now: datetime) -> Deli
     total = Delivery()
     for notice in unsent_notices(conn, stamp):
         with write_transaction(conn):
-            claimed = claim_unsent(conn, notice.id, stamp)
-        if claimed and not notice.read and notice.at >= stale:
+            mine = claim_unsent(conn, notice.id, stamp)
+        if mine and notice.at >= stale:
             total = _sum(total, _push(conn, sender, notice))
     return total
 

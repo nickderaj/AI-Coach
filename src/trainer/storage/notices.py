@@ -110,11 +110,19 @@ def unsent_notices(conn: sqlite3.Connection, now: str) -> list[StoredNotice]:
 
 
 def claim_unsent(conn: sqlite3.Connection, notice_id: int, now: str) -> bool:
-    """Take notice ``notice_id``'s push on: whether no one had yet."""
-    cursor = conn.execute(
-        """UPDATE inbox SET sent_at = ? WHERE id = ? AND sent_at IS NULL""", (now, notice_id)
-    )
-    return cursor.rowcount > 0
+    """Take notice ``notice_id``'s push on; whether it is this caller's to push.
+
+    It is if no one had taken it on yet and it is still unread, both as of
+    this statement. A notice read meanwhile is taken on too, and never pushed.
+    """
+    row = conn.execute(
+        """
+        UPDATE inbox SET sent_at = ? WHERE id = ? AND sent_at IS NULL
+        RETURNING read_at IS NULL
+        """,
+        (now, notice_id),
+    ).fetchone()
+    return row is not None and bool(row[0])
 
 
 def save_subscription(conn: sqlite3.Connection, subscription: Subscription, now: str) -> None:

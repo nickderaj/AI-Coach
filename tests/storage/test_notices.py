@@ -147,3 +147,13 @@ def test_every_kind_can_be_stored(db: sqlite3.Connection) -> None:
         insert_notice(db, Notice(kind, "t", ""), T0, T0)
 
     assert {notice.kind for notice in shown_notices(db, T0, 10)} == set(NoticeKind)
+
+
+def test_a_notice_read_is_claimed_but_not_to_push(db: sqlite3.Connection) -> None:
+    notice = insert_notice(db, COACH, T0, T0)
+    mark_read(db, notice, T0)
+
+    assert not claim_unsent(db, notice, T1)
+
+    assert db.execute("SELECT sent_at FROM inbox").fetchone()[0] == T1
+    assert unsent_notices(db, T2) == []

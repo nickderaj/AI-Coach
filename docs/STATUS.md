@@ -662,7 +662,9 @@ was dropped on purpose, and nothing here runs on a timer.
   once to every browser, through a `PushSender` (5b brings the real one; tests
   use a fake). It is claimed in a transaction of its own before anything is
   sent, so a second round running at the same time skips it, and a process
-  stopped mid-push does not push it again on restart (from review). A failed push is not retried: the notice is in the inbox. A browser
+  stopped mid-push does not push it again on restart. The claim also checks,
+  under the same write lock, that the notice is still unread, so one read in
+  the app after the round picked it up is not pushed (both from review). A failed push is not retried: the notice is in the inbox. A browser
   whose subscription has ended (the push service answers 404 or 410) is
   forgotten. A notice read before its push, or due more than an hour ago (the
   sender was down), is left to the inbox. No transaction is held while a push

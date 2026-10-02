@@ -421,3 +421,28 @@ def test_a_round_cut_short_never_pushes_a_notice_twice(db: sqlite3.Connection) -
     again = FakeSender()
     assert deliver(db, again, NOW) == Delivery()
     assert again.sent == []
+
+
+def test_a_notice_read_after_it_was_selected_is_not_pushed(
+    db: sqlite3.Connection, tmp_path: Path
+) -> None:
+    subscribe(db, subscription(), NOW)
+    post(db, COACH, NOW)
+    second = post(db, TEST_NOTICE, NOW)
+
+    class ReadMeanwhile(FakeSender):
+        """While the first notice is pushed, the app marks the second read, through the API."""
+
+        @override
+        def send(self, subscription: Subscription, payload: bytes) -> PushOutcome:
+            with closing(connect(tmp_path / "trainer.db")) as api:
+                seen(api, second, NOW)
+            return super().send(subscription, payload)
+
+    sender = ReadMeanwhile()
+    assert deliver(db, sender, NOW) == Delivery(delivered=1)
+
+    assert [sent["id"] for _, sent in sender.sent] == [second - 1]
+    assert db.execute("SELECT sent_at FROM inbox WHERE id = ?", (second,)).fetchone()[0] == (
+        "2026-10-02T09:00:00+00:00"
+    )
