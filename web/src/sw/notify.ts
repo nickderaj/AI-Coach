@@ -101,11 +101,14 @@ export interface TapDeps {
 }
 
 /**
- * Act on a tap: mark the notice read, and show its screen in an open window of
- * the app (the first one), or in a new one.
+ * Act on a tap: mark the notice read, then show its screen in an open window of
+ * the app (the first one), or in a new one. Read first, so the screen, loading
+ * as it opens, finds it read.
  */
 export async function onTap(tapped: Tapped, deps: TapDeps): Promise<void> {
-  const seen = tapped.id === null ? Promise.resolve() : deps.seen(tapped.id).catch(() => null);
+  if (tapped.id !== null) {
+    await deps.seen(tapped.id).catch(() => null);
+  }
   const [window] = await deps.windows();
   if (window === undefined) {
     await deps.open(`/${tapped.route}`);
@@ -114,5 +117,4 @@ export async function onTap(tapped: Tapped, deps: TapDeps): Promise<void> {
     window.postMessage(message);
     await window.focus();
   }
-  await seen;
 }

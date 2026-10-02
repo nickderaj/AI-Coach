@@ -13,6 +13,12 @@ export interface OpenMessage {
   route: string;
 }
 
+/**
+ * The window event the app fires when a tapped notification opens a screen:
+ * its notice has just been marked read, so the inbox should be read again.
+ */
+export const INBOX_CHANGED = "trainer:inbox-changed";
+
 /** Only routes of this app are opened (as in `notify.ts`). */
 const ROUTE = /^#\/[a-z/]*$/;
 

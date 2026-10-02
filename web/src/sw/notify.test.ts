@@ -136,6 +136,33 @@ describe("onTap", () => {
     expect(tap.open).toHaveBeenCalledWith("/#/inbox");
   });
 
+  it("marks the notice read before it shows the screen", async () => {
+    // So the screen, loading as it opens, already finds it read.
+    const order: string[] = [];
+    let finish: () => void = () => undefined;
+    const tap: TapDeps = {
+      windows: () => Promise.resolve([]),
+      open: () => {
+        order.push("open");
+        return Promise.resolve(null);
+      },
+      seen: () =>
+        new Promise((resolve) => {
+          finish = (): void => {
+            order.push("seen");
+            resolve(null);
+          };
+        }),
+    };
+
+    const tapped = onTap({ id: 7, route: "#/inbox" }, tap);
+    await new Promise((resolve) => setTimeout(resolve, 0));
+    finish();
+    await tapped;
+
+    expect(order).toEqual(["seen", "open"]);
+  });
+
   it("still opens the screen if the server cannot be told", async () => {
     const tap = deps([]);
     tap.seen.mockReturnValue(Promise.reject(new TypeError("offline")));

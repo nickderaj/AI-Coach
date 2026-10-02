@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
 import type { ReactElement } from "react";
 
 import { inboxSchema, readAllNotices, seeNotice, useApi } from "../api";
@@ -6,17 +6,19 @@ import type { InboxData, Notice } from "../api";
 import { Load } from "../components";
 import { formatDay, formatTime } from "../format";
 import { href } from "../router";
+import { INBOX_CHANGED } from "../sw/message";
 
 const INBOX = "/api/inbox";
 
-function NoticeItem({ notice }: { notice: Notice }): ReactElement {
+function NoticeItem({ notice, onRead }: { notice: Notice; onRead: () => void }): ReactElement {
   return (
     <li>
       <a
         className={notice.read ? "card inbox-item" : "card inbox-item unread"}
         href={notice.route}
         onClick={() => {
-          void seeNotice(notice.id);
+          // Read again once marked: a notice may open this very screen.
+          void seeNotice(notice.id).then(onRead);
         }}
       >
         <span className="inbox-title">
@@ -32,7 +34,7 @@ function NoticeItem({ notice }: { notice: Notice }): ReactElement {
   );
 }
 
-function Notices({ inbox, onReadAll }: { inbox: InboxData; onReadAll: () => void }): ReactElement {
+function Notices({ inbox, onRead }: { inbox: InboxData; onRead: () => void }): ReactElement {
   const [failed, setFailed] = useState(false);
   if (inbox.notices.length === 0) {
     return (
@@ -54,7 +56,7 @@ function Notices({ inbox, onReadAll }: { inbox: InboxData; onReadAll: () => void
               void readAllNotices().then((done) => {
                 setFailed(!done);
                 if (done) {
-                  onReadAll();
+                  onRead();
                 }
               });
             }}
@@ -70,7 +72,7 @@ function Notices({ inbox, onReadAll }: { inbox: InboxData; onReadAll: () => void
       ) : null}
       <ul className="list" aria-label="Notices">
         {inbox.notices.map((notice) => (
-          <NoticeItem key={notice.id} notice={notice} />
+          <NoticeItem key={notice.id} notice={notice} onRead={onRead} />
         ))}
       </ul>
     </>
@@ -79,13 +81,28 @@ function Notices({ inbox, onReadAll }: { inbox: InboxData; onReadAll: () => void
 
 function InboxList({ onChanged }: { onChanged: () => void }): ReactElement {
   const state = useApi(INBOX, inboxSchema);
-  return <Load state={state}>{(inbox) => <Notices inbox={inbox} onReadAll={onChanged} />}</Load>;
+  return <Load state={state}>{(inbox) => <Notices inbox={inbox} onRead={onChanged} />}</Load>;
 }
 
 /** Every notice the app sent, newest first: nothing is lost if a push is. */
 export function Inbox(): ReactElement {
   // Reading the inbox again after marking it read: a new list, a new load.
   const [loads, setLoads] = useState(0);
+  useEffect(() => {
+    const reload = (): void => {
+      if (document.visibilityState === "visible") {
+        setLoads((count) => count + 1);
+      }
+    };
+    // Back from the background, or opened by a tapped notification: a notice
+    // may have been read meanwhile.
+    document.addEventListener("visibilitychange", reload);
+    window.addEventListener(INBOX_CHANGED, reload);
+    return (): void => {
+      document.removeEventListener("visibilitychange", reload);
+      window.removeEventListener(INBOX_CHANGED, reload);
+    };
+  }, []);
   return (
     <>
       <a className="back" href={href({ name: "home" })}>

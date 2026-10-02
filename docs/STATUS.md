@@ -681,6 +681,15 @@ was dropped on purpose, and nothing here runs on a timer.
   `http-ece` and `py-vapid`, the last two under MPL-2.0, for about 80 lines
   of code that the RFC's own test vector checks.
 
+**Fix from the first real use: opening a notice shows it read.** The owner
+got the test push, but tapping it, or its card in the Inbox, left it unread
+until "Mark all read". The server had marked it read each time; the screen
+never read the list again, because a test notice opens the Inbox, the screen
+already shown, so nothing reloaded. Now a tapped card reloads the list once
+its notice is marked read, and the Inbox reloads when the app comes back to
+the front or a tapped notification opens it. The service worker also marks
+a tapped notice read *before* showing its screen, so the screen loads it read.
+
 **Exit criterion (5e, ready for the owner).** v1's history is fully imported
 (5d, checked against the live database). For push and the inbox:
 1. Open the app **from the Home Screen** (Safari tabs cannot receive pushes on
