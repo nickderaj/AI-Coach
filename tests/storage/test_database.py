@@ -53,6 +53,8 @@ def test_migrate_creates_the_schema(tmp_path: Path) -> None:
             "program_days",
             "program_blocks",
             "block_exercises",
+            "push_subscriptions",
+            "inbox",
         }
 
 
