@@ -25,13 +25,13 @@ from trainer.storage.database import write_transaction
 from trainer.storage.notices import (
     StoredNotice,
     Subscription,
+    claim_unsent,
     delete_held_notice,
     delete_subscription,
     insert_notice,
     list_subscriptions,
     mark_all_read,
     mark_read,
-    mark_sent,
     save_subscription,
     shown_notices,
     unread_count,
@@ -253,19 +253,21 @@ class Delivery:
 def deliver(conn: sqlite3.Connection, sender: PushSender, now: datetime) -> Delivery:
     """Push every notice that has come due to every subscribed browser.
 
-    Each notice is pushed once, whatever happens to it. A notice already read
-    in the app, or due more than ``STALE_AFTER`` ago, is not pushed at all. A
-    browser whose subscription has ended is forgotten. No transaction is held
-    while a push is on its way.
+    Each notice is pushed at most once: it is claimed, in a transaction of its
+    own, before anything is sent, and a round that loses the claim to another
+    skips it. If the process stops mid-push the notice is not pushed again; it
+    is in the inbox. A notice already read in the app, or due more than
+    ``STALE_AFTER`` ago, is not pushed at all. A browser whose subscription has
+    ended is forgotten. No transaction is held while a push is on its way.
     """
     stamp = utc_iso(now)
     stale = utc_iso(now - STALE_AFTER)
     total = Delivery()
     for notice in unsent_notices(conn, stamp):
-        if not notice.read and notice.at >= stale:
-            total = _sum(total, _push(conn, sender, notice))
         with write_transaction(conn):
-            mark_sent(conn, notice.id, stamp)
+            claimed = claim_unsent(conn, notice.id, stamp)
+        if claimed and not notice.read and notice.at >= stale:
+            total = _sum(total, _push(conn, sender, notice))
     return total
 
 

@@ -3,8 +3,10 @@
 import base64
 import json
 import sqlite3
+from contextlib import closing
 from datetime import UTC, datetime, timedelta
-from typing import Any
+from pathlib import Path
+from typing import Any, override
 
 import pytest
 from pydantic import ValidationError
@@ -30,6 +32,7 @@ from trainer.services.notices import (
     subscribe,
     unsubscribe,
 )
+from trainer.storage.database import connect
 from trainer.storage.notices import StoredNotice, Subscription, list_subscriptions
 
 NOW = datetime(2026, 10, 2, 9, 0, tzinfo=UTC)
@@ -374,3 +377,47 @@ def test_a_stale_notice_is_left_to_the_inbox(db: sqlite3.Connection) -> None:
     assert deliver(db, sender, NOW) == Delivery(delivered=1)
     assert [sent["id"] for _, sent in sender.sent] == [on_time]
     assert db.execute("SELECT count(*) FROM inbox WHERE sent_at IS NULL").fetchone()[0] == 0
+
+
+def test_overlapping_rounds_push_each_notice_once(db: sqlite3.Connection, tmp_path: Path) -> None:
+    subscribe(db, subscription(), NOW)
+    first = post(db, COACH, NOW)
+    second = post(db, TEST_NOTICE, NOW)
+    other = FakeSender()
+
+    class Overlapping(FakeSender):
+        """While its first push is on its way, another round runs, on its own connection."""
+
+        @override
+        def send(self, subscription: Subscription, payload: bytes) -> PushOutcome:
+            if not self.sent:
+                with closing(connect(tmp_path / "trainer.db")) as conn:
+                    deliver(conn, other, NOW)
+            return super().send(subscription, payload)
+
+    outer = Overlapping()
+    deliver(db, outer, NOW)
+
+    pushed = [sent["id"] for _, sent in outer.sent + other.sent]
+    assert sorted(pushed) == [first, second]
+
+
+def test_a_round_cut_short_never_pushes_a_notice_twice(db: sqlite3.Connection) -> None:
+    subscribe(db, subscription(), NOW)
+    post(db, COACH, NOW)
+
+    class Killed(FakeSender):
+        """The process dies once the push has gone, before anything else."""
+
+        @override
+        def send(self, subscription: Subscription, payload: bytes) -> PushOutcome:
+            super().send(subscription, payload)
+            raise SystemExit
+
+    with pytest.raises(SystemExit):
+        deliver(db, Killed(), NOW)
+    db.rollback()  # what a fresh process would see
+
+    again = FakeSender()
+    assert deliver(db, again, NOW) == Delivery()
+    assert again.sent == []

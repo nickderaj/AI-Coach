@@ -658,9 +658,11 @@ was dropped on purpose, and nothing here runs on a timer.
   subdomains) with no user or port, and the keys must be base64url of the
   right size (a 65-byte uncompressed P-256 key, a 16-byte secret).
   Subscribing again with the same address replaces the keys.
-- **Pushing** (`deliver`): each notice that has come due is pushed once to
-  every browser, through a `PushSender` (5b brings the real one; tests use a
-  fake). A failed push is not retried: the notice is in the inbox. A browser
+- **Pushing** (`deliver`): each notice that has come due is pushed at most
+  once to every browser, through a `PushSender` (5b brings the real one; tests
+  use a fake). It is claimed in a transaction of its own before anything is
+  sent, so a second round running at the same time skips it, and a process
+  stopped mid-push does not push it again on restart (from review). A failed push is not retried: the notice is in the inbox. A browser
   whose subscription has ended (the push service answers 404 or 410) is
   forgotten. A notice read before its push, or due more than an hour ago (the
   sender was down), is left to the inbox. No transaction is held while a push

@@ -109,9 +109,12 @@ def unsent_notices(conn: sqlite3.Connection, now: str) -> list[StoredNotice]:
     return [_stored(row) for row in rows]
 
 
-def mark_sent(conn: sqlite3.Connection, notice_id: int, now: str) -> None:
-    """Record that notice ``notice_id``'s push was dealt with."""
-    conn.execute("""UPDATE inbox SET sent_at = ? WHERE id = ?""", (now, notice_id))
+def claim_unsent(conn: sqlite3.Connection, notice_id: int, now: str) -> bool:
+    """Take notice ``notice_id``'s push on: whether no one had yet."""
+    cursor = conn.execute(
+        """UPDATE inbox SET sent_at = ? WHERE id = ? AND sent_at IS NULL""", (now, notice_id)
+    )
+    return cursor.rowcount > 0
 
 
 def save_subscription(conn: sqlite3.Connection, subscription: Subscription, now: str) -> None:

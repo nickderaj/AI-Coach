@@ -8,13 +8,13 @@ from trainer.domain.notices import Notice, NoticeKind
 from trainer.storage.notices import (
     StoredNotice,
     Subscription,
+    claim_unsent,
     delete_held_notice,
     delete_subscription,
     insert_notice,
     list_subscriptions,
     mark_all_read,
     mark_read,
-    mark_sent,
     save_subscription,
     shown_notices,
     unread_count,
@@ -88,7 +88,8 @@ def test_mark_all_read_leaves_held_and_read_notices(db: sqlite3.Connection) -> N
 def test_unsent_notices_are_due_and_oldest_first(db: sqlite3.Connection) -> None:
     later = insert_notice(db, COACH, T1, T1)
     sent = insert_notice(db, TEST, T0, T0)
-    mark_sent(db, sent, T0)
+    assert claim_unsent(db, sent, T0)
+    assert not claim_unsent(db, sent, T1)  # taken already: the first time stays
     earlier = insert_notice(db, TEST, T0, T0)
     insert_notice(db, COACH, T0, T2)  # held
 
