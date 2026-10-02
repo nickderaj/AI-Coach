@@ -234,7 +234,7 @@ function BlockCard({ block, actions }: { block: DraftBlock; actions: Actions }):
   const { exercise, plan } = block;
   const anyDone = block.sets.some((set) => set.logged !== null);
   return (
-    <section className="card" aria-label={exercise.name}>
+    <section className="card log-card" aria-label={exercise.name}>
       <header className="exercise-row">
         <Avatar name={exercise.name} equipment={exercise.equipment} />
         <strong>
@@ -335,33 +335,35 @@ function RestTimer({ logging, draft }: { logging: Logging; draft: Draft }): Reac
   return (
     <div className="rest tint" style={tone("teal")} role="timer" aria-label="Rest">
       <strong>Rest {formatClock(left)}</strong>
-      <button
-        type="button"
-        className="chip"
-        onClick={() => {
-          shift(-REST_STEP_MS);
-        }}
-      >
-        −15 s
-      </button>
-      <button
-        type="button"
-        className="chip"
-        onClick={() => {
-          shift(REST_STEP_MS);
-        }}
-      >
-        +15 s
-      </button>
-      <button
-        type="button"
-        className="chip"
-        onClick={() => {
-          shift(null);
-        }}
-      >
-        Skip
-      </button>
+      <span className="rest-controls">
+        <button
+          type="button"
+          className="chip"
+          onClick={() => {
+            shift(-REST_STEP_MS);
+          }}
+        >
+          −15 s
+        </button>
+        <button
+          type="button"
+          className="chip"
+          onClick={() => {
+            shift(REST_STEP_MS);
+          }}
+        >
+          +15 s
+        </button>
+        <button
+          type="button"
+          className="chip"
+          onClick={() => {
+            shift(null);
+          }}
+        >
+          Skip
+        </button>
+      </span>
     </div>
   );
 }
