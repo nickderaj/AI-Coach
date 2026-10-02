@@ -184,8 +184,9 @@ h2 {
 
 .sync {
   margin: 0;
-  padding: 0.7rem 0.9rem;
+  padding: 0.8rem 0.95rem;
   border-radius: var(--radius);
+  border-left: 3px solid currentcolor;
   font-size: 0.9rem;
   font-weight: 600;
 }
@@ -631,11 +632,37 @@ a.exercise-row strong {
   border: 1px solid var(--rule);
   border-radius: 50%;
   background: var(--card);
-  font-size: 1.15rem;
+  font-size: 0;
   line-height: 1;
   padding: 0;
   color: var(--subtext0);
   text-decoration: none;
+}
+
+.head-link::before {
+  content: "";
+  display: block;
+  width: 1rem;
+  height: 0.75rem;
+  border: 1.5px solid currentcolor;
+}
+
+.head-link[href^="#/inbox"]::after {
+  content: "";
+  position: absolute;
+  width: 0.58rem;
+  height: 0.58rem;
+  border-right: 1.5px solid currentcolor;
+  border-bottom: 1.5px solid currentcolor;
+  transform: translateY(-0.18rem) rotate(45deg);
+}
+
+.head-link[href^="#/settings"]::before {
+  width: 0.75rem;
+  height: 0.75rem;
+  border: 2px solid currentcolor;
+  border-radius: 50%;
+  box-shadow: 0 0 0 3px var(--card);
 }
 
 /* How many notices are unread, on the inbox link. */
@@ -661,7 +688,7 @@ a.exercise-row strong {
 }
 
 .inbox-item {
-  gap: 0.3rem;
+  gap: 0.45rem;
   color: inherit;
   text-decoration: none;
 }
@@ -678,6 +705,7 @@ a.exercise-row strong {
   height: 0.55rem;
   border-radius: 50%;
   background: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
 .inbox-item:not(.unread) strong {
@@ -795,6 +823,14 @@ a.exercise-row strong {
   width: 6rem;
 }
 
+.quick {
+  border-left: 3px solid var(--accent);
+}
+
+.quick h2 {
+  margin-top: 0;
+}
+
 .check {
   width: 2.2rem;
   height: 2.2rem;
@@ -892,6 +928,21 @@ a.exercise-row strong {
   font-size: 0.9rem;
 }
 
+.field:not(.inline) {
+  color: var(--subtext1);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.field:not(.inline) input,
+.field:not(.inline) select {
+  color: var(--text);
+  letter-spacing: 0;
+  text-transform: none;
+}
+
 .field.inline {
   display: flex;
   align-items: center;
@@ -905,13 +956,19 @@ a.exercise-row strong {
 
 .pick {
   width: 100%;
-  border: 0;
+  border: 1px solid var(--rule);
+  background: var(--card);
   text-align: left;
   color: inherit;
+  cursor: pointer;
 }
 
 .pick > span {
   display: grid;
+}
+
+.pick:hover {
+  border-color: var(--overlay0);
 }
 
 /* ---------------------------------------------------------------- coach */
@@ -921,29 +978,31 @@ a.exercise-row strong {
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 0.5rem;
+  gap: 0.75rem;
 }
 
 .bubble {
   max-width: 85%;
-  padding: 0.6rem 0.85rem;
+  padding: 0.75rem 0.9rem;
   border-radius: var(--radius);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  box-shadow: var(--shadow);
+  box-shadow: none;
 }
 
 .bubble.user {
   justify-self: end;
-  background: var(--accent);
+  border-bottom-right-radius: 0;
+  background: var(--forest);
   color: var(--card);
-  border-bottom-right-radius: 0.3rem;
 }
 
 .bubble.assistant {
   justify-self: start;
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--accent);
+  border-bottom-left-radius: 0;
   background: var(--card);
-  border-bottom-left-radius: 0.3rem;
 }
 
 /* "You:" / "Coach:" are for screen readers only: never part of copied text. */
@@ -968,10 +1027,11 @@ a.exercise-row strong {
   display: flex;
   gap: 0.5rem;
   align-items: end;
-  padding: 0.5rem;
+  padding: 0.55rem;
   background: var(--card);
   border-radius: var(--radius);
-  box-shadow: var(--shadow);
+  border: 1px solid var(--rule);
+  box-shadow: 0 10px 28px rgb(32 35 29 / 12%);
 }
 
 .composer textarea {
@@ -1273,8 +1333,82 @@ a.exercise-row strong {
 }
 
 .tabs a span[aria-hidden] {
-  font-size: 1.05rem;
+  position: relative;
+  display: block;
+  width: 1rem;
+  height: 1rem;
+  font-size: 0;
   line-height: 1;
+}
+
+.tabs a span[aria-hidden]::before,
+.tabs a span[aria-hidden]::after {
+  content: "";
+  position: absolute;
+  display: block;
+}
+
+.tabs a:nth-child(1) span[aria-hidden]::before {
+  inset: 0.15rem;
+  border: 1.5px solid currentcolor;
+  border-radius: 50%;
+}
+
+.tabs a:nth-child(1) span[aria-hidden]::after {
+  inset: 0.38rem;
+  border-radius: 50%;
+  background: currentcolor;
+}
+
+.tabs a:nth-child(2) span[aria-hidden]::before {
+  inset: 0.08rem;
+  border: 1.5px solid currentcolor;
+}
+
+.tabs a:nth-child(2) span[aria-hidden]::after {
+  top: 0.08rem;
+  bottom: 0.08rem;
+  left: 0.48rem;
+  width: 1px;
+  background: currentcolor;
+}
+
+.tabs a:nth-child(3) span[aria-hidden]::before {
+  top: 0.22rem;
+  right: 0;
+  width: 0.72rem;
+  height: 1.5px;
+  background: currentcolor;
+  box-shadow:
+    0 0.28rem 0 currentcolor,
+    0 0.56rem 0 currentcolor;
+}
+
+.tabs a:nth-child(3) span[aria-hidden]::after {
+  top: 0.16rem;
+  left: 0;
+  width: 0.14rem;
+  height: 0.14rem;
+  border-radius: 50%;
+  background: currentcolor;
+  box-shadow:
+    0 0.28rem 0 currentcolor,
+    0 0.56rem 0 currentcolor;
+}
+
+.tabs a:nth-child(4) span[aria-hidden]::before {
+  inset: 0.14rem;
+  border: 1.5px solid currentcolor;
+  transform: rotate(45deg);
+}
+
+.tabs a:nth-child(5) span[aria-hidden]::before {
+  content: "H";
+  inset: -0.08rem 0 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 0.95rem;
+  font-style: italic;
+  text-align: center;
 }
 
 .tabs a[aria-current="page"] {
@@ -1324,6 +1458,7 @@ a.exercise-row strong {
   height: 1.75rem;
   margin: 0;
   border-radius: 999px;
+  border: 1px solid var(--rule);
   background: var(--surface0);
   transition: background 0.15s;
 }
@@ -1336,13 +1471,14 @@ a.exercise-row strong {
   width: 1.35rem;
   height: 1.35rem;
   border-radius: 50%;
-  background: var(--card);
-  box-shadow: var(--shadow);
+  background: var(--paper);
+  box-shadow: 0 1px 2px rgb(32 35 29 / 18%);
   transition: transform 0.15s;
 }
 
 .field input[role="switch"]:checked {
-  background: var(--green);
+  border-color: var(--forest);
+  background: var(--forest);
 }
 
 .field input[role="switch"]:checked::after {
@@ -1351,4 +1487,46 @@ a.exercise-row strong {
 
 .field input[role="switch"]:disabled {
   opacity: 0.6;
+}
+
+@media (max-width: 26rem) {
+  .app main {
+    padding-right: 0.75rem;
+    padding-left: 0.75rem;
+  }
+
+  .card {
+    padding-right: 0.85rem;
+    padding-left: 0.85rem;
+  }
+
+  .tiles {
+    gap: 0.4rem;
+  }
+
+  .tile strong {
+    font-size: 1.4rem;
+  }
+
+  .log-head {
+    align-items: flex-start;
+  }
+
+  .log-head .primary {
+    min-height: 2.5rem;
+    padding: 0.55rem 0.75rem;
+  }
+
+  .rest {
+    grid-template-columns: 1fr;
+  }
+
+  .rest-controls {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .rest-space {
+    height: 6.5rem;
+  }
 }
