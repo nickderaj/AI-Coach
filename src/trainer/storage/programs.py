@@ -356,13 +356,54 @@ def set_days(conn: sqlite3.Connection, workout_client_id: str) -> set[int]:
     }
 
 
-def day_weeks(conn: sqlite3.Connection, day_id: int) -> int | None:
-    """How many weeks, deload included, the program of a day has; ``None`` if no such day."""
+@dataclass(frozen=True)
+class DayProgram:
+    """The program a day belongs to: its weeks, deload included, and whether it is active."""
+
+    weeks: int
+    active: bool
+
+
+def day_program(conn: sqlite3.Connection, day_id: int) -> DayProgram | None:
+    """The program of a day, or ``None`` if there is no such day."""
     row = conn.execute(
         """
-        SELECT p.training_weeks + 1 FROM program_days d
+        SELECT p.training_weeks + 1, p.status = 'active' FROM program_days d
         JOIN programs p ON p.id = d.program_id WHERE d.id = ?
         """,
         (day_id,),
     ).fetchone()
-    return None if row is None else int(row[0])
+    return None if row is None else DayProgram(int(row[0]), bool(row[1]))
+
+
+def program_in_progress(conn: sqlite3.Connection, program_id: int) -> bool:
+    """Whether an unfinished workout trains a day of the program."""
+    row = conn.execute(
+        """
+        SELECT 1 FROM workouts w JOIN program_days d ON d.id = w.program_day_id
+        WHERE d.program_id = ? AND w.ended_at IS NULL
+        """,
+        (program_id,),
+    ).fetchone()
+    return row is not None
+
+
+def other_program_workout_in_progress(conn: sqlite3.Connection, client_id: str) -> bool:
+    """Whether a workout other than ``client_id`` trains a program day and is unfinished."""
+    row = conn.execute(
+        """
+        SELECT 1 FROM workouts
+        WHERE program_day_id IS NOT NULL AND ended_at IS NULL AND client_id IS NOT ?
+        """,
+        (client_id,),
+    ).fetchone()
+    return row is not None
+
+
+def day_claimed(conn: sqlite3.Connection, day_id: int, week: int) -> bool:
+    """Whether a workout, finished or not, trains this program day this week."""
+    row = conn.execute(
+        """SELECT 1 FROM workouts WHERE program_day_id = ? AND program_week = ?""",
+        (day_id, week),
+    ).fetchone()
+    return row is not None

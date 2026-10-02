@@ -45,8 +45,13 @@ const workoutDetailSchema = z.object({
       /** Body weight moved in each rep, on top of the load (bodyweight exercises). */
       carried_kg: z.number(),
       sets: z.array(setSchema),
+      /** The program exercise these sets were for, if any. */
+      block_exercise_id: z.number().int().nullable().default(null),
     }),
   ),
+  /** The program day and week the workout trains, if any. */
+  program_day_id: z.number().int().nullable().default(null),
+  program_week: z.number().int().nullable().default(null),
 });
 
 const exerciseSummarySchema = z.object({
@@ -98,16 +103,20 @@ export class ApiError extends Error {
 }
 
 /**
- * GET a same-origin JSON endpoint and validate the body against `schema`.
+ * GET a same-origin JSON endpoint and validate the body against `schema`;
+ * `fresh` insists on the server's answer, never a saved copy.
  */
 export async function fetchJson<T>(
   path: string,
   schema: z.ZodType<T>,
   signal?: AbortSignal,
+  fresh = false,
 ): Promise<T> {
   const response = await fetch(path, {
     signal: signal ?? null,
     headers: { Accept: "application/json" },
+    // Fresh reads skip the service worker's saved copies: the server or nothing.
+    ...(fresh ? { cache: "no-store" as const } : {}),
   });
   if (!response.ok) {
     throw new ApiError(response.status);
@@ -119,11 +128,22 @@ export async function fetchJson<T>(
 export type Loadable<T> =
   { status: "loading" } | { status: "error"; message: string } | { status: "ready"; data: T };
 
-function describe(error: unknown): string {
+/**
+ * Whether a read failed for want of a network: the browser's fetch rejects
+ * with a TypeError then. A refusal (an ApiError), an answer that is not JSON
+ * (a SyntaxError, say from a proxy's error page) or not the expected shape
+ * (a ZodError) are the server's answer, not an absence of one.
+ */
+export function isOffline(error: unknown): boolean {
+  return error instanceof TypeError;
+}
+
+/** Why a read failed, as the owner should read it. */
+export function describeFailure(error: unknown): string {
   if (error instanceof ApiError) {
     return error.message;
   }
-  if (error instanceof z.ZodError) {
+  if (error instanceof z.ZodError || error instanceof SyntaxError) {
     return "The server sent data this app does not understand";
   }
   return "Could not reach the server";
@@ -140,7 +160,7 @@ export function useApi<T>(path: string, schema: z.ZodType<T>): Loadable<T> {
       },
       (error: unknown): void => {
         if (!controller.signal.aborted) {
-          setState({ status: "error", message: describe(error) });
+          setState({ status: "error", message: describeFailure(error) });
         }
       },
     );
@@ -346,3 +366,60 @@ export async function changeProgram(
     message: detail.success ? sentence(detail.data.detail) : new ApiError(response.status).message,
   };
 }
+
+/** What the next session of an exercise aims for, and why (the app's rules, D5 and D6). */
+export const targetSchema = z.object({
+  decision: z.enum(["start", "progress", "repeat", "reduce", "deload"]),
+  load_kg: z.number().nullable(),
+  /** One prefilled amount per set: reps, or seconds for a timed exercise. */
+  reps: z.array(z.number().int()),
+});
+
+const plannedExerciseSchema = z.object({
+  block_exercise_id: z.number().int(),
+  exercise_id: z.number().int(),
+  name: z.string(),
+  equipment: z.string().nullable(),
+  measure: measureSchema,
+  carried_kg: z.number(),
+  sets: z.number().int(),
+  rep_min: z.number().int(),
+  rep_max: z.number().int(),
+  notes: z.string().nullable(),
+  target: targetSchema,
+  /** The exercise's last session outside today's workout. */
+  last: z.object({ started_at: z.string(), sets: z.array(setSchema) }).nullable(),
+});
+
+const plannedDaySchema = z.object({
+  id: z.number().int(),
+  position: z.number().int(),
+  name: z.string(),
+  week: z.number().int(),
+  deload: z.boolean(),
+  blocks: z.array(
+    z.object({ rest_s: z.number().int(), exercises: z.array(plannedExerciseSchema) }),
+  ),
+});
+
+/** The active program's next day, planned; null without an active program. */
+export const todaySchema = z
+  .object({
+    program_id: z.number().int(),
+    program_name: z.string(),
+    training_weeks: z.number().int(),
+    days: z.number().int(),
+    /** Null once the block is done. */
+    day: plannedDaySchema.nullable(),
+    /** An unfinished workout already training that day. */
+    workout_client_id: z.string().nullable(),
+    /**
+     * An unfinished workout of a replaced program, to finish first. Told in
+     * the same answer, so the screen never pairs two separate reads.
+     */
+    left_over: workoutDetailSchema.nullable().default(null),
+  })
+  .nullable();
+
+export type PlannedDay = z.infer<typeof plannedDaySchema>;
+export type TodayPlan = NonNullable<z.infer<typeof todaySchema>>;

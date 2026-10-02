@@ -213,6 +213,8 @@ describe("Picker", () => {
             logged: null,
           },
         ],
+        slot_id: null,
+        plan: null,
       },
     ]);
   });

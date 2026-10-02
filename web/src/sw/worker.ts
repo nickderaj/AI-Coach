@@ -36,7 +36,7 @@ self.addEventListener("activate", (event) => {
 
 self.addEventListener("fetch", (event) => {
   const { request } = event;
-  switch (strategyFor(request.method, new URL(request.url), self.location.origin)) {
+  switch (strategyFor(request.method, new URL(request.url), self.location.origin, request.cache)) {
     case "bypass":
       return;
     case "cache-first":

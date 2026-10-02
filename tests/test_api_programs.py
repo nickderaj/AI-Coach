@@ -156,6 +156,21 @@ def test_propose_then_accept(client: TestClient, ids: tuple[int, int]) -> None:
     )
 
 
+def test_accepting_while_the_program_is_being_trained(
+    client: TestClient, ids: tuple[int, int]
+) -> None:
+    active = accept(client, propose(client, ids)["id"])
+    link = {"day_id": active["days"][0]["id"], "week": 1}
+    started = {"started_at": "2026-10-01T09:00:00Z", "program": link}
+    client.put(f"/api/workouts/{W1}", json=started, headers=OWNER)
+    new = propose(client, ids)
+
+    response = client.post(f"/api/programs/{new['id']}/accept", headers=OWNER)
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": "finish or discard the workout in progress first"}
+
+
 def test_accepting_what_is_not_the_proposal(client: TestClient, ids: tuple[int, int]) -> None:
     active = accept(client, propose(client, ids)["id"])
 
@@ -239,7 +254,7 @@ class TestTraining:
             "days": 2,
         }
         assert today["training_weeks"] == 6
-        assert today["workout_client_id"] is None
+        assert (today["workout_client_id"], today["left_over"]) == (None, None)
         day = today["day"]
         assert (day["name"], day["week"], day["deload"]) == ("A", 1, False)
         exercise = day["blocks"][0]["exercises"][0]
@@ -291,6 +306,23 @@ class TestTraining:
 
         assert response.status_code == 422
         assert isinstance(response.json()["detail"], list)  # refused by the shape, not the day
+
+    def test_a_finished_day_cannot_be_started_again(
+        self, client: TestClient, program: dict[str, Any]
+    ) -> None:
+        day_id = program["days"][0]["id"]
+        link = {"day_id": day_id, "week": 1}
+        done = {"started_at": "2026-10-01T09:00:00Z", "ended_at": "2026-10-01T10:00:00Z"}
+        client.put(f"/api/workouts/{W1}", json=done | {"program": link}, headers=OWNER)
+
+        again = client.put(
+            "/api/workouts/22222222-2222-4222-8222-222222222222",
+            json={"started_at": "2026-10-02T09:00:00Z", "program": link},
+            headers=OWNER,
+        )
+
+        assert again.status_code == 409
+        assert again.json() == {"detail": f"week 1 of day {day_id} already has a workout"}
 
     def test_a_workout_of_a_missing_day(self, client: TestClient, program: dict[str, Any]) -> None:
         response = self.start(client, program["days"][1]["id"] + 100)

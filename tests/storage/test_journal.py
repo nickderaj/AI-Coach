@@ -22,6 +22,7 @@ from trainer.storage.journal import (
     save_set,
     save_workout,
     workout_id_for,
+    workout_link,
 )
 
 W1 = "11111111-1111-4111-8111-111111111111"
@@ -310,7 +311,10 @@ class TestProgramSets:
             return row[0], row[1]
 
         assert link() == (1, 3)
+        assert workout_link(db, W1) == ProgramLink(1, 3)
         save_workout(db, W1, ("t", "u"), None, ProgramLink(1, 4))
         assert link() == (1, 4)
         save_workout(db, W1, ("t", "u"), None)
         assert link() == (None, None)
+        assert workout_link(db, W1) is None
+        assert workout_link(db, W2) is None

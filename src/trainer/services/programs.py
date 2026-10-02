@@ -24,9 +24,9 @@ from trainer.storage.database import write_transaction
 from trainer.storage.history import (
     ExerciseSession,
     WorkoutDetail,
-    current_workout,
     last_session,
     list_exercises,
+    program_workout_in_progress,
 )
 from trainer.storage.profile import read_profile
 from trainer.storage.programs import (
@@ -44,6 +44,7 @@ from trainer.storage.programs import (
     insert_program,
     last_position,
     last_slot_sets,
+    program_in_progress,
     program_with_status,
 )
 
@@ -144,6 +145,10 @@ class NoProposalError(LookupError):
     """There is no such proposed program."""
 
 
+class ProgramInUseError(RuntimeError):
+    """The active program has a workout in progress, so it cannot be replaced yet."""
+
+
 def _spec(program: ProgramIn) -> ProgramSpec:
     return ProgramSpec(
         program.name,
@@ -228,9 +233,15 @@ def accept_proposal(conn: sqlite3.Connection, program_id: int, now: datetime) ->
 
     Raises:
         NoProposalError: if ``program_id`` is not the proposed program.
+        ProgramInUseError: if a workout of the active program is in progress:
+            replacing the program then would leave that workout without a plan.
     """
     with write_transaction(conn):
         _check_proposal(conn, program_id)
+        active = program_with_status(conn, ProgramStatus.ACTIVE)
+        if active is not None and program_in_progress(conn, active):
+            message = "finish or discard the workout in progress first"
+            raise ProgramInUseError(message)
         activate_program(conn, program_id, utc_iso(now))
     return get_program(conn, program_id)
 
@@ -253,7 +264,8 @@ def programs(conn: sqlite3.Connection) -> Programs:
     proposed_id = program_with_status(conn, ProgramStatus.PROPOSED)
     active = None if active_id is None else get_program(conn, active_id)
     proposed = None if proposed_id is None else get_program(conn, proposed_id)
-    following = None if active is None else _position(conn, active, current_workout(conn))
+    current = program_workout_in_progress(conn)
+    following = None if active is None else _position(conn, active, current)
     return Programs(active, proposed, following)
 
 
@@ -303,6 +315,9 @@ class Today:
 
     ``day`` is ``None`` once the block is done. ``workout_client_id`` is the
     unfinished workout already training that day, if there is one.
+    ``left_over`` is an unfinished workout of a replaced program (data from
+    before that was refused): it must be finished first. Both come from the
+    same read, so a screen never has to pair two answers.
     """
 
     program_id: int
@@ -311,6 +326,7 @@ class Today:
     days: int
     day: PlannedDay | None
     workout_client_id: str | None
+    left_over: WorkoutDetail | None
 
 
 def today(conn: sqlite3.Connection) -> Today | None:
@@ -319,7 +335,7 @@ def today(conn: sqlite3.Connection) -> Today | None:
     if program_id is None:
         return None
     program = get_program(conn, program_id)
-    current = current_workout(conn)
+    current = program_workout_in_progress(conn)
     position = _position(conn, program, current)
     training = current if _in_progress(program, current) else None
     return Today(
@@ -329,6 +345,7 @@ def today(conn: sqlite3.Connection) -> Today | None:
         len(program.days),
         None if position is None else _plan(conn, program, position, current),
         None if training is None else training.client_id,
+        current if training is None else None,
     )
 
 

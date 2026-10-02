@@ -74,6 +74,13 @@ describe("strategyFor", () => {
   it("leaves other sites alone", () => {
     expect(strategyFor("GET", new URL("https://other.test/assets/x.js"), ORIGIN)).toBe("bypass");
   });
+
+  it("leaves a read that must be fresh to the network alone", () => {
+    const today = new URL(`${ORIGIN}/api/today`);
+
+    expect(strategyFor("GET", today, ORIGIN, "no-store")).toBe("bypass");
+    expect(strategyFor("GET", today, ORIGIN, "default")).toBe("network-first");
+  });
 });
 
 describe("cacheFirst", () => {

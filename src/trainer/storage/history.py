@@ -214,6 +214,17 @@ def current_workout(conn: sqlite3.Connection) -> WorkoutDetail | None:
     return None if row is None else get_workout(conn, row[0])
 
 
+def program_workout_in_progress(conn: sqlite3.Connection) -> WorkoutDetail | None:
+    """The most recently started unfinished workout that trains a program day, if any."""
+    row = conn.execute(
+        """
+        SELECT id FROM workouts WHERE program_day_id IS NOT NULL AND ended_at IS NULL
+        ORDER BY started_at DESC, id DESC LIMIT 1
+        """
+    ).fetchone()
+    return None if row is None else get_workout(conn, row[0])
+
+
 def _block(rows: list[sqlite3.Row], bodyweight: float | None) -> ExerciseBlock:
     """``rows`` start: position, exercise id, name, measure, equipment, program exercise."""
     position, exercise_id, name, measure, equipment, slot = rows[0][:6]

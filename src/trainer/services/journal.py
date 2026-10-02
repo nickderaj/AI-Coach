@@ -23,8 +23,15 @@ from trainer.storage.journal import (
     save_set,
     save_workout,
     workout_id_for,
+    workout_link,
 )
-from trainer.storage.programs import day_weeks, set_days, slot_place
+from trainer.storage.programs import (
+    day_claimed,
+    day_program,
+    other_program_workout_in_progress,
+    set_days,
+    slot_place,
+)
 
 if TYPE_CHECKING:
     import sqlite3
@@ -37,6 +44,10 @@ class NotFoundError(LookupError):
 
 class InvalidWorkoutError(ValueError):
     """A workout's times, or its program day and week, are inconsistent."""
+
+
+class StaleProgramDayError(ValueError):
+    """A workout would train a program day that is done, or a program no longer active."""
 
 
 class InvalidSetError(ValueError):
@@ -83,6 +94,10 @@ def record_workout(
         InvalidWorkoutError: if it ends before it starts, the program day does
             not exist or has no such week, or the workout has program sets for
             another day than ``program``'s.
+        StaleProgramDayError: if a workout newly names a day another workout
+            already trains that week (done or in progress), a day of a program
+            no longer active (a plan seen before it changed), or any program
+            day while another program workout is unfinished.
     """
     started, ended = times
     if ended is not None and ended < started:
@@ -91,7 +106,7 @@ def record_workout(
     stored = (utc_iso(started), None if ended is None else utc_iso(ended))
     with write_transaction(conn):
         if program is not None:
-            _check_link(conn, program)
+            _check_link(conn, client_id, program)
         if set_days(conn, client_id) - {None if program is None else program.day_id}:
             message = "the workout has sets for another program day"
             raise InvalidWorkoutError(message)
@@ -99,14 +114,29 @@ def record_workout(
     return get_workout(conn, workout_id)
 
 
-def _check_link(conn: sqlite3.Connection, program: ProgramLink) -> None:
-    weeks = day_weeks(conn, program.day_id)
-    if weeks is None:
+def _check_link(conn: sqlite3.Connection, client_id: str, program: ProgramLink) -> None:
+    day = day_program(conn, program.day_id)
+    if day is None:
         message = "program day not found"
         raise InvalidWorkoutError(message)
-    if program.week > weeks:
-        message = f"the program has {weeks} weeks"
+    if program.week > day.weeks:
+        message = f"the program has {day.weeks} weeks"
         raise InvalidWorkoutError(message)
+    if workout_link(conn, client_id) == program:
+        return  # its start again, or its finish: accepted when it was started
+    if not day.active:
+        message = "that program is no longer active"
+        raise StaleProgramDayError(message)
+    # Done, or begun on another phone (one may have started it offline). This
+    # workout's own claim returned above, as an unchanged link.
+    if day_claimed(conn, program.day_id, program.week):
+        message = f"week {program.week} of day {program.day_id} already has a workout"
+        raise StaleProgramDayError(message)
+    # One program workout at a time: another phone's, or one of a program
+    # replaced before that was refused, is finished or discarded first.
+    if other_program_workout_in_progress(conn, client_id):
+        message = "finish or discard the workout in progress first"
+        raise StaleProgramDayError(message)
 
 
 def remove_workout(conn: sqlite3.Connection, client_id: str) -> None:

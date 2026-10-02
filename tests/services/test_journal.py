@@ -16,6 +16,7 @@ from trainer.services.journal import (
     InvalidWorkoutError,
     NewExercise,
     NotFoundError,
+    StaleProgramDayError,
     add_exercise,
     record_set,
     record_workout,
@@ -28,6 +29,7 @@ from trainer.storage.database import connect, migrate
 from trainer.storage.journal import ProgramLink, SetValues
 
 W1 = "11111111-1111-4111-8111-111111111111"
+W2 = "22222222-2222-4222-8222-222222222222"
 START = datetime(2026, 9, 30, 9, 0, tzinfo=timezone(timedelta(hours=1)))
 FIVE = SetValues(5, 60.0, None, None, None)
 
@@ -298,6 +300,74 @@ class TestProgramLinks:
         db.commit()
         return exercise_id, 5
 
+    def test_a_finished_day_is_not_trained_twice(
+        self, db: sqlite3.Connection, day: tuple[int, int]
+    ) -> None:
+        # Say a phone starts a day from a stale plan after it was finished elsewhere.
+        assert day
+        record_workout(db, W1, (START, START), None, ProgramLink(1, 2))
+
+        with pytest.raises(StaleProgramDayError, match=r"^week 2 of day 1 already has a workout$"):
+            record_workout(db, W2, (START, None), None, ProgramLink(1, 2))
+
+        assert not db.in_transaction
+        assert workout_count(db) == 1
+        # Its own replay (start or finish again) is still fine, and so is another week.
+        record_workout(db, W1, (START, START), None, ProgramLink(1, 2))
+        record_workout(db, W2, (START, None), None, ProgramLink(1, 3))
+
+    def test_a_day_in_progress_elsewhere_is_not_started_twice(
+        self, db: sqlite3.Connection, day: tuple[int, int]
+    ) -> None:
+        # Two phones, one offline, start the same day: the second to arrive is refused.
+        assert day
+        record_workout(db, W1, (START, None), None, ProgramLink(1, 1))
+
+        with pytest.raises(StaleProgramDayError, match=r"^week 1 of day 1 already has a workout$"):
+            record_workout(db, W2, (START, None), None, ProgramLink(1, 1))
+
+        assert workout_count(db) == 1
+        record_workout(db, W1, (START, None), None, ProgramLink(1, 1))  # its own replay
+
+    def test_one_program_workout_at_a_time(
+        self, db: sqlite3.Connection, day: tuple[int, int]
+    ) -> None:
+        # Two phones on different days, or a workout of a program replaced before
+        # this rule existed: the next program workout waits until it is finished.
+        assert day
+        record_workout(db, W1, (START, None), None, ProgramLink(1, 1))
+
+        with pytest.raises(
+            StaleProgramDayError, match=r"^finish or discard the workout in progress first$"
+        ):
+            record_workout(db, W2, (START, None), None, ProgramLink(2, 1))
+
+        record_workout(db, W1, (START, START), None, ProgramLink(1, 1))  # finished
+        record_workout(db, W2, (START, None), None, ProgramLink(2, 1))
+        record_workout(db, "w3", (START, None), None)  # outside any program: fine
+
+    def test_only_the_active_program_is_trained(
+        self, db: sqlite3.Connection, day: tuple[int, int]
+    ) -> None:
+        assert day
+        db.execute("UPDATE programs SET status = 'archived'")
+        db.commit()
+
+        with pytest.raises(StaleProgramDayError, match=r"^that program is no longer active$"):
+            record_workout(db, W1, (START, None), None, ProgramLink(1, 1))
+
+    def test_a_workout_keeps_its_link_once_its_program_is_archived(
+        self, db: sqlite3.Connection, day: tuple[int, int]
+    ) -> None:
+        assert day
+        record_workout(db, W1, (START, None), None, ProgramLink(1, 1))
+        db.execute("UPDATE programs SET status = 'archived'")
+        db.commit()
+
+        finished = record_workout(db, W1, (START, START), None, ProgramLink(1, 1))
+
+        assert finished.ended_at is not None
+
     def test_a_workout_of_a_program_day(self, db: sqlite3.Connection, day: tuple[int, int]) -> None:
         assert day
         detail = record_workout(db, W1, (START, None), None, ProgramLink(1, 7))
@@ -398,3 +468,7 @@ class TestProgramLinks:
             InvalidSetError, match=r"^the program exercise is for another exercise$"
         ):
             record_set(db, "s1", (W1, other), FIVE, slot)
+
+
+def workout_count(db: sqlite3.Connection) -> int:
+    return int(db.execute("SELECT count(*) FROM workouts").fetchone()[0])

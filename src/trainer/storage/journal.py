@@ -70,6 +70,18 @@ def save_workout(
     return workout_id
 
 
+def workout_link(conn: sqlite3.Connection, client_id: str) -> ProgramLink | None:
+    """The program day and week the app workout ``client_id`` trains, if it exists and has one."""
+    row = conn.execute(
+        """
+        SELECT program_day_id, program_week FROM workouts
+        WHERE client_id = ? AND program_day_id IS NOT NULL
+        """,
+        (client_id,),
+    ).fetchone()
+    return None if row is None else ProgramLink(row[0], row[1])
+
+
 def delete_workout(conn: sqlite3.Connection, client_id: str) -> bool:
     """Delete an app workout and its sets; ``False`` if there was none."""
     cursor = conn.execute("""DELETE FROM workouts WHERE client_id = ?""", (client_id,))
