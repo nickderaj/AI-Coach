@@ -72,13 +72,35 @@ def _read_private(path: Path) -> VapidKey | None:
 
 
 def _write(path: Path, text: str) -> None:
-    """Replace ``path`` with ``text`` at once, readable by its owner only."""
+    """Replace ``path`` with ``text`` at once, readable by its owner only.
+
+    Raises:
+        OSError: if the text cannot all be written; ``path`` is then untouched.
+    """
     staged = path.with_name(f".{path.name}.new")
-    # Created owner-only: the umask can only narrow this mode, never widen it.
-    descriptor = os.open(staged, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    # Always a new file, created owner-only (the umask can only narrow the
+    # mode): a left-over one would keep its own mode through O_TRUNC.
+    staged.unlink(missing_ok=True)
+    descriptor = os.open(staged, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
     try:
-        os.write(descriptor, text.encode())
+        _write_all(descriptor, text.encode())
         os.fsync(descriptor)
     finally:
         os.close(descriptor)
     staged.replace(path)
+
+
+def _write_all(descriptor: int, data: bytes) -> None:
+    """Write all of ``data``: ``os.write`` may write only a part of it.
+
+    Each round that makes progress writes a byte at least, so ``len(data)``
+    rounds are enough; if they are not, writing has stopped.
+    """
+    rest = memoryview(data)
+    for _ in range(len(data)):
+        if not rest:
+            return
+        rest = rest[os.write(descriptor, rest) :]
+    if rest:
+        message = "no progress writing a key file"
+        raise OSError(message)

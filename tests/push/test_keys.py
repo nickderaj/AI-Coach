@@ -1,5 +1,6 @@
 """The VAPID key pair on disk: the private key decides, the public file follows."""
 
+import os
 import stat
 from pathlib import Path
 
@@ -113,8 +114,6 @@ def test_a_private_file_without_a_key_is_left_alone(tmp_path: Path) -> None:
 
 
 def test_files_are_owner_only_whatever_the_umask(tmp_path: Path) -> None:
-    import os  # noqa: PLC0415  # why: only this test touches the umask
-
     old = os.umask(0)
     try:
         write_keys(tmp_path, rotate=False)
@@ -134,10 +133,54 @@ def test_a_padded_private_key_is_read_whole(tmp_path: Path) -> None:
     assert read(tmp_path / "push-public.env") == f"TRAINER_VAPID_PUBLIC_KEY={key.public_text}\n"
 
 
-def test_a_stale_staged_file_is_replaced(tmp_path: Path) -> None:
-    (tmp_path / ".push.env.new").write_text("left over")
+def test_a_stale_staged_file_is_replaced_owner_only(tmp_path: Path) -> None:
+    # From review: O_TRUNC keeps an existing file's mode, so a staged file left
+    # over at 0644 would have carried the private key out at 0644.
+    for name in (".push.env.new", ".push-public.env.new"):
+        (tmp_path / name).write_text("left over, and longer than any key line in the file")
+        (tmp_path / name).chmod(0o644)
 
     write_keys(tmp_path, rotate=False)
 
     assert read(tmp_path / "push.env").startswith("TRAINER_VAPID_PRIVATE_KEY=")
-    assert not (tmp_path / ".push.env.new").exists()
+    assert read(tmp_path / "push.env").count("\n") == 1
+    for name in ("push.env", "push-public.env"):
+        assert stat.S_IMODE((tmp_path / name).stat().st_mode) == 0o600
+    assert sorted(path.name for path in tmp_path.iterdir()) == ["push-public.env", "push.env"]
+
+
+def test_a_short_write_is_finished(tmp_path: Path, monkeypatch: pytest.MonkeyPatch) -> None:
+    # From review: os.write may write only a prefix; the rest must follow.
+    real = os.write
+    sizes: list[int] = []
+
+    def a_few_bytes_at_a_time(descriptor: int, data: bytes) -> int:
+        sizes.append(real(descriptor, bytes(data[:5])))
+        return sizes[-1]
+
+    monkeypatch.setattr(os, "write", a_few_bytes_at_a_time)
+    write_keys(tmp_path, rotate=False)
+    monkeypatch.undo()
+
+    key, public = pair(tmp_path)
+    assert public == f"TRAINER_VAPID_PUBLIC_KEY={key.public_text}"
+    assert max(sizes) == 5
+    assert len(sizes) > 2
+
+
+def test_a_write_that_stops_promotes_nothing(
+    tmp_path: Path, monkeypatch: pytest.MonkeyPatch
+) -> None:
+    write_keys(tmp_path, rotate=False)
+    before = read(tmp_path / "push.env")
+    real = os.write
+
+    def stalls(descriptor: int, data: bytes) -> int:
+        return 0 if len(data) < 20 else real(descriptor, bytes(data[:10]))
+
+    monkeypatch.setattr(os, "write", stalls)
+    with pytest.raises(OSError, match=r"^no progress writing a key file$"):
+        write_keys(tmp_path, rotate=True)
+    monkeypatch.undo()
+
+    assert read(tmp_path / "push.env") == before  # the old key is still whole
