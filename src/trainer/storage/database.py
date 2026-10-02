@@ -165,6 +165,32 @@ MIGRATIONS: tuple[str, ...] = (
         REFERENCES block_exercises (id);
     CREATE INDEX workout_sets_block_exercise ON workout_sets (block_exercise_id);
     """,
+    """
+    -- Web Push (D1): each browser that turned notifications on, by the push
+    -- service address it gave, with the keys its pushes are encrypted for.
+    CREATE TABLE push_subscriptions (
+        id INTEGER PRIMARY KEY,
+        endpoint TEXT NOT NULL UNIQUE CHECK (endpoint LIKE 'https://%'),
+        p256dh TEXT NOT NULL CHECK (p256dh <> ''),
+        auth TEXT NOT NULL CHECK (auth <> ''),
+        created_at TEXT NOT NULL
+    ) STRICT;
+
+    -- What the app told the owner, kept whether or not a push reached a phone.
+    -- A notice shows from due_at; until then the app may claim it as seen, and
+    -- then it is never pushed. sent_at is when its push was dealt with.
+    CREATE TABLE inbox (
+        id INTEGER PRIMARY KEY,
+        kind TEXT NOT NULL CHECK (kind IN ('coach', 'proposal', 'test')),
+        title TEXT NOT NULL CHECK (title <> ''),
+        body TEXT NOT NULL,
+        created_at TEXT NOT NULL,
+        due_at TEXT NOT NULL CHECK (due_at >= created_at),
+        sent_at TEXT,
+        read_at TEXT
+    ) STRICT;
+    CREATE INDEX inbox_due_at ON inbox (due_at);
+    """,
 )
 
 

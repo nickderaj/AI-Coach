@@ -612,6 +612,66 @@ program with every day, block and exercise, its next week and day, and any
 proposal waiting. `hermes/SOUL.md` tells the coach to read it before
 proposing.
 
+## Phase 5 — Cut-over: in progress
+
+v1's bot is already stopped (see Done). What is left is how the app reaches
+the owner when it is closed (D1), and one last import of anything logged in
+v1 since phase 1. Phase 5 is split into PRs that each stand on their own:
+
+| Step | Scope | PR |
+| --- | --- | --- |
+| 5a | Schema v7 (`push_subscriptions`, `inbox`); what to notify (pure, `trainer.domain.notices`); the inbox, holding and claiming a notice, subscriptions, and pushing through a sender interface | this PR |
+| 5b | API: subscribe and unsubscribe, the inbox, a test notice; the coach's answer posts its notice. Web Push itself (RFC 8291 encryption, RFC 8292 VAPID) on `cryptography`; a small sender unit with outbound network, the API kept without; `deploy/push-secrets.sh` for the VAPID keys | |
+| 5c | Web: the service worker shows pushes and opens the right screen; a Settings switch and a test; the Inbox screen with unread state | |
+| 5d | The last v1 import: a dry run in the PR, then one re-run after deploy, backup first | |
+| 5e | Exit criterion, by the owner: push and the inbox working on the phone; v1's history fully imported | |
+
+**What is notified.** As little as possible; v1's daily "not imported" nudge
+was dropped on purpose, and nothing here runs on a timer.
+- **The coach's answer, when the owner is not watching for it.** A turn can
+  take a minute, and the phone may be locked or on another screen by then. The
+  answer's notice is *held* for 15 seconds (`HOLD`). If the Coach or Program
+  screen is open and visible when the reply arrives, the app tells the server
+  it was seen, which *claims* the notice: it is removed and never pushed.
+  Otherwise it shows in the inbox and is pushed. Its text is the start of the
+  reply, on one line, up to 140 characters.
+- **A new program proposal, folded into that answer.** Only the coach proposes,
+  and only inside a turn, so a turn that proposed a program sends one notice,
+  "Your coach proposed <name>", which opens the Program screen, rather than
+  two.
+- **Not the program's next day.** A program is a sequence, not a calendar, so a
+  daily "next: Upper A" would arrive on rest days too: the nagging v1 dropped.
+  Today and Home already show it.
+- **A test**, sent from Settings, to check a phone receives pushes.
+
+**5a: the inbox and its storage (this PR).**
+- **Schema v7.** `push_subscriptions`: one row per browser, by its push
+  service address (`https` only, unique), with its two keys as it gave them.
+  `inbox`: a notice's kind (`coach`, `proposal` or `test`), title and text,
+  when it was made, when it is due (shown and pushed), when its push was dealt
+  with and when it was read.
+- **The inbox** (`trainer.services.notices`) shows the 50 newest notices that
+  are due, newest first, and counts every unread one. "Seen" claims a notice
+  still held, or marks one already due as read; read all marks every due one.
+- **Subscriptions** are checked before they are kept: the address must be
+  HTTPS on a known push service (Apple, Google, Mozilla or Microsoft, or their
+  subdomains) with no user or port, and the keys must be base64url of the
+  right size (a 65-byte uncompressed P-256 key, a 16-byte secret).
+  Subscribing again with the same address replaces the keys.
+- **Pushing** (`deliver`): each notice that has come due is pushed once to
+  every browser, through a `PushSender` (5b brings the real one; tests use a
+  fake). A failed push is not retried: the notice is in the inbox. A browser
+  whose subscription has ended (the push service answers 404 or 410) is
+  forgotten. A notice read before its push, or due more than an hour ago (the
+  sender was down), is left to the inbox. No transaction is held while a push
+  is on its way.
+- **Dependencies.** Pushing needs encryption and signatures, so 5b adds
+  `cryptography` (Apache-2.0 or BSD-3-Clause), which brings `cffi` and
+  `pycparser`. `cffi` 2.1 declares `MIT-0`; the allow-list gains it in its own
+  `ci:` PR. `pywebpush` was not used: it would add `requests`, `aiohttp`,
+  `http-ece` and `py-vapid`, the last two under MPL-2.0, for about 80 lines
+  of code that the RFC's own test vector checks.
+
 ## Remaining phases
 
 | Phase | Scope | Exit criterion |
@@ -619,7 +679,7 @@ proposing.
 | 2 — Logging | 2a write API, 2b-1 visual design, 2c offline queue and PWA install, 2b-2 logging screens (all done) | Owner stops logging in v1 |
 | 3 — Hermes | `trainer-coach` unit, `hermes/` profile templates (SOUL, config), MCP tool server, Coach tab on one durable session, **private local git repo** for memory/skills with a nightly commit (never this repo) | Coach remembers across turns and days |
 | 4 — Programs | Domain engine (`# coverage-critical`): double progression per D5, deload per D6, sequence-based "next day"; `propose_program` via Hermes; Today screen with blocks/supersets, targets, "last time", rest timer | A full week trained from the app |
-| 5 — Cut-over | Web Push + in-app inbox; a last catch-up import from v1's database (v1's bot is already stopped, 2026-10-02) | Push and inbox working; v1's history fully imported |
+| 5 — Cut-over | Web Push + in-app inbox; a last catch-up import from v1's database (v1's bot is already stopped, 2026-10-02); in progress, above | Push and inbox working; v1's history fully imported |
 
 ## Facts a new session needs
 
