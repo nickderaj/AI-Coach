@@ -101,13 +101,22 @@ export interface TapDeps {
 }
 
 /**
+ * How long a tap waits for the notice to be marked read before it opens the app
+ * anyway: the phone may have the push but no way to reach the server.
+ *
+ * @internal Exported for tests.
+ */
+export const SEEN_WAIT_MS = 2_000;
+
+/**
  * Act on a tap: mark the notice read, then show its screen in an open window of
  * the app (the first one), or in a new one. Read first, so the screen, loading
- * as it opens, finds it read.
+ * as it opens, finds it read; but for `SEEN_WAIT_MS` at most.
  */
 export async function onTap(tapped: Tapped, deps: TapDeps): Promise<void> {
   if (tapped.id !== null) {
-    await deps.seen(tapped.id).catch(() => null);
+    const seen = deps.seen(tapped.id).catch(() => null);
+    await Promise.race([seen, new Promise((resolve) => setTimeout(resolve, SEEN_WAIT_MS))]);
   }
   const [window] = await deps.windows();
   if (window === undefined) {

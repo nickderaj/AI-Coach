@@ -688,7 +688,9 @@ never read the list again, because a test notice opens the Inbox, the screen
 already shown, so nothing reloaded. Now a tapped card reloads the list once
 its notice is marked read, and the Inbox reloads when the app comes back to
 the front or a tapped notification opens it. The service worker also marks
-a tapped notice read *before* showing its screen, so the screen loads it read.
+a tapped notice read *before* showing its screen, so the screen loads it read,
+but waits 2 seconds at most (`SEEN_WAIT_MS`): a phone can get a push while it
+cannot reach the server, and the tap must still open the app (from review).
 
 **Exit criterion (5e, ready for the owner).** v1's history is fully imported
 (5d, checked against the live database). For push and the inbox:
