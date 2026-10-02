@@ -12,7 +12,7 @@ Those live in the owner's private notes on the build host (outside git) and in
 a git-ignored `deploy/local.env`; ask the owner if they are missing. The policy
 checker rejects the most common leaks (emails, `*.ts.net` names, Tailscale IPs).
 
-Last updated: 2026-10-01.
+Last updated: 2026-10-02.
 
 ## Done
 
@@ -42,6 +42,7 @@ Last updated: 2026-10-01.
 | Phase 4c — `propose_program`: the coach proposes through the API with the gateway's key | #26 | Deployed 2026-10-01 (backup first). A live turn in a throwaway session proposed through the API (200); session deleted, test proposal turned down, no memory written. |
 | Phase 4d — the Program tab: the block, its weeks and next day; accept or turn down a proposal; ask the coach | #27 | Deployed 2026-10-01 (backup first); the live app serves the tab, and decline by id answers 409 for a stale id. |
 | `current_program`: the coach reads the program it changes | #29 | Deployed 2026-10-01. A live turn in a throwaway session called `current_program`; session deleted, no memory written. |
+| Phase 4e — the Today screen: train the program's next day from the app | #28 | Deployed 2026-10-02 (backup first); the live app serves Today, and `/api/today` answers with `left_over`. **Phase 4 built.** |
 
 ## Phase 2 — logging: built, awaiting its exit criterion
 
@@ -316,7 +317,7 @@ so copying a bubble no longer carries them into a new message.
 Friday's session with the seeded 5-minute mobility warm-up, unprompted, and
 deferred to the app's progression and deload rules.
 
-## Phase 4 — Programs: in progress
+## Phase 4 — Programs: built, awaiting its exit criterion
 
 Phase 4 is split into PRs that each stand on their own, in this order. Each one
 updates this section.
@@ -327,8 +328,20 @@ updates this section.
 | 4b | Programs in storage and services. API: the active and the proposed program, accept a proposal, today's program day with each exercise's target and last time, workouts and sets linked to the program | #25 |
 | 4c | `propose_program`, the coach's MCP tool: exercise ids only, validated, written through the API as a proposal (see below); the coach's profile learns to use it | #26 |
 | 4d | Web: the Program screen. The whole block, the current week, the deload week marked; a proposal to accept; generate or refine through the coach | #27 |
-| 4e | Web: the Today screen. The next program day, supersets side by side, sets prefilled with targets, last time, a rest timer per block | this PR |
-| 4f | Exit criterion, by the owner: a full week trained from the app | |
+| 4e | Web: the Today screen. The next program day, supersets side by side, sets prefilled with targets, last time, a rest timer per block | #28 |
+| 4f | Exit criterion, by the owner: a full week trained from the app | ready |
+
+**Exit criterion: a full week trained from the app (4f, ready for the owner).**
+Everything in phase 4 is merged and deployed. To check it:
+1. In the **Program** tab, ask the coach for a program ("Plan one with the
+   coach"). Read the proposal, then **Start this program**.
+2. Each training day, open **Home → Next in your program**, then **Start
+   this workout**. Log the sets (prefilled from the targets) and **Finish**.
+3. After the last day of the week, the Program tab shows week 2, and Today
+   shows targets worked out from week 1: up a step where every set reached
+   the top of its range.
+
+Phase 4 closes when a full week has been trained this way.
 
 **How the coach writes a program (4c).** The tool server runs in the coach's
 sandbox, where the data directory is read-only, so it cannot write the
@@ -508,7 +521,7 @@ between Home and History.
   the class of the logging screen's floating rest timer, and was drawn as a
   bar over the tabs. It is `.block-rest` now, and a test checks it.
 
-**4e: the Today screen (this PR).** Training a program day reuses the
+**4e: the Today screen (done, #28).** Training a program day reuses the
 logging screens of phase 2, so it works offline and through the outbox like any
 workout.
 - **Today (`#/today`).** Home shows "Next in your program: Upper A · Week 2"
