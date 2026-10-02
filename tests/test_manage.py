@@ -1,6 +1,7 @@
 """``python -m trainer.manage`` command line."""
 
 import hashlib
+import re
 import runpy
 import sqlite3
 import sys
@@ -80,6 +81,82 @@ def test_import_v1_refuses_a_missing_source(
     assert capsys.readouterr().err == f"v1 database not found: {missing}\n"
     assert not missing.exists()
     assert not (tmp_path / "t.db").exists()
+
+
+def test_import_v1_dry_run_reports_and_writes_nothing(
+    tmp_path: Path, v1_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    database = tmp_path / "trainer.db"
+    assert main(["import-v1", "--source", str(v1_path), "--database", str(database)]) == 0
+    with closing(sqlite3.connect(v1_path)) as v1:
+        v1.execute("UPDATE efforts SET reps = 9 WHERE id = 100")
+        v1.commit()
+    capsys.readouterr()
+    before = hashlib.sha256(database.read_bytes()).hexdigest()
+
+    argv = ["import-v1", "--dry-run", "--source", str(v1_path), "--database", str(database)]
+    assert main(argv) == 0
+
+    assert capsys.readouterr().out == (
+        "would import from v1: 4 exercises, 5 aliases, 2 workouts, 5 sets, 1 body metrics, "
+        "1 cardio sessions\n"
+        "changes against the last import (nothing written):\n"
+        "  workouts: 0 added, 0 removed\n"
+        "  sets: 1 added, 1 removed\n"
+        '    + "2026-07-09T10:47:23+00:00" | "barbell bench press" | 1 | 1 | 9 | 60.0'
+        " | null | null | null\n"
+        '    - "2026-07-09T10:47:23+00:00" | "barbell bench press" | 1 | 1 | 8 | 60.0'
+        " | null | null | null\n"
+        "  body metrics: 0 added, 0 removed\n"
+        "  cardio sessions: 0 added, 0 removed\n"
+        "  exercises: 0 added, 0 removed\n"
+        "  aliases: 0 added, 0 removed\n"
+    )
+    assert hashlib.sha256(database.read_bytes()).hexdigest() == before
+
+
+def test_import_v1_dry_run_lists_catalogue_changes(
+    tmp_path: Path, v1_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    database = tmp_path / "trainer.db"
+    assert main(["migrate", "--database", str(database)]) == 0
+    capsys.readouterr()
+
+    argv = ["import-v1", "--dry-run", "--source", str(v1_path), "--database", str(database)]
+    assert main(argv) == 0
+
+    out = capsys.readouterr().out
+    assert "  workouts: 2 added, 0 removed\n" in out
+    assert "  exercises: 4 added, 0 removed\n" in out
+    assert (
+        '    + "barbell bench press" | "Barbell Bench Press" | "barbell" | "chest,triceps"'
+        ' | "reps" | null\n'
+    ) in out
+    assert out.endswith('    + "pulldown machine" | "lat pulldown"\n')
+
+
+def test_import_v1_help_explains_the_dry_run(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("COLUMNS", "200")
+
+    with pytest.raises(SystemExit):
+        main(["import-v1", "--help"])
+
+    out = capsys.readouterr().out
+    assert re.search(r"^ +--dry-run +show what would change, writing nothing$", out, re.MULTILINE)
+
+
+def test_import_v1_dry_run_needs_a_log_to_compare_with(
+    tmp_path: Path, v1_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    missing = tmp_path / "trainer.db"
+
+    argv = ["import-v1", "--dry-run", "--source", str(v1_path), "--database", str(missing)]
+    assert main(argv) == 1
+
+    assert capsys.readouterr().err == f"no database to compare with: {missing}\n"
+    assert not missing.exists()
 
 
 def test_help(capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch) -> None:

@@ -126,3 +126,81 @@ def insert_cardio(conn: sqlite3.Connection, record: CardioRecord) -> None:
             record.source,
         ),
     )
+
+
+type Row = tuple[object, ...]
+
+
+@dataclass(frozen=True)
+class SourceRows:
+    """Everything one source wrote, as plain rows that compare by content.
+
+    Ids are left out, since a re-import gives new ones; exercises are named.
+    """
+
+    workouts: list[Row]  # started, ended, notes, number of sets
+    sets: list[Row]  # workout start, exercise, position, set, reps, load, time, RPE, notes
+    body_metrics: list[Row]  # measured, metric, value, unit
+    cardio_sessions: list[Row]  # started, activity, duration, distance, notes
+
+
+def source_rows(conn: sqlite3.Connection, source: str) -> SourceRows:
+    """The rows ``source`` wrote, in a stable order."""
+    workouts = conn.execute(
+        """
+        SELECT w.started_at, w.ended_at, w.notes, count(s.id) FROM workouts w
+        LEFT JOIN workout_sets s ON s.workout_id = w.id
+        WHERE w.source = ? GROUP BY w.id ORDER BY w.started_at, w.id
+        """,
+        (source,),
+    ).fetchall()
+    sets = conn.execute(
+        """
+        SELECT w.started_at, e.name, s.exercise_position, s.set_number, s.reps, s.load_kg,
+            s.duration_s, s.rpe, s.notes
+        FROM workout_sets s JOIN workouts w ON w.id = s.workout_id
+        JOIN exercises e ON e.id = s.exercise_id
+        WHERE w.source = ? ORDER BY w.started_at, s.exercise_position, s.set_number
+        """,
+        (source,),
+    ).fetchall()
+    metrics = conn.execute(
+        """
+        SELECT measured_at, metric, value, unit FROM body_metrics WHERE source = ?
+        ORDER BY measured_at, id
+        """,
+        (source,),
+    ).fetchall()
+    cardio = conn.execute(
+        """
+        SELECT started_at, activity, duration_s, distance_m, notes FROM cardio_sessions
+        WHERE source = ? ORDER BY started_at, id
+        """,
+        (source,),
+    ).fetchall()
+    return SourceRows(*([tuple(row) for row in rows] for rows in (workouts, sets, metrics, cardio)))
+
+
+@dataclass(frozen=True)
+class CatalogueRows:
+    """The catalogue as rows that compare by content: what an import can change."""
+
+    exercises: list[Row]  # name, display name, equipment, muscle groups, measure, load step
+    aliases: list[Row]  # alias, the exercise's name
+
+
+def catalogue_rows(conn: sqlite3.Connection) -> CatalogueRows:
+    """Every exercise and alias, in a stable order."""
+    exercises = conn.execute(
+        """
+        SELECT name, display_name, equipment, muscle_groups, measure, load_increment_kg
+        FROM exercises ORDER BY name
+        """
+    ).fetchall()
+    aliases = conn.execute(
+        """
+        SELECT a.alias, e.name FROM exercise_aliases a JOIN exercises e ON e.id = a.exercise_id
+        ORDER BY a.alias
+        """
+    ).fetchall()
+    return CatalogueRows([tuple(row) for row in exercises], [tuple(row) for row in aliases])

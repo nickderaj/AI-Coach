@@ -11,26 +11,34 @@ older ultron bot) without one; values without an offset are UTC.
 
 from __future__ import annotations
 
+import json
+from collections import Counter
+from contextlib import closing
 from dataclasses import dataclass
 from datetime import UTC, datetime
 from typing import TYPE_CHECKING
 
 from trainer.domain.exercises import Equipment, Measure
 from trainer.storage.catalogue import ExerciseSpec, add_alias, resolve, upsert_exercise
+from trainer.storage.database import connect, migrate
 from trainer.storage.log import (
     BodyMetricRecord,
     CardioRecord,
     SetRecord,
     WorkoutRecord,
+    catalogue_rows,
     delete_source,
     insert_body_metric,
     insert_cardio,
     insert_set,
     insert_workout,
+    source_rows,
 )
 
 if TYPE_CHECKING:
     import sqlite3
+
+    from trainer.storage.log import Row
 
 SOURCE = "v1"
 
@@ -92,6 +100,64 @@ def import_v1(source: sqlite3.Connection, target: sqlite3.Connection) -> ImportS
         metrics = _import_body_metrics(source, target)
         cardio = _import_cardio(source, target)
     return ImportSummary(len(exercise_ids), aliases, workouts, sets, metrics, cardio)
+
+
+@dataclass(frozen=True)
+class Changes:
+    """Rows a re-import would add and remove, each as one line of JSON values.
+
+    A row changed in place is one removed and one added.
+    """
+
+    added: list[str]
+    removed: list[str]
+
+
+@dataclass(frozen=True)
+class ImportPreview:
+    """What re-importing would write, and how that differs from the last import."""
+
+    summary: ImportSummary
+    workouts: Changes
+    sets: Changes
+    body_metrics: Changes
+    cardio_sessions: Changes
+    exercises: Changes
+    aliases: Changes
+
+
+def preview_import(source: sqlite3.Connection, target: sqlite3.Connection) -> ImportPreview:
+    """Re-import into a copy of ``target`` held in memory, and compare.
+
+    Everything an import writes is compared: the log rows it replaces, and the
+    catalogue it updates (each exercise's details and every alias). ``target``
+    is only read, and may be a read-only connection.
+    """
+    with closing(connect(":memory:")) as scratch:
+        target.backup(scratch)
+        migrate(scratch)
+        before, catalogue = source_rows(scratch, SOURCE), catalogue_rows(scratch)
+        summary = import_v1(source, scratch)
+        after, updated = source_rows(scratch, SOURCE), catalogue_rows(scratch)
+    return ImportPreview(
+        summary,
+        _changes(before.workouts, after.workouts),
+        _changes(before.sets, after.sets),
+        _changes(before.body_metrics, after.body_metrics),
+        _changes(before.cardio_sessions, after.cardio_sessions),
+        _changes(catalogue.exercises, updated.exercises),
+        _changes(catalogue.aliases, updated.aliases),
+    )
+
+
+def _changes(before: list[Row], after: list[Row]) -> Changes:
+    # Rows are compared as they are, and only the differences are written out.
+    old, new = Counter(before), Counter(after)
+    return Changes(_lines(new - old), _lines(old - new))
+
+
+def _lines(rows: Counter[Row]) -> list[str]:
+    return sorted(" | ".join(json.dumps(value) for value in row) for row in rows.elements())
 
 
 def _import_exercises(source: sqlite3.Connection, target: sqlite3.Connection) -> dict[int, int]:

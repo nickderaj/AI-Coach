@@ -80,3 +80,11 @@ def test_the_old_coach_unit_is_removed_only_when_it_is_ours() -> None:
     text = (DEPLOY / "install.sh").read_text(encoding="utf-8")
 
     assert "grep -q '^Description=hermes-trainer coach' \"$legacy\"" in text
+
+
+def test_the_v1_snapshot_is_read_only_and_made_as_its_owner() -> None:
+    text = (DEPLOY / "import-v1.sh").read_text(encoding="utf-8")
+
+    assert 'runuser -u "$owner" -- sqlite3 "file:$source_db?mode=ro"' in text
+    assert 'owner=$(stat -c %U "$source_db")' in text
+    assert '"${dry_run[@]}"' in text

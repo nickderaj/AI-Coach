@@ -623,7 +623,7 @@ v1 since phase 1. Phase 5 is split into PRs that each stand on their own:
 | 5a | Schema v7 (`push_subscriptions`, `inbox`); what to notify (pure, `trainer.domain.notices`); the inbox, holding and claiming a notice, subscriptions, and pushing through a sender interface | this PR |
 | 5b | API: subscribe and unsubscribe, the inbox, a test notice; the coach's answer posts its notice. Web Push itself (RFC 8291 encryption, RFC 8292 VAPID) on `cryptography`; a small sender unit with outbound network, the API kept without; `deploy/push-secrets.sh` for the VAPID keys | |
 | 5c | Web: the service worker shows pushes and opens the right screen; a Settings switch and a test; the Inbox screen with unread state | |
-| 5d | The last v1 import: a dry run in the PR, then one re-run after deploy, backup first | |
+| 5d | The last v1 import: a dry run in the PR, then one re-run after deploy, backup first | this PR |
 | 5e | Exit criterion, by the owner: push and the inbox working on the phone; v1's history fully imported | |
 
 **What is notified.** As little as possible; v1's daily "not imported" nudge
@@ -675,6 +675,27 @@ was dropped on purpose, and nothing here runs on a timer.
   `ci:` PR. `pywebpush` was not used: it would add `requests`, `aiohttp`,
   `http-ece` and `py-vapid`, the last two under MPL-2.0, for about 80 lines
   of code that the RFC's own test vector checks.
+
+**5d: the last v1 import, a dry run first (this PR).**
+- `python -m trainer.manage import-v1 --dry-run` (and `import-v1.sh --dry-run`)
+  re-imports into an in-memory copy of the database, read through a read-only
+  connection, and compares it with what the last import wrote. It lists every
+  workout, set, body metric and cardio session that would be added or removed,
+  and every exercise (its details) and alias the import would add or change.
+  Rows are compared as they are, by content rather than id, and only the
+  differences are written out, one line of JSON values each, so a NULL and a
+  "-" differ (from review). Nothing is written.
+- `import-v1.sh` now snapshots the v1 database through a read-only connection
+  (`file:…?mode=ro`) made as that database's owner. Before, it opened the
+  source read-write as root. In WAL mode that can checkpoint into the source
+  and leave root-owned `-wal`/`-shm` files beside it.
+- **Dry run on 2026-10-02**, against a fresh backup of the live database and
+  a read-only copy of v1 (v1's bot stopped since that morning): it would
+  import 35 exercises, 22 aliases, 22 workouts, 361 sets, 2 body metrics and
+  1 cardio session, and **nothing differs** from the phase 1 import. No
+  workout, set, metric or cardio session would be added or removed, and no
+  exercise or alias would change. v1's last session is 28 September, before
+  phase 1's import.
 
 ## Remaining phases
 
