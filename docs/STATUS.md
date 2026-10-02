@@ -49,6 +49,7 @@ Last updated: 2026-10-02.
 | Phase 5d — dry run of the v1 import; v1 snapshotted read-only as its owner | #34 | Deployed 2026-10-02 (backup first). The live dry run found nothing to import or change, so the write was not run (as agreed in #34): v1's history is fully imported. |
 | Phase 5b — Web Push from its own sandboxed unit; the inbox and push API; the coach's answer notified; VAPID keys kept by `write-keys`; schema v8 | #33 | Deployed 2026-10-02 (backup first). `push-secrets.sh` made the pair (root-only, 0600) and started `trainer-push`; a second run kept it. Live: all three units active, `/api/push/key` serves the key in `push-public.env`, `/api/inbox` answers the owner (403 otherwise), schema v8, no subscriptions yet. One throwaway coach turn (its own session, deleted afterwards; no memory written) returned a `notice_id` and held its notice. |
 | Phase 5c — notifications in the app: Settings switch and test, the Inbox, pushes shown and opened, replies claimed | #35 | Deployed 2026-10-02 (backup first). Live: all three units active; the served `sw.js` has no `import` and handles `push` and `notificationclick`; the app bundle has the Inbox and the switch. Phone-size render of the merged build on a backup copy sent to the owner. No phone subscribed yet. **Phase 5 built.** |
+| Opening a notice shows it read (tapped card or notification); the tap waits 2 s at most for the read | #37 | Deployed 2026-10-02 (backup first). On the owner's phone, a tapped test notification opened the Inbox with the notice already read: the API logged its read, then the list reloading. Steps 1 and 2 of phase 5's exit criterion seen; step 3 to do (see below). |
 
 ## Phase 2 — logging: done
 
@@ -629,7 +630,7 @@ v1 since phase 1. Phase 5 is split into PRs that each stand on their own:
 | 5b | API: subscribe and unsubscribe, the inbox, a test notice; the coach's answer posts its notice. Web Push itself (RFC 8291 encryption, RFC 8292 VAPID) on `cryptography`; a small sender unit with outbound network, the API kept without; `deploy/push-secrets.sh` for the VAPID keys | #33 |
 | 5c | Web: the service worker shows pushes and opens the right screen; a Settings switch and a test; the Inbox screen with unread state | #35 |
 | 5d | The last v1 import: a dry run in the PR, then one re-run after deploy, backup first | #34 |
-| 5e | Exit criterion, by the owner: push and the inbox working on the phone; v1's history fully imported | ready |
+| 5e | Exit criterion, by the owner: push and the inbox working on the phone; v1's history fully imported | ready; steps 1–2 seen 2026-10-02, step 3 to do |
 
 **What is notified.** As little as possible; v1's daily "not imported" nudge
 was dropped on purpose, and nothing here runs on a timer.
@@ -691,6 +692,14 @@ the front or a tapped notification opens it. The service worker also marks
 a tapped notice read *before* showing its screen, so the screen loads it read,
 but waits 2 seconds at most (`SEEN_WAIT_MS`): a phone can get a push while it
 cannot reach the server, and the tap must still open the app (from review).
+
+**Exit criterion so far (2026-10-02).** v1's history is fully imported (5d).
+On the owner's phone, steps 1 and 2 below are done: notifications are on in
+the Home Screen app, test pushes arrive, and tapping one opens the Inbox with
+it read (after #37). **Step 3 is still to do**: a coach answer, asked with the
+phone locked, arriving as a notification and opening the Coach tab. Tests and
+a throwaway turn on a backup copy cover that path, but not the live delivery
+and opening on the phone, which is what this check is for.
 
 **Exit criterion (5e, ready for the owner).** v1's history is fully imported
 (5d, checked against the live database). For push and the inbox:
