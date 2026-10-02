@@ -842,6 +842,21 @@ All three worked on 2026-10-02 (above).
   change is the bot's own shutdown); only SQLite's shared-memory file beside
   it, owned by v1's user, was touched by the read-only reader.
 
+## The Ledger redesign (this PR)
+
+The owner's restyle of the web app ("Ledger heritage": paper and ink colours,
+a serif for headings, ruled tables), web only: `index.css`, the chart bars
+and the logging screen's markup; no behaviour changes. Previewed on the
+host before review (2026-10-02), which found three things, fixed here:
+- **The notifications switch** drew as a tall circle: the text inputs' rule
+  (`.field input`) gave it their min-height. It now sets its own size.
+- **The inbox and settings icons** sat high and off-centre: each link was a
+  grid, and its hidden glyph (font-size 0) counted as a second grid item.
+  The links centre with flex, and the CSS-drawn icons (an envelope and its
+  flap, a cog) are placed absolutely at the centre.
+- **Set numbers** sat low in their circles, in Georgia's old-style figures.
+  They use the text face's lining figures, centred on the digits' ink.
+
 ## Remaining phases
 
 | Phase | Scope | Exit criterion |
