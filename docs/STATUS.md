@@ -42,7 +42,7 @@ Last updated: 2026-10-02.
 | Phase 4c — `propose_program`: the coach proposes through the API with the gateway's key | #26 | Deployed 2026-10-01 (backup first). A live turn in a throwaway session proposed through the API (200); session deleted, test proposal turned down, no memory written. |
 | Phase 4d — the Program tab: the block, its weeks and next day; accept or turn down a proposal; ask the coach | #27 | Deployed 2026-10-01 (backup first); the live app serves the tab, and decline by id answers 409 for a stale id. |
 | `current_program`: the coach reads the program it changes | #29 | Deployed 2026-10-01. A live turn in a throwaway session called `current_program`; session deleted, no memory written. |
-| v1's Telegram gym bot (`gym.service`) stopped and disabled, at the owner's request | — | 2026-10-02, on the host: `sudo systemctl disable --now gym.service`. Nothing deleted (its code, database and user stay); roll back with `sudo systemctl enable --now gym.service`. `ultron.service` untouched. **Phase 2's exit criterion met**; phase 5's "retire v1" step done early. |
+| v1's Telegram gym bot (`gym.service`) stopped and disabled, at the owner's request | — | 2026-10-02, on the host: `sudo systemctl disable --now gym.service`. Nothing deleted (its code, database and user stay); roll back with `sudo systemctl enable --now gym.service`. **Phase 2's exit criterion met**; phase 5's "retire v1" step done early. |
 | Phase 4e — the Today screen: train the program's next day from the app | #28 | Deployed 2026-10-02 (backup first). Live: `/api/today` answered the owner (null, no program yet); the served bundle has Today, the left-over recovery and the fresh (`no-store`) reads. **Phase 4 built.** |
 
 ## Phase 2 — logging: done
