@@ -683,7 +683,8 @@ was dropped on purpose, and nothing here runs on a timer.
 - **Endpoints**, all owner-only:
   - `GET /api/push/key`: the VAPID public key to subscribe with (503 "notifications
     are not set up" until `push-secrets.sh` has run);
-  - `PUT /api/push/subscription` with the browser's `{endpoint, keys}`, and
+  - `PUT /api/push/subscription` with the browser's `{endpoint, keys}` and the
+    `server_key` it subscribed with (409 if that is not the current key), and
     `DELETE /api/push/subscription?endpoint=…`; both 204 and idempotent;
   - `POST /api/push/test`: a test notice, in the inbox at once and pushed;
   - `GET /api/inbox`: `{unread, notices}`, each notice with the `route` it opens;
@@ -707,8 +708,8 @@ was dropped on purpose, and nothing here runs on a timer.
     capability, so it is never logged);
   - an endpoint is checked again before anything is sent.
 - **The sender** (`python -m trainer.push serve`, `trainer-push.service`) runs
-  a round of `deliver` every 2 seconds. `python -m trainer.push new-key` prints
-  a new VAPID key pair for `push-secrets.sh`.
+  a round of `deliver` every 2 seconds. `python -m trainer.push write-keys`
+  keeps the VAPID key pair for `push-secrets.sh` (below).
 - **Why a unit of its own.** `trainer-api` keeps `IPAddressDeny=any`: the
   process that answers the tailnet never gets a route out. The sender has
   the same sandbox as the API (read-only system, the data directory writable,
@@ -723,11 +724,20 @@ was dropped on purpose, and nothing here runs on a timer.
   service answered on 443, while loopback and the LAN were refused; without
   the drop-in, names did not resolve. The encryption and signing also ran
   under the unit's `MemoryDenyWriteExecute` and syscall filter.
-- **Secrets.** `deploy/push-secrets.sh` (idempotent; `--rotate` replaces the
-  pair) writes `push.env` (the private key, for the sender) and
-  `push-public.env` (the public key, for the API) to `/etc/hermes-trainer`,
-  root-only. The key goes from the generator to the files through shell
-  builtins, never an argument.
+- **Secrets.** `deploy/push-secrets.sh` runs `python -m trainer.push
+  write-keys` as root. It writes `push.env` (the private key, for the sender)
+  and `push-public.env` (the public key, for the API) to `/etc/hermes-trainer`,
+  owner-only, each replaced at once. The private key is the source of truth:
+  the public file is derived from it and written again whenever it does not
+  match, so a run cut short between the two files (mid-rotation, say) is put
+  right by the next run. `--rotate` makes a new pair. Keys never appear in an
+  argument list (from review).
+- **Schema v8: the server key on each subscription** (from review). A browser
+  sends the server key it subscribed with (`server_key`); the API refuses (409)
+  one made with another key, and the app subscribes again. The sender forgets
+  every subscription not made with its own key, so a rotation invalidates the
+  old subscriptions however the rotation ended, instead of their pushes
+  failing (401/403) on every notice.
 - **New in `deploy/local.env`:** `TRAINER_PUSH_CONTACT`, a `mailto:` address or
   an HTTPS page.
 - **Dependencies:** `cryptography` 50.0.2 (Apache-2.0 OR BSD-3-Clause), with

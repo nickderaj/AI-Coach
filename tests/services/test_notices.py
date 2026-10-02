@@ -19,6 +19,7 @@ from trainer.services.notices import (
     Delivery,
     Inbox,
     NoticeNotFoundError,
+    OtherServerKeyError,
     PushOutcome,
     SubscriptionIn,
     decode_key,
@@ -48,20 +49,29 @@ def b64(data: bytes, *, padded: bool = False) -> str:
 
 P256DH = b64(b"\x04" + bytes(range(64)))
 AUTH = b64(bytes(range(16)))
+# The server's public key: the one browsers subscribe with, and pushes are signed with.
+SERVER = b64(b"\x04" + bytes(range(1, 65)))
 
 
-def subscription(endpoint: str = APPLE, **keys: str) -> SubscriptionIn:
+def subscription(endpoint: str = APPLE, server_key: str = SERVER, **keys: str) -> SubscriptionIn:
     return SubscriptionIn.model_validate(
-        {"endpoint": endpoint, "keys": {"p256dh": P256DH, "auth": AUTH, **keys}}
+        {
+            "endpoint": endpoint,
+            "keys": {"p256dh": P256DH, "auth": AUTH, **keys},
+            "server_key": server_key,
+        }
     )
 
 
 class FakeSender:
     """Records each push; answers from a script by endpoint, else delivered."""
 
-    def __init__(self, outcomes: dict[str, PushOutcome] | None = None) -> None:
+    def __init__(
+        self, outcomes: dict[str, PushOutcome] | None = None, server_key: str = SERVER
+    ) -> None:
         """Delivered everywhere unless ``outcomes`` says otherwise."""
         self.outcomes = outcomes or {}
+        self.server_key = server_key
         self.sent: list[tuple[str, dict[str, Any]]] = []
 
     def send(self, subscription: Subscription, payload: bytes) -> PushOutcome:
@@ -117,7 +127,7 @@ def test_a_held_notice_seen_in_the_app_is_claimed(db: sqlite3.Connection) -> Non
     assert not db.in_transaction
     assert inbox(db, NOW + HOLD) == Inbox(0, [])
     sender = FakeSender()
-    subscribe(db, subscription(), NOW)
+    subscribe(db, subscription(), SERVER, NOW)
     assert deliver(db, sender, NOW + HOLD) == Delivery()
     assert sender.sent == []
 
@@ -207,23 +217,23 @@ def test_decode_key_refuses_what_is_not_base64url(text: str) -> None:
 
 
 def test_a_browser_subscribes_and_resubscribes(db: sqlite3.Connection) -> None:
-    subscribe(db, subscription(), NOW)
-    subscribe(db, subscription(auth=b64(bytes(16))), NOW)
+    subscribe(db, subscription(), SERVER, NOW)
+    subscribe(db, subscription(auth=b64(bytes(16))), SERVER, NOW)
 
     assert not db.in_transaction
-    assert list_subscriptions(db) == [Subscription(APPLE, P256DH, b64(bytes(16)))]
+    assert list_subscriptions(db) == [Subscription(APPLE, P256DH, b64(bytes(16)), SERVER)]
 
 
 def test_padded_keys_are_kept_as_given(db: sqlite3.Connection) -> None:
     padded = b64(bytes(16), padded=True)
 
-    subscribe(db, subscription(auth=padded), NOW)
+    subscribe(db, subscription(auth=padded), SERVER, NOW)
 
     assert list_subscriptions(db)[0].auth == padded
 
 
 def test_a_browser_unsubscribes(db: sqlite3.Connection) -> None:
-    subscribe(db, subscription(), NOW)
+    subscribe(db, subscription(), SERVER, NOW)
 
     assert unsubscribe(db, APPLE)
     assert not unsubscribe(db, APPLE)
@@ -247,14 +257,17 @@ def test_a_browser_unsubscribes(db: sqlite3.Connection) -> None:
         ({"auth": "a"}, "auth"),  # not base64url at all
         ({"auth": ""}, "auth"),
         ({"extra": "x"}, "extra"),
+        ({"server_key": b64(b"\x04" + bytes(63))}, "server_key"),
+        ({"server_key": b64(b"\x05" + bytes(64))}, "server_key"),
+        ({"server_key": ""}, "server_key"),
         ({"expirationTime": None}, "expirationTime"),
     ],
 )
 def test_bad_subscriptions_are_refused(body: dict[str, Any], where: str) -> None:
     keys = {"p256dh": P256DH, "auth": AUTH}
-    outer: dict[str, Any] = {"endpoint": APPLE}
+    outer: dict[str, Any] = {"endpoint": APPLE, "server_key": SERVER}
     for key, value in body.items():
-        (outer if key in {"endpoint", "expirationTime"} else keys)[key] = value
+        (outer if key in {"endpoint", "expirationTime", "server_key"} else keys)[key] = value
 
     with pytest.raises(ValidationError, match=where):
         SubscriptionIn.model_validate({**outer, "keys": keys})
@@ -293,8 +306,8 @@ def test_the_payload_carries_the_notice_and_its_screen() -> None:
 
 
 def test_due_notices_are_pushed_to_every_browser_once(db: sqlite3.Connection) -> None:
-    subscribe(db, subscription(APPLE), NOW)
-    subscribe(db, subscription(GOOGLE), NOW)
+    subscribe(db, subscription(APPLE), SERVER, NOW)
+    subscribe(db, subscription(GOOGLE), SERVER, NOW)
     first = post(db, TEST_NOTICE, NOW)
     second = post(db, COACH, NOW, HOLD)
     sender = FakeSender()
@@ -321,8 +334,8 @@ def test_due_notices_are_pushed_to_every_browser_once(db: sqlite3.Connection) ->
 
 
 def test_a_failed_push_is_not_retried_and_stays_in_the_inbox(db: sqlite3.Connection) -> None:
-    subscribe(db, subscription(APPLE), NOW)
-    subscribe(db, subscription(GOOGLE), NOW)
+    subscribe(db, subscription(APPLE), SERVER, NOW)
+    subscribe(db, subscription(GOOGLE), SERVER, NOW)
     post(db, COACH, NOW)
     sender = FakeSender({APPLE: PushOutcome.FAILED})
 
@@ -334,8 +347,8 @@ def test_a_failed_push_is_not_retried_and_stays_in_the_inbox(db: sqlite3.Connect
 
 
 def test_an_ended_subscription_is_forgotten(db: sqlite3.Connection) -> None:
-    subscribe(db, subscription(APPLE), NOW)
-    subscribe(db, subscription(GOOGLE), NOW)
+    subscribe(db, subscription(APPLE), SERVER, NOW)
+    subscribe(db, subscription(GOOGLE), SERVER, NOW)
     post(db, COACH, NOW)
     post(db, COACH, NOW)
 
@@ -351,14 +364,14 @@ def test_without_browsers_notices_wait_in_the_inbox(db: sqlite3.Connection) -> N
 
     assert deliver(db, FakeSender(), NOW) == Delivery()
 
-    subscribe(db, subscription(), NOW)
+    subscribe(db, subscription(), SERVER, NOW)
     sender = FakeSender()
     assert deliver(db, sender, NOW) == Delivery()  # it was dealt with: never pushed late
     assert inbox(db, NOW).unread == 1
 
 
 def test_a_notice_read_before_its_push_is_not_pushed(db: sqlite3.Connection) -> None:
-    subscribe(db, subscription(), NOW)
+    subscribe(db, subscription(), SERVER, NOW)
     notice = post(db, COACH, NOW)
     seen(db, notice, NOW)
     sender = FakeSender()
@@ -368,7 +381,7 @@ def test_a_notice_read_before_its_push_is_not_pushed(db: sqlite3.Connection) -> 
 
 
 def test_a_stale_notice_is_left_to_the_inbox(db: sqlite3.Connection) -> None:
-    subscribe(db, subscription(), NOW)
+    subscribe(db, subscription(), SERVER, NOW)
     post(db, COACH, NOW - STALE_AFTER - timedelta(seconds=1))
     on_time = post(db, COACH, NOW - STALE_AFTER)
     sender = FakeSender()
@@ -380,7 +393,7 @@ def test_a_stale_notice_is_left_to_the_inbox(db: sqlite3.Connection) -> None:
 
 
 def test_overlapping_rounds_push_each_notice_once(db: sqlite3.Connection, tmp_path: Path) -> None:
-    subscribe(db, subscription(), NOW)
+    subscribe(db, subscription(), SERVER, NOW)
     first = post(db, COACH, NOW)
     second = post(db, TEST_NOTICE, NOW)
     other = FakeSender()
@@ -403,7 +416,7 @@ def test_overlapping_rounds_push_each_notice_once(db: sqlite3.Connection, tmp_pa
 
 
 def test_a_round_cut_short_never_pushes_a_notice_twice(db: sqlite3.Connection) -> None:
-    subscribe(db, subscription(), NOW)
+    subscribe(db, subscription(), SERVER, NOW)
     post(db, COACH, NOW)
 
     class Killed(FakeSender):
@@ -426,7 +439,7 @@ def test_a_round_cut_short_never_pushes_a_notice_twice(db: sqlite3.Connection) -
 def test_a_notice_read_after_it_was_selected_is_not_pushed(
     db: sqlite3.Connection, tmp_path: Path
 ) -> None:
-    subscribe(db, subscription(), NOW)
+    subscribe(db, subscription(), SERVER, NOW)
     post(db, COACH, NOW)
     second = post(db, TEST_NOTICE, NOW)
 
@@ -446,3 +459,36 @@ def test_a_notice_read_after_it_was_selected_is_not_pushed(
     assert db.execute("SELECT sent_at FROM inbox WHERE id = ?", (second,)).fetchone()[0] == (
         "2026-10-02T09:00:00+00:00"
     )
+
+
+def test_a_subscription_made_with_another_server_key_is_refused(db: sqlite3.Connection) -> None:
+    old = b64(b"\x04" + bytes(64))
+
+    with pytest.raises(
+        OtherServerKeyError, match=r"^subscribed with another server key; subscribe again$"
+    ):
+        subscribe(db, subscription(server_key=old), SERVER, NOW)
+
+    assert list_subscriptions(db) == []
+    assert not db.in_transaction
+
+
+def test_the_server_key_compares_by_value_not_padding(db: sqlite3.Connection) -> None:
+    padded = b64(b"\x04" + bytes(range(1, 65)), padded=True)
+
+    subscribe(db, subscription(server_key=padded), SERVER, NOW)
+
+    assert list_subscriptions(db)[0].server_key == SERVER  # stored as the server has it
+
+
+def test_a_new_server_key_forgets_the_old_subscriptions(db: sqlite3.Connection) -> None:
+    subscribe(db, subscription(APPLE), SERVER, NOW)
+    new = b64(b"\x04" + bytes(range(2, 66)))
+    subscribe(db, subscription(GOOGLE, server_key=new), new, NOW)
+    post(db, COACH, NOW)
+    sender = FakeSender(server_key=new)
+
+    assert deliver(db, sender, NOW) == Delivery(delivered=1, gone=1)
+
+    assert [endpoint for endpoint, _ in sender.sent] == [GOOGLE]
+    assert [s.endpoint for s in list_subscriptions(db)] == [GOOGLE]

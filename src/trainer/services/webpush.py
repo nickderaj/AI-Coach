@@ -235,6 +235,11 @@ class WebPushSender:
         self._clock = clock
         self._fresh = fresh or _fresh
 
+    @property
+    def server_key(self) -> str:
+        """The public key this sender signs with."""
+        return self._key.public_text
+
     def send(self, subscription: Subscription, payload: bytes) -> PushOutcome:
         """Push ``payload`` to ``subscription``; never raises."""
         endpoint = subscription.endpoint

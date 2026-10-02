@@ -30,12 +30,14 @@ class StoredNotice:
 class Subscription:
     """Where a browser's push service takes its pushes, and the keys they are for.
 
-    ``p256dh`` and ``auth`` are the browser's base64url keys, as it gave them.
+    ``p256dh`` and ``auth`` are the browser's base64url keys, as it gave them;
+    ``server_key`` is the server's public key it subscribed with.
     """
 
     endpoint: str
     p256dh: str
     auth: str
+    server_key: str
 
 
 def insert_notice(conn: sqlite3.Connection, notice: Notice, created_at: str, due_at: str) -> int:
@@ -129,10 +131,18 @@ def save_subscription(conn: sqlite3.Connection, subscription: Subscription, now:
     """Add a browser's subscription, or replace the keys of one already there."""
     conn.execute(
         """
-        INSERT INTO push_subscriptions (endpoint, p256dh, auth, created_at) VALUES (?, ?, ?, ?)
-        ON CONFLICT (endpoint) DO UPDATE SET p256dh = excluded.p256dh, auth = excluded.auth
+        INSERT INTO push_subscriptions (endpoint, p256dh, auth, server_key, created_at)
+        VALUES (?, ?, ?, ?, ?)
+        ON CONFLICT (endpoint) DO UPDATE SET p256dh = excluded.p256dh, auth = excluded.auth,
+            server_key = excluded.server_key
         """,
-        (subscription.endpoint, subscription.p256dh, subscription.auth, now),
+        (
+            subscription.endpoint,
+            subscription.p256dh,
+            subscription.auth,
+            subscription.server_key,
+            now,
+        ),
     )
 
 
@@ -145,6 +155,14 @@ def delete_subscription(conn: sqlite3.Connection, endpoint: str) -> bool:
 def list_subscriptions(conn: sqlite3.Connection) -> list[Subscription]:
     """Every subscription, oldest first."""
     rows = conn.execute(
-        """SELECT endpoint, p256dh, auth FROM push_subscriptions ORDER BY id"""
+        """SELECT endpoint, p256dh, auth, server_key FROM push_subscriptions ORDER BY id"""
     ).fetchall()
     return [Subscription(*row) for row in rows]
+
+
+def forget_other_subscriptions(conn: sqlite3.Connection, server_key: str) -> int:
+    """Remove every subscription not made with ``server_key``; how many there were."""
+    cursor = conn.execute(
+        """DELETE FROM push_subscriptions WHERE server_key IS NOT ?""", (server_key,)
+    )
+    return cursor.rowcount

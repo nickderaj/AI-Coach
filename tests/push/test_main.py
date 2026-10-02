@@ -33,6 +33,7 @@ class FakeSender:
         """Answer ``outcome``."""
         self.outcome = outcome
         self.payloads: list[bytes] = []
+        self.server_key = "BServer"
 
     def send(self, subscription: Subscription, payload: bytes) -> PushOutcome:  # noqa: ARG002  # why: the PushSender protocol
         self.payloads.append(payload)
@@ -43,7 +44,7 @@ class FakeSender:
 def data_dir(tmp_path: Path) -> Path:
     with closing(connect(tmp_path / "trainer.db")) as conn:
         migrate(conn)
-        save_subscription(conn, Subscription(APPLE, "BKey", "auth"), "t")
+        save_subscription(conn, Subscription(APPLE, "BKey", "auth", "BServer"), "t")
         conn.commit()
         post(conn, TEST_NOTICE, NOW)
     return tmp_path
@@ -146,12 +147,16 @@ def test_help(capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatc
         main(["--help"])
 
     out = capsys.readouterr().out
-    assert out.startswith("usage: python -m trainer.push [-h] {serve,new-key} ...\n")
-    assert "push notices as they come due, or make a VAPID key." in out
+    assert out.startswith("usage: python -m trainer.push [-h] {serve,write-keys} ...\n")
+    assert "push notices as they come due, or keep the VAPID keys." in out
     assert re.search(
         r"^ +serve +push notices as they come due \(the systemd unit\)$", out, re.MULTILINE
     )
-    assert re.search(r"^ +new-key +print a new VAPID key pair as two env lines$", out, re.MULTILINE)
+    assert re.search(
+        r"^ +write-keys +make the VAPID key pair if there is none, and check its public file$",
+        out,
+        re.MULTILINE,
+    )
 
 
 def test_serve_from_the_environment(data_dir: Path) -> None:
@@ -201,14 +206,69 @@ def test_the_default_wait_sleeps_and_goes_on(monkeypatch: pytest.MonkeyPatch) ->
     assert slept == [2.0]
 
 
-def test_new_key_prints_a_pair(capsys: pytest.CaptureFixture[str]) -> None:
-    assert main(["new-key"]) == 0
+def test_write_keys_makes_and_then_keeps_the_pair(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    assert main(["write-keys", "--dir", str(tmp_path)]) == 0
+    first = (tmp_path / "push.env").read_text()
 
-    lines = capsys.readouterr().out.splitlines()
-    names = [line.partition("=")[0] for line in lines]
-    assert names == ["TRAINER_VAPID_PRIVATE_KEY", "TRAINER_VAPID_PUBLIC_KEY"]
-    key = VapidKey.from_text(lines[0].partition("=")[2])
-    assert lines[1] == f"TRAINER_VAPID_PUBLIC_KEY={key.public_text}"
+    assert main(["write-keys", "--dir", str(tmp_path)]) == 0
+
+    assert capsys.readouterr().out == (
+        "made a new VAPID key pair\nkept the existing VAPID key pair\n"
+    )
+    assert (tmp_path / "push.env").read_text() == first
+
+
+def test_write_keys_needs_its_directory(capsys: pytest.CaptureFixture[str]) -> None:
+    with pytest.raises(SystemExit):
+        main(["write-keys"])
+
+    assert "the following arguments are required: --dir" in capsys.readouterr().err
+
+
+def test_write_keys_help(
+    capsys: pytest.CaptureFixture[str], monkeypatch: pytest.MonkeyPatch
+) -> None:
+    monkeypatch.setenv("COLUMNS", "200")
+
+    with pytest.raises(SystemExit):
+        main(["write-keys", "--help"])
+
+    out = capsys.readouterr().out
+    assert out.startswith("usage: python -m trainer.push write-keys [-h] --dir DIR [--rotate]\n")
+    assert re.search(r"^ +--rotate +replace the pair with a new one$", out, re.MULTILINE)
+
+
+def test_write_keys_rotates(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    assert main(["write-keys", "--dir", str(tmp_path)]) == 0
+    first = (tmp_path / "push.env").read_text()
+
+    assert main(["write-keys", "--dir", str(tmp_path), "--rotate"]) == 0
+
+    assert capsys.readouterr().out.splitlines()[-1] == "made a new VAPID key pair"
+    assert (tmp_path / "push.env").read_text() != first
+
+
+def test_write_keys_says_why_it_cannot(tmp_path: Path, capsys: pytest.CaptureFixture[str]) -> None:
+    (tmp_path / "push.env").write_text("SOMETHING=else\n")
+
+    assert main(["write-keys", "--dir", str(tmp_path)]) == 1
+
+    assert capsys.readouterr().err == (
+        f"push: {tmp_path / 'push.env'} holds no TRAINER_VAPID_PRIVATE_KEY; "
+        "move it away to make a new pair\n"
+    )
+
+
+def test_write_keys_refuses_a_key_that_is_not_one(
+    tmp_path: Path, capsys: pytest.CaptureFixture[str]
+) -> None:
+    (tmp_path / "push.env").write_text("TRAINER_VAPID_PRIVATE_KEY=AAAA\n")
+
+    assert main(["write-keys", "--dir", str(tmp_path)]) == 1
+
+    assert capsys.readouterr().err == "push: a VAPID private key is 32 bytes of base64url\n"
 
 
 def test_a_command_is_required(capsys: pytest.CaptureFixture[str]) -> None:
@@ -219,13 +279,13 @@ def test_a_command_is_required(capsys: pytest.CaptureFixture[str]) -> None:
 
 
 def test_module_entry_point(
-    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str]
+    monkeypatch: pytest.MonkeyPatch, capsys: pytest.CaptureFixture[str], tmp_path: Path
 ) -> None:
-    monkeypatch.setattr("sys.argv", ["trainer.push", "new-key"])
+    monkeypatch.setattr("sys.argv", ["trainer.push", "write-keys", "--dir", str(tmp_path)])
     monkeypatch.delitem(sys.modules, "trainer.push.__main__", raising=False)
 
     with pytest.raises(SystemExit) as exited:
         runpy.run_module("trainer.push", run_name="__main__")
 
     assert exited.value.code == 0
-    assert capsys.readouterr().out.startswith("TRAINER_VAPID_PRIVATE_KEY=")
+    assert capsys.readouterr().out == "made a new VAPID key pair\n"

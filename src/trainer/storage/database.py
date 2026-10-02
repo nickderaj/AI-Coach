@@ -191,6 +191,12 @@ MIGRATIONS: tuple[str, ...] = (
     ) STRICT;
     CREATE INDEX inbox_due_at ON inbox (due_at);
     """,
+    """
+    -- The server key (VAPID public key) a browser subscribed with. A push signed
+    -- with any other key is refused, so a subscription made with an old key is
+    -- forgotten once the key is replaced. Existing rows have none.
+    ALTER TABLE push_subscriptions ADD COLUMN server_key TEXT;
+    """,
 )
 
 

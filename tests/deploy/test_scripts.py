@@ -92,14 +92,15 @@ def test_the_v1_snapshot_is_read_only_and_made_as_its_owner() -> None:
     assert '"${dry_run[@]}"' in text
 
 
-def test_the_push_keys_are_made_once_and_kept_root_only() -> None:
+def test_the_push_keys_are_kept_by_write_keys_root_only() -> None:
+    # The pair itself is handled, and tested, in trainer.push.keys.
     text = (DEPLOY / "push-secrets.sh").read_text(encoding="utf-8")
 
     assert "umask 077" in text
-    assert "chmod 0600" in text
-    assert "-m trainer.push new-key" in text
-    assert '[ ! -f "$TRAINER_SECRETS_DIR/push.env" ]' in text  # kept unless --rotate
+    assert 'install -d -o root -g root -m 0700 "$TRAINER_SECRETS_DIR"' in text
+    assert '"$python" -m trainer.push write-keys "${args[@]}"' in text
     assert "--rotate) rotate=yes" in text
+    assert "args+=(--rotate)" in text
 
 
 def test_the_push_sender_starts_only_with_its_key_and_its_resolvers() -> None:

@@ -1,8 +1,8 @@
-"""``python -m trainer.push``: push notices as they come due, or make a VAPID key.
+"""``python -m trainer.push``: push notices as they come due, or keep the VAPID keys.
 
 ``serve`` runs as ``trainer-push.service``, the only part of the app with a
-route to the internet, and only to the push services. ``new-key`` is run by
-``deploy/push-secrets.sh`` to make the server's VAPID key pair.
+route to the internet, and only to the push services. ``write-keys`` is run by
+``deploy/push-secrets.sh``, as root, to make or check the server's key pair.
 """
 
 from __future__ import annotations
@@ -17,6 +17,7 @@ from datetime import UTC, datetime
 from pathlib import Path
 from typing import TYPE_CHECKING
 
+from trainer.push.keys import KeysError, write_keys
 from trainer.services.notices import deliver
 from trainer.services.webpush import VapidKey, WebPushSender
 from trainer.storage.database import DATABASE_FILE, connect
@@ -81,11 +82,13 @@ def _log_to_stderr() -> None:
     app.setLevel(logging.INFO)
 
 
-def _new_key() -> int:
-    key = VapidKey.generate()
-    sys.stdout.write(
-        f"TRAINER_VAPID_PRIVATE_KEY={key.text}\nTRAINER_VAPID_PUBLIC_KEY={key.public_text}\n"
-    )
+def _write_keys(directory: Path, *, rotate: bool) -> int:
+    try:
+        result = write_keys(directory, rotate=rotate)
+    except (KeysError, ValueError) as error:
+        sys.stderr.write(f"push: {error}\n")
+        return 1
+    sys.stdout.write(f"{result}\n")
     return 0
 
 
@@ -98,10 +101,14 @@ def main(
     parser = argparse.ArgumentParser(prog="python -m trainer.push", description=__doc__)
     commands = parser.add_subparsers(dest="command", required=True)
     commands.add_parser("serve", help="push notices as they come due (the systemd unit)")
-    commands.add_parser("new-key", help="print a new VAPID key pair as two env lines")
+    keys = commands.add_parser(
+        "write-keys", help="make the VAPID key pair if there is none, and check its public file"
+    )
+    keys.add_argument("--dir", type=Path, required=True)
+    keys.add_argument("--rotate", action="store_true", help="replace the pair with a new one")
     args = parser.parse_args(argv)
-    if args.command == "new-key":
-        return _new_key()
+    if args.command == "write-keys":
+        return _write_keys(args.dir, rotate=args.rotate)
     return _serve(env, wait)
 
 

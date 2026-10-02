@@ -17,8 +17,13 @@ OWNER = "owner@example.com"
 AS_OWNER = {"Tailscale-User-Login": OWNER}
 APPLE = "https://web.push.apple.com/QGuT8ar"
 P256DH = base64.urlsafe_b64encode(b"\x04" + bytes(64)).decode()
+SERVER = base64.urlsafe_b64encode(b"\x04" + bytes(range(1, 65))).decode().rstrip("=")
 AUTH = base64.urlsafe_b64encode(bytes(16)).decode()
-SUBSCRIPTION = {"endpoint": APPLE, "keys": {"p256dh": P256DH, "auth": AUTH}}
+SUBSCRIPTION = {
+    "endpoint": APPLE,
+    "keys": {"p256dh": P256DH, "auth": AUTH},
+    "server_key": SERVER,
+}
 
 
 @pytest.fixture
@@ -31,7 +36,7 @@ def database(tmp_path: Path) -> Path:
 
 @pytest.fixture
 def client(database: Path) -> TestClient:
-    return TestClient(create_app(Settings(database, OWNER, push_key="BPublicKey")))
+    return TestClient(create_app(Settings(database, OWNER, push_key=SERVER)))
 
 
 def subscriptions(database: Path) -> list[str]:
@@ -43,7 +48,7 @@ def test_the_key_to_subscribe_with(client: TestClient) -> None:
     response = client.get("/api/push/key", headers=AS_OWNER)
 
     assert response.status_code == 200
-    assert response.json() == {"key": "BPublicKey"}
+    assert response.json() == {"key": SERVER}
 
 
 def test_without_a_key_notifications_are_not_set_up(database: Path) -> None:
@@ -76,6 +81,28 @@ def test_a_subscription_elsewhere_is_refused(client: TestClient, database: Path)
     response = client.put("/api/push/subscription", json=body, headers=AS_OWNER)
 
     assert response.status_code == 422
+    assert subscriptions(database) == []
+
+
+def test_a_subscription_made_with_an_old_server_key_is_refused(
+    client: TestClient, database: Path
+) -> None:
+    old = base64.urlsafe_b64encode(b"\x04" + bytes(64)).decode()
+    body = {**SUBSCRIPTION, "server_key": old}
+
+    response = client.put("/api/push/subscription", json=body, headers=AS_OWNER)
+
+    assert response.status_code == 409
+    assert response.json() == {"detail": "subscribed with another server key; subscribe again"}
+    assert subscriptions(database) == []
+
+
+def test_without_a_key_nothing_can_subscribe(database: Path) -> None:
+    client = TestClient(create_app(Settings(database, OWNER)))
+
+    response = client.put("/api/push/subscription", json=SUBSCRIPTION, headers=AS_OWNER)
+
+    assert response.status_code == 503
     assert subscriptions(database) == []
 
 

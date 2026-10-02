@@ -13,6 +13,7 @@ from trainer.domain.notices import ROUTES, TEST_NOTICE, NoticeKind
 from trainer.services.notices import (
     MAX_ENDPOINT_LENGTH,
     NoticeNotFoundError,
+    OtherServerKeyError,
     SubscriptionIn,
     inbox,
     post,
@@ -41,20 +42,32 @@ class PushKeyOut(BaseModel):
     key: str
 
 
-@router.get("/push/key")
-def push_key(request: Request) -> PushKeyOut:
-    """The key to subscribe with; 503 until push is set up on the server."""
+def _push_key(request: Request) -> str:
     key: str | None = request.app.state.settings.push_key
     if key is None:
         raise HTTPException(status_code=503, detail="notifications are not set up")
-    return PushKeyOut(key=key)
+    return key
+
+
+@router.get("/push/key")
+def push_key(request: Request) -> PushKeyOut:
+    """The key to subscribe with; 503 until push is set up on the server."""
+    return PushKeyOut(key=_push_key(request))
 
 
 @router.put("/push/subscription", status_code=204)
 def put_subscription(request: Request, body: SubscriptionIn) -> Response:
-    """Push to this browser (idempotent: subscribing again replaces its keys)."""
+    """Push to this browser (idempotent: subscribing again replaces its keys).
+
+    409 if it subscribed with another server key (one since replaced): the
+    browser must subscribe again with the current one.
+    """
+    key = _push_key(request)
     with closing(connect(_database(request))) as conn:
-        subscribe(conn, body, _now())
+        try:
+            subscribe(conn, body, key, _now())
+        except OtherServerKeyError as error:
+            raise HTTPException(status_code=409, detail=str(error)) from error
     return Response(status_code=204)
 
 

@@ -330,7 +330,7 @@ def browser() -> tuple[ec.EllipticCurvePrivateKey, Subscription]:
             serialization.Encoding.X962, serialization.PublicFormat.UncompressedPoint
         )
     )
-    return private, Subscription(APPLE, public, b64url(AUTH))
+    return private, Subscription(APPLE, public, b64url(AUTH), "BServer")
 
 
 def sender(fake: FakeTransport) -> WebPushSender:
@@ -345,7 +345,7 @@ def sender(fake: FakeTransport) -> WebPushSender:
 
 def test_a_push_is_encrypted_signed_and_sent() -> None:
     fake = FakeTransport(201)
-    subscription = Subscription(APPLE, b64url(UA_PUBLIC), b64url(AUTH) + "==")
+    subscription = Subscription(APPLE, b64url(UA_PUBLIC), b64url(AUTH) + "==", "BServer")
 
     assert sender(fake).send(subscription, PLAINTEXT) is PushOutcome.DELIVERED
 
@@ -440,7 +440,9 @@ def test_a_push_to_anything_but_a_push_service_is_never_sent(
 ) -> None:
     fake = FakeTransport(201)
     _, subscription = browser()
-    elsewhere = Subscription("https://127.0.0.1/api", subscription.p256dh, subscription.auth)
+    elsewhere = Subscription(
+        "https://127.0.0.1/api", subscription.p256dh, subscription.auth, "BServer"
+    )
 
     with caplog.at_level(logging.WARNING):
         assert sender(fake).send(elsewhere, b"x") is PushOutcome.FAILED
@@ -461,7 +463,9 @@ def test_a_subscription_with_bad_keys_is_a_failure(
 ) -> None:
     fake = FakeTransport(201)
     _, good = browser()
-    bad = Subscription(APPLE, keys.get("p256dh", good.p256dh), keys.get("auth", good.auth))
+    bad = Subscription(
+        APPLE, keys.get("p256dh", good.p256dh), keys.get("auth", good.auth), "BServer"
+    )
 
     with caplog.at_level(logging.WARNING):
         assert sender(fake).send(bad, b"x") is PushOutcome.FAILED
@@ -476,3 +480,9 @@ def test_a_payload_too_long_is_a_failure() -> None:
 
     assert sender(fake).send(subscription, bytes(MAX_PAYLOAD + 1)) is PushOutcome.FAILED
     assert fake.posts == []
+
+
+def test_the_sender_signs_with_the_server_key_browsers_subscribe_with() -> None:
+    key = VapidKey.generate()
+
+    assert WebPushSender(key, CONTACT, FakeTransport()).server_key == key.public_text

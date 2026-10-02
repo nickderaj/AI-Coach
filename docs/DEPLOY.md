@@ -154,8 +154,10 @@ what is notified are in [STATUS.md](STATUS.md) (phase 5).
 - `/etc/hermes-trainer/push-public.env`, the public key, which browsers
   subscribe with; `trainer-api.service` serves it.
 
-Running it again keeps the pair. `--rotate` makes a new one; every browser then
-has to turn notifications on again in Settings. Until the files exist the app
+Running it again keeps the pair, and writes the public file again if it does not
+match the private key (the private key decides). `--rotate` makes a new pair:
+the sender then forgets every subscription made with the old key, and each
+phone has to turn notifications on again in Settings. Until the files exist the app
 says notifications are not set up, and `install.sh` leaves the sender stopped.
 
 `TRAINER_PUSH_CONTACT` in `deploy/local.env` (a `mailto:` address or an HTTPS
