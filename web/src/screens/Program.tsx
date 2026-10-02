@@ -1,7 +1,7 @@
 import { useRef, useState } from "react";
 import type { ReactElement } from "react";
 
-import { askCoach, changeProgram, programsSchema, useApi } from "../api";
+import { askCoach, changeProgram, programsSchema, useApi, useReplyClaim } from "../api";
 import type { CoachMessage, Position, Program as ProgramData, ProgramDay } from "../api";
 import { Load, tone } from "../components";
 import { formatDay } from "../format";
@@ -324,6 +324,7 @@ function useProgramRequest(onAnswered: () => void): ProgramRequest {
   const [waiting, setWaiting] = useState(false);
   const [reply, setReply] = useState<CoachMessage | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const claim = useReplyClaim();
 
   const ask = async (hasProgram: boolean): Promise<void> => {
     const text = draft.trim();
@@ -336,6 +337,7 @@ function useProgramRequest(onAnswered: () => void): ProgramRequest {
     const result = await askCoach(programRequest(text, hasProgram));
     setWaiting(false);
     if (result.kind === "ok") {
+      claim(result.value);
       setDraft("");
       setReply(result.value);
       onAnswered();

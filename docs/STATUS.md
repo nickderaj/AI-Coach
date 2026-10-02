@@ -47,6 +47,7 @@ Last updated: 2026-10-02.
 | `ci:` MIT-0 on the licence allow-list (`cffi` 2.1, for `cryptography`) | #31 | Gate only; nothing to deploy. |
 | Phase 5a — the inbox and push subscriptions; what to notify; pushing at most once; schema v7 | #32 | Deployed 2026-10-02 (backup first); schema v7 live, `inbox` and `push_subscriptions` empty, the 24 workouts untouched. |
 | Phase 5d — dry run of the v1 import; v1 snapshotted read-only as its owner | #34 | Deployed 2026-10-02 (backup first). The live dry run found nothing to import or change, so the write was not run (as agreed in #34): v1's history is fully imported. |
+| Phase 5b — Web Push from its own sandboxed unit; the inbox and push API; the coach's answer notified; VAPID keys kept by `write-keys`; schema v8 | #33 | Deployed 2026-10-02 (backup first). `push-secrets.sh` made the pair (root-only, 0600) and started `trainer-push`; a second run kept it. Live: all three units active, `/api/push/key` serves the key in `push-public.env`, `/api/inbox` answers the owner (403 otherwise), schema v8, no subscriptions yet. One throwaway coach turn (its own session, deleted afterwards; no memory written) returned a `notice_id` and held its notice. |
 
 ## Phase 2 — logging: done
 
@@ -624,8 +625,8 @@ v1 since phase 1. Phase 5 is split into PRs that each stand on their own:
 | Step | Scope | PR |
 | --- | --- | --- |
 | 5a | Schema v7 (`push_subscriptions`, `inbox`); what to notify (pure, `trainer.domain.notices`); the inbox, holding and claiming a notice, subscriptions, and pushing through a sender interface | #32 |
-| 5b | API: subscribe and unsubscribe, the inbox, a test notice; the coach's answer posts its notice. Web Push itself (RFC 8291 encryption, RFC 8292 VAPID) on `cryptography`; a small sender unit with outbound network, the API kept without; `deploy/push-secrets.sh` for the VAPID keys | this PR |
-| 5c | Web: the service worker shows pushes and opens the right screen; a Settings switch and a test; the Inbox screen with unread state | |
+| 5b | API: subscribe and unsubscribe, the inbox, a test notice; the coach's answer posts its notice. Web Push itself (RFC 8291 encryption, RFC 8292 VAPID) on `cryptography`; a small sender unit with outbound network, the API kept without; `deploy/push-secrets.sh` for the VAPID keys | #33 |
+| 5c | Web: the service worker shows pushes and opens the right screen; a Settings switch and a test; the Inbox screen with unread state | this PR |
 | 5d | The last v1 import: a dry run in the PR, then one re-run after deploy, backup first | #34 |
 | 5e | Exit criterion, by the owner: push and the inbox working on the phone; v1's history fully imported | |
 
@@ -679,7 +680,7 @@ was dropped on purpose, and nothing here runs on a timer.
   `http-ece` and `py-vapid`, the last two under MPL-2.0, for about 80 lines
   of code that the RFC's own test vector checks.
 
-**5b: pushing, and the API (this PR).**
+**5b: pushing, and the API (done, #33).**
 - **Endpoints**, all owner-only:
   - `GET /api/push/key`: the VAPID public key to subscribe with (503 "notifications
     are not set up" until `push-secrets.sh` has run);
@@ -744,6 +745,35 @@ was dropped on purpose, and nothing here runs on a timer.
   `cffi` 2.1.1 (MIT-0, allowed by #31) and `pycparser` 3.0 (BSD-3-Clause).
   The layering contract gains `trainer.push` beside `trainer.api` and
   `trainer.mcp`.
+
+**5c: notifications in the app (this PR).**
+- **Settings → Notifications.** A switch, "Notify me on this phone":
+  - turning it on asks for permission, subscribes with the server's key
+    (read fresh, never from the worker's cache) and saves the subscription
+    with that key; a subscription the phone still has from an old key is
+    dropped first. If the server does not take it, the phone unsubscribes
+    again and says why;
+  - turning it off unsubscribes and tells the server (if it cannot, the next
+    push is answered "gone" and the server forgets the phone);
+  - "Send a test notification" once it is on.
+  - Without push support it says so (on an iPhone: add the app to the Home
+    Screen and open it from there); with notifications blocked, where to allow
+    them. Opening Settings with a subscription tells the server again, so a
+    server restored from a backup catches up; if the server says it was made
+    with a key since replaced (409), the phone drops it and shows the switch
+    off, to be turned on again.
+- **The service worker** shows every push (iOS stops delivering to a worker
+  that does not), tagged by notice so one is shown once. A tap marks the
+  notice read and shows its screen: in the app's open window (by a message to
+  it) or a new one. Only the app's own `#/…` routes are opened; anything else
+  opens the inbox.
+- **Inbox** (`#/inbox`, ✉ on Home with the unread count): every notice, newest
+  first, unread ones marked; opening one marks it read and shows its screen.
+  "Mark all read".
+- **Claiming.** The Coach screen, and the Program screen's "ask the coach",
+  claim the notice of a reply they show, but only while the page is visible
+  and the screen is still open. A reply that arrives with the phone locked or
+  on another screen is pushed and kept in the inbox.
 
 **5d: the last v1 import, a dry run first (done, #34).**
 - `python -m trainer.manage import-v1 --dry-run` (and `import-v1.sh --dry-run`)

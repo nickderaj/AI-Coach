@@ -7,6 +7,8 @@ import { Load } from "../components";
 import type { Logging } from "../log/context";
 import { useLogging } from "../log/context";
 import { parseAmount } from "../log/draft";
+import { sendTest, pushState, turnOff, turnOn } from "../push";
+import type { PushChange, PushState } from "../push";
 import { href } from "../router";
 
 const PROFILE = "/api/profile";
@@ -85,6 +87,140 @@ function BodyWeight({
   );
 }
 
+/** Why this phone cannot have notifications. */
+function Unavailable({ state }: { state: { kind: "unsupported" | "blocked" } }): ReactElement {
+  return state.kind === "unsupported" ? (
+    <p className="muted">
+      This browser can’t show notifications. On an iPhone, add the app to your Home Screen and open
+      it from there.
+    </p>
+  ) : (
+    <p className="muted">
+      Notifications are blocked for this app. Allow them in the phone’s Settings, then come back.
+    </p>
+  );
+}
+
+type Note = { tone: "status" | "alert"; text: string } | null;
+
+function TestButton(): ReactElement {
+  const [note, setNote] = useState<Note>(null);
+  return (
+    <>
+      <button
+        type="button"
+        className="button"
+        onClick={() => {
+          setNote(null);
+          void sendTest().then((sent) => {
+            setNote(
+              sent
+                ? {
+                    tone: "status",
+                    text: "Sent. It should arrive in a moment, and it’s in the Inbox.",
+                  }
+                : { tone: "alert", text: "Could not reach the server. Try again." },
+            );
+          });
+        }}
+      >
+        Send a test notification
+      </button>
+      {note === null ? null : (
+        <p className={note.tone === "alert" ? "error" : "muted"} role={note.tone}>
+          {note.text}
+        </p>
+      )}
+    </>
+  );
+}
+
+/** The switch, or why there is none. */
+function Switch({
+  state,
+  busy,
+  onChange,
+}: {
+  state: PushState;
+  busy: boolean;
+  onChange: (on: boolean) => void;
+}): ReactElement {
+  if (state.kind !== "on" && state.kind !== "off") {
+    return <Unavailable state={state} />;
+  }
+  return (
+    <label className="field inline">
+      <input
+        type="checkbox"
+        role="switch"
+        checked={state.kind === "on"}
+        disabled={busy}
+        onChange={(event) => {
+          onChange(event.target.checked);
+        }}
+      />
+      Notify me on this phone
+    </label>
+  );
+}
+
+/** Notifications on this phone: a switch, and a test once they are on. */
+function Notifications(): ReactElement {
+  const [state, setState] = useState<PushState | null>(null);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  useEffect(() => {
+    let live = true;
+    void pushState().then((found) => {
+      if (live) {
+        setState(found);
+      }
+    });
+    return (): void => {
+      live = false;
+    };
+  }, []);
+
+  const change = async (to: () => Promise<PushChange>): Promise<void> => {
+    setBusy(true);
+    setError(null);
+    const result = await to();
+    setBusy(false);
+    if (result.kind === "ok") {
+      setState(result.state);
+    } else {
+      setError(result.message);
+    }
+  };
+
+  return (
+    <section className="card" aria-label="Notifications">
+      <h2>Notifications</h2>
+      <p className="muted">
+        When the coach answers while you’re away, or proposes a program. Everything also lands in
+        the Inbox.
+      </p>
+      {state === null ? (
+        <p className="muted">Checking…</p>
+      ) : (
+        <Switch
+          state={state}
+          busy={busy}
+          onChange={(on) => {
+            void change(on ? turnOn : turnOff);
+          }}
+        />
+      )}
+      {error === null ? null : (
+        <p className="error" role="alert">
+          {error}
+        </p>
+      )}
+      {state?.kind === "on" ? <TestButton /> : null}
+    </section>
+  );
+}
+
 type Queued = { checked: false } | { checked: true; profile: Profile | null };
 
 /**
@@ -132,6 +268,7 @@ export function Settings(): ReactElement {
           )
         }
       </Load>
+      <Notifications />
     </>
   );
 }

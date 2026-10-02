@@ -1,7 +1,7 @@
 import { useState } from "react";
 import type { ReactElement } from "react";
 
-import { useApi, workoutListSchema } from "../api";
+import { inboxSchema, useApi, workoutListSchema } from "../api";
 import type { WorkoutSummary } from "../api";
 import { BarChart } from "../charts";
 import { Load, StatTile, WorkoutCard } from "../components";
@@ -61,6 +61,21 @@ function Dashboard({ workouts, now }: { workouts: WorkoutSummary[]; now: Date })
   );
 }
 
+/** The inbox, with how many notices are unread. */
+function InboxLink(): ReactElement {
+  const state = useApi("/api/inbox", inboxSchema);
+  const unread = state.status === "ready" ? state.data.unread : 0;
+  return (
+    <a
+      className="head-link"
+      href={href({ name: "inbox" })}
+      aria-label={unread === 0 ? "Inbox" : `Inbox, ${String(unread)} unread`}
+    >
+      ✉{unread === 0 ? null : <span className="badge">{String(unread)}</span>}
+    </a>
+  );
+}
+
 export function Home(): ReactElement {
   const state = useApi("/api/workouts?limit=500", workoutListSchema);
   const [now] = useState(() => new Date());
@@ -71,9 +86,12 @@ export function Home(): ReactElement {
           <p className="muted">Good {partOfDay(now.toISOString()).toLowerCase()}</p>
           <h1>Your training</h1>
         </span>
-        <a className="settings-link" href={href({ name: "settings" })} aria-label="Settings">
-          ⚙
-        </a>
+        <span className="head-links">
+          <InboxLink />
+          <a className="head-link" href={href({ name: "settings" })} aria-label="Settings">
+            ⚙
+          </a>
+        </span>
       </header>
       <StartCard />
       <Load state={state}>{(workouts) => <Dashboard workouts={workouts} now={now} />}</Load>

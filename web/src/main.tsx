@@ -7,6 +7,7 @@ import { draftStore } from "./log/store";
 import { createOutbox, webLock } from "./outbox/outbox";
 import { OutboxContext } from "./outbox/Sync";
 import { outboxStore } from "./outbox/store";
+import { routeToOpen } from "./sw/message";
 import "./index.css";
 
 const root = document.getElementById("root");
@@ -22,8 +23,16 @@ const outbox = createOutbox(
 outbox.start();
 
 if (import.meta.env.PROD && "serviceWorker" in navigator) {
-  // The worker only speeds up and backs up reads; the app works without it.
+  // The worker speeds up and backs up reads, and shows notifications; the app
+  // works without it.
   navigator.serviceWorker.register("/sw.js").catch(() => undefined);
+  // A tapped notification asks an open window to show its screen.
+  navigator.serviceWorker.addEventListener("message", (event) => {
+    const route = routeToOpen(event.data);
+    if (route !== null) {
+      window.location.hash = route;
+    }
+  });
 }
 
 createRoot(root).render(

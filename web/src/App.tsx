@@ -8,6 +8,7 @@ import { ExerciseDetail } from "./screens/ExerciseDetail";
 import { Exercises } from "./screens/Exercises";
 import { History, WorkoutDetail } from "./screens/History";
 import { Home } from "./screens/Home";
+import { Inbox } from "./screens/Inbox";
 import { Log } from "./screens/Log";
 import { Picker } from "./screens/Picker";
 import { Program } from "./screens/Program";
@@ -24,6 +25,7 @@ const SCREENS: Record<FixedRouteName, () => ReactElement> = {
   coach: Coach,
   program: Program,
   today: Today,
+  inbox: Inbox,
 };
 
 function Screen({ route }: { route: Route }): ReactElement {
@@ -59,6 +61,7 @@ const TAB_OF: Record<Route["name"], Tab> = {
   coach: "coach",
   program: "program",
   today: "home",
+  inbox: "home",
 };
 
 export function App(): ReactElement {
