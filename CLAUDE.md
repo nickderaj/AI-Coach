@@ -1,6 +1,6 @@
 # Working in hermes-trainer
 
-Read [docs/PLAN.md](docs/PLAN.md) for what is being built and why, and
+Read [README.md](README.md) for the product overview and
 [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) for the gate every change must pass.
 
 - Never push to `main`. Branch, open a PR with a Conventional Commit title, and

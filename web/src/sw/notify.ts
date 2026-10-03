@@ -18,7 +18,7 @@ import type { OpenMessage } from "./message";
 
 /** Only routes of this app are opened (as in `message.ts`). */
 const ROUTE = /^#\/[a-z/]*$/;
-const FALLBACK: PushMessage = { id: null, title: "Trainer", body: "", route: "#/inbox" };
+const FALLBACK: PushMessage = { id: null, title: "Coach", body: "", route: "#/inbox" };
 
 function fields(data: unknown): Record<string, unknown> {
   return typeof data === "object" && data !== null ? (data as Record<string, unknown>) : {};

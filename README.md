@@ -1,10 +1,30 @@
-# hermes-trainer
+<p align="center">
+  <img src="web/public/icon-192.png" width="112" alt="Coach logo">
+</p>
 
-Single-user strength-training app: multi-week programs with rule-based
-progression, a phone-first offline logging UI, and a Hermes coach with
-persistent memory. Runs on a Raspberry Pi, reachable only over Tailscale.
+<h1 align="center">Coach</h1>
 
-- [docs/PLAN.md](docs/PLAN.md) — design, decisions and phases
-- [docs/DEVELOPMENT.md](docs/DEVELOPMENT.md) — toolchain and the quality gate
-- [docs/DEPLOY.md](docs/DEPLOY.md) — installing and operating on the host
-- [docs/STATUS.md](docs/STATUS.md) — what is done and what comes next
+<p align="center">
+  A private, phone-first strength-training app with structured programs, offline logging and a coach that remembers.
+</p>
+
+## How it works
+
+Coach keeps the training record in SQLite and uses clear progression rules to
+choose the next session, target reps and load. Workouts can be logged without a
+connection and sync when the phone is back online. Hermes handles conversation,
+program changes and long-term coaching context.
+
+## Screens
+
+| Home | Today's workout |
+| :---: | :---: |
+| <img src="docs/screenshots/home.png" width="300" alt="Coach home screen"> | <img src="docs/screenshots/today.png" width="300" alt="Today's planned workout"> |
+| Program | Coach |
+| <img src="docs/screenshots/program.png" width="300" alt="Training program"> | <img src="docs/screenshots/coach.png" width="300" alt="Coach conversation"> |
+
+## Running it
+
+The React PWA and FastAPI service run on a private host and are served to the
+owner over Tailscale. See [deployment](docs/DEPLOY.md) for installation and
+[development](docs/DEVELOPMENT.md) for the toolchain and quality checks.
