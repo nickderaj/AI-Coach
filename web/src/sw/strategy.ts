@@ -13,7 +13,7 @@
  */
 
 /** Bump to discard every cached response when the worker is next updated. */
-export const CACHE_NAME = "trainer-v1";
+export const CACHE_NAME = "coach-v2";
 
 /** How long to wait for the network before answering from the cache. */
 export const NETWORK_TIMEOUT_MS = 3_000;

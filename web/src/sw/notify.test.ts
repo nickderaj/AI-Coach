@@ -6,7 +6,7 @@ import { routeToOpen } from "./message";
 import type { TapDeps } from "./notify";
 import { SEEN_WAIT_MS, notificationFor, onTap, readPush, readTapped } from "./notify";
 
-const FALLBACK = { id: null, title: "Trainer", body: "", route: "#/inbox" };
+const FALLBACK = { id: null, title: "Coach", body: "", route: "#/inbox" };
 
 describe("readPush", () => {
   it("reads the server's notice", () => {
@@ -35,7 +35,7 @@ describe("readPush", () => {
   it("fills in what is missing or wrong, field by field", () => {
     expect(readPush(JSON.stringify({ id: 1.5, title: "", body: 3, route: "#/x" }))).toEqual({
       id: null,
-      title: "Trainer",
+      title: "Coach",
       body: "",
       route: "#/x",
     });

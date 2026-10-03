@@ -1,17 +1,38 @@
 <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 512 512">
   <!-- Source of the PNG icons: see docs/DEVELOPMENT.md ("App icons"). -->
   <defs>
-    <linearGradient id="g" x1="0" y1="0" x2="1" y2="1">
-      <stop offset="0" stop-color="#8839ef"/>
-      <stop offset="1" stop-color="#ea76cb"/>
+    <linearGradient id="background" x1="256" y1="0" x2="256" y2="512" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#050505"/>
+      <stop offset="1" stop-color="#111111"/>
     </linearGradient>
+    <radialGradient id="ghost" cx="0" cy="0" r="1" gradientTransform="translate(294 180) rotate(112) scale(296 274)" gradientUnits="userSpaceOnUse">
+      <stop offset="0.05" stop-color="#ffffff"/>
+      <stop offset="0.62" stop-color="#f6f5f1"/>
+      <stop offset="1" stop-color="#b9b9b9"/>
+    </radialGradient>
+    <linearGradient id="handle-shadow" x1="256" y1="132" x2="256" y2="205" gradientUnits="userSpaceOnUse">
+      <stop stop-color="#363636"/>
+      <stop offset="1" stop-color="#0c0c0c"/>
+    </linearGradient>
+    <filter id="shadow" x="-25%" y="-25%" width="150%" height="160%">
+      <feDropShadow dx="0" dy="10" stdDeviation="10" flood-color="#000000" flood-opacity="0.72"/>
+    </filter>
   </defs>
-  <rect width="512" height="512" rx="112" fill="url(#g)"/>
-  <g fill="#ffffff" transform="rotate(-30 256 256)">
-    <rect x="136" y="240" width="240" height="32" rx="16"/>
-    <rect x="148" y="170" width="46" height="172" rx="18"/>
-    <rect x="98" y="204" width="40" height="104" rx="16"/>
-    <rect x="318" y="170" width="46" height="172" rx="18"/>
-    <rect x="374" y="204" width="40" height="104" rx="16"/>
+
+  <rect width="512" height="512" rx="112" fill="url(#background)"/>
+
+  <!-- A friendly training ghost whose handle makes the gym cue. -->
+  <g filter="url(#shadow)">
+    <rect x="151" y="76" width="210" height="214" rx="96" fill="url(#ghost)"/>
+    <path
+      d="M150 197 C126 226 118 268 118 324 V358 C118 397 138 420 168 420 C190 420 203 405 222 405 C237 405 243 424 256 424 C269 424 275 405 290 405 C309 405 322 420 344 420 C374 420 394 397 394 358 V324 C394 268 386 226 362 197 C338 169 301 154 256 154 C211 154 174 169 150 197 Z"
+      fill="url(#ghost)"
+    />
+    <rect x="194" y="116" width="124" height="82" rx="40" fill="url(#handle-shadow)"/>
+  </g>
+
+  <g fill="#0b0b0b">
+    <rect x="210" y="244" width="28" height="60" rx="14"/>
+    <rect x="274" y="244" width="28" height="60" rx="14"/>
   </g>
 </svg>

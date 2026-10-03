@@ -144,8 +144,7 @@ with `--work-tree=<data dir>/hermes`, then restart the gateway.
 ## Notifications (Web Push)
 
 The app tells the owner when the coach has answered and they were not watching,
-through Web Push to the phone, and always in the app's inbox. The design and
-what is notified are in [STATUS.md](STATUS.md) (phase 5).
+through Web Push to the phone, and always in the app's inbox.
 
 **Keys.** `sudo ./deploy/push-secrets.sh` makes the server's VAPID key pair
 (P-256) with the installed virtualenv, once, into two root-only files:
