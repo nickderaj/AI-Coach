@@ -1,48 +1,52 @@
 /*
- * Catppuccin Latte (https://catppuccin.com/palette), light only.
- * Accents are used as pastel tints (color-mix with the card colour) behind
- * full-strength accent text and icons.
+ * Ledger / Heritage: a light, editorial training log. Existing semantic
+ * colour names stay in place because exercise equipment and status tones use
+ * them, but the palette is deliberately quieter and warmer than before.
  */
 :root {
   color-scheme: light;
 
-  --rosewater: #dc8a78;
-  --flamingo: #dd7878;
-  --pink: #ea76cb;
-  --mauve: #8839ef;
-  --red: #d20f39;
-  --maroon: #e64553;
-  --peach: #fe640b;
-  --yellow: #df8e1d;
-  --green: #40a02b;
-  --teal: #179299;
-  --sky: #04a5e5;
-  --sapphire: #209fb5;
-  --blue: #1e66f5;
-  --lavender: #7287fd;
-  --text: #4c4f69;
-  --subtext1: #5c5f77;
-  --subtext0: #6c6f85;
-  --overlay1: #8c8fa1;
-  --overlay0: #9ca0b0;
-  --surface1: #bcc0cc;
-  --surface0: #ccd0da;
-  --base: #eff1f5;
-  --mantle: #e6e9ef;
-  --crust: #dce0e8;
-  --card: #ffffff;
+  --rosewater: #a85b49;
+  --flamingo: #aa695f;
+  --pink: #9b6072;
+  --mauve: #765978;
+  --red: #a63d32;
+  --maroon: #874b42;
+  --peach: #b76536;
+  --yellow: #a77b30;
+  --green: #345848;
+  --teal: #3f6964;
+  --sky: #577481;
+  --sapphire: #3c6674;
+  --blue: #4b627b;
+  --lavender: #6c647e;
+  --text: #25271f;
+  --subtext1: #51554c;
+  --subtext0: #71736a;
+  --overlay1: #8c8b80;
+  --overlay0: #a19d91;
+  --surface1: #c5bdb0;
+  --surface0: #d9d1c4;
+  --base: #ede8de;
+  --mantle: #e7e1d6;
+  --crust: #d2c9bb;
+  --card: #f8f4eb;
 
-  --accent: var(--mauve);
-  --radius: 1.1rem;
-  --shadow: 0 1px 2px rgb(76 79 105 / 6%), 0 4px 16px rgb(76 79 105 / 6%);
+  --accent: #a94d35;
+  --ink: #20231d;
+  --forest: #273b31;
+  --paper: #f8f4eb;
+  --paper-deep: #eee7db;
+  --rule: #c8c0b3;
+  --radius: 0.35rem;
+  --shadow: 0 1px 0 rgb(41 43 35 / 7%);
 
   font-family:
-    ui-rounded,
-    "SF Pro Rounded",
+    Inter,
+    ui-sans-serif,
     system-ui,
     -apple-system,
     "Segoe UI",
-    Roboto,
     sans-serif;
   line-height: 1.4;
   -webkit-text-size-adjust: 100%;
@@ -56,6 +60,8 @@ body {
   margin: 0;
   background: var(--base);
   color: var(--text);
+  min-width: 20rem;
+  font-variant-numeric: proportional-nums;
 }
 
 a {
@@ -64,33 +70,57 @@ a {
 }
 
 button,
-input {
+input,
+select,
+textarea {
   font: inherit;
 }
 
+button,
+a,
+input,
+select,
+textarea {
+  -webkit-tap-highlight-color: transparent;
+}
+
+:focus-visible {
+  outline: 2px solid var(--accent);
+  outline-offset: 3px;
+}
+
 .tint {
-  background: color-mix(in srgb, var(--tone, var(--accent)) 16%, var(--card));
+  background: color-mix(in srgb, var(--tone, var(--accent)) 10%, var(--card));
   color: var(--tone, var(--accent));
 }
 
 /* ---------------------------------------------------------------- layout */
 
 .app main {
-  max-width: 42rem;
+  max-width: 44rem;
   margin: 0 auto;
-  padding: calc(env(safe-area-inset-top) + 1.25rem) 1rem calc(env(safe-area-inset-bottom) + 6rem);
+  padding: calc(env(safe-area-inset-top) + 1.4rem) 1rem calc(env(safe-area-inset-bottom) + 6.4rem);
   display: grid;
-  gap: 1rem;
+  gap: 1.15rem;
+}
+
+.page-head {
+  padding: 0 0 1rem;
+  border-bottom: 1px solid var(--rule);
 }
 
 .page-head h1 {
-  font-size: 1.9rem;
-  letter-spacing: -0.02em;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: clamp(2rem, 8vw, 2.7rem);
+  font-weight: 500;
+  line-height: 1;
+  letter-spacing: -0.045em;
   margin: 0;
+  color: var(--ink);
 }
 
 .page-head.exercise-row h1 {
-  font-size: 1.5rem;
+  font-size: 1.75rem;
   line-height: 1.15;
 }
 
@@ -99,8 +129,12 @@ input {
 }
 
 h2 {
-  font-size: 1.05rem;
-  margin: 0.4rem 0 0.2rem;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.25rem;
+  font-weight: 500;
+  letter-spacing: -0.02em;
+  margin: 0.5rem 0 0.25rem;
+  color: var(--ink);
 }
 
 .muted {
@@ -114,10 +148,11 @@ h2 {
 
 .card {
   display: grid;
-  gap: 0.6rem;
-  padding: 1rem;
+  gap: 0.7rem;
+  padding: 1rem 1.05rem;
   background: var(--card);
   border-radius: var(--radius);
+  border: 1px solid var(--rule);
   box-shadow: var(--shadow);
 }
 
@@ -131,20 +166,27 @@ h2 {
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 0.75rem;
+  gap: 0.85rem;
 }
 
 .back {
   color: var(--accent);
-  font-weight: 600;
+  width: max-content;
+  padding-bottom: 0.15rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--accent) 38%, transparent);
+  font-size: 0.82rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 /* ---------------------------------------------------------------- sync */
 
 .sync {
   margin: 0;
-  padding: 0.7rem 0.9rem;
+  padding: 0.8rem 0.95rem;
   border-radius: var(--radius);
+  border-left: 3px solid currentcolor;
   font-size: 0.9rem;
   font-weight: 600;
 }
@@ -165,13 +207,17 @@ h2 {
 
 .tile {
   border-radius: var(--radius);
-  padding: 0.8rem;
+  border-top: 1px solid color-mix(in srgb, currentcolor 36%, transparent);
+  padding: 0.8rem 0.15rem 0.35rem;
   display: grid;
   gap: 0.1rem;
+  background: transparent;
 }
 
 .tile strong {
-  font-size: 1.5rem;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.65rem;
+  font-weight: 500;
   font-variant-numeric: tabular-nums;
   line-height: 1.1;
 }
@@ -195,10 +241,11 @@ h2 {
   display: inline-flex;
   align-items: center;
   gap: 0.3rem;
-  padding: 0.2rem 0.6rem;
-  border-radius: 999px;
-  font-size: 0.82rem;
-  font-weight: 600;
+  padding: 0.2rem 0.5rem;
+  border-radius: 0.2rem;
+  border: 1px solid color-mix(in srgb, currentcolor 24%, transparent);
+  font-size: 0.74rem;
+  font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 
@@ -210,7 +257,26 @@ h2 {
 }
 
 .workout-title strong {
-  font-size: 1.05rem;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.2rem;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+a.card {
+  transition:
+    border-color 140ms ease,
+    transform 140ms ease,
+    background 140ms ease;
+}
+
+a.card:hover {
+  border-color: var(--overlay0);
+  background: color-mix(in srgb, var(--card) 90%, white);
+}
+
+a.card:active {
+  transform: translateY(1px);
 }
 
 .lines {
@@ -226,6 +292,13 @@ h2 {
   justify-content: space-between;
   gap: 0.75rem;
   font-size: 0.92rem;
+  padding-top: 0.3rem;
+  border-top: 1px solid color-mix(in srgb, var(--rule) 70%, transparent);
+}
+
+.lines li:first-child {
+  padding-top: 0;
+  border-top: 0;
 }
 
 .lines .best {
@@ -255,12 +328,13 @@ h2 {
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--subtext0);
-  padding: 0.2rem 0.4rem;
+  padding: 0.3rem 0.4rem 0.45rem;
+  border-bottom: 2px solid var(--ink);
 }
 
 .set-table td {
-  padding: 0.45rem 0.4rem;
-  border-top: 1px solid var(--mantle);
+  padding: 0.55rem 0.4rem;
+  border-bottom: 1px solid var(--rule);
 }
 
 .set-number {
@@ -268,13 +342,22 @@ h2 {
   place-items: center;
   width: 1.7rem;
   height: 1.7rem;
-  border-radius: 0.55rem;
-  font-weight: 700;
-  font-size: 0.85rem;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, currentcolor 28%, transparent);
+  /* Georgia's old-style figures sit low in the circle; the text face's lining
+     figures centre in it. */
+  font-weight: 600;
+  font-size: 0.8rem;
+  font-variant-numeric: lining-nums tabular-nums;
+  line-height: 1;
+  padding-top: 0.18em; /* digits have no descenders: centre their ink */
 }
 
 .notes {
   margin: 0;
+  padding-left: 0.85rem;
+  border-left: 3px solid var(--accent);
+  font-family: Georgia, "Times New Roman", serif;
   font-style: italic;
   color: var(--subtext0);
 }
@@ -283,11 +366,12 @@ h2 {
 
 .search {
   width: 100%;
-  padding: 0.75rem 1rem;
+  min-height: 3rem;
+  padding: 0.75rem 0.9rem;
   border-radius: var(--radius);
-  border: 0;
+  border: 1px solid var(--rule);
   background: var(--card);
-  box-shadow: var(--shadow);
+  box-shadow: none;
   color: var(--text);
 }
 
@@ -301,19 +385,29 @@ h2 {
 
 .chip {
   flex: none;
-  border: 0;
-  border-radius: 999px;
-  padding: 0.35rem 0.8rem;
-  font-weight: 600;
-  font-size: 0.85rem;
+  min-height: 2.35rem;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: 0.4rem 0.75rem;
+  font-weight: 700;
+  font-size: 0.78rem;
   background: var(--card);
   color: var(--subtext1);
-  box-shadow: var(--shadow);
+  box-shadow: none;
+  transition:
+    color 140ms ease,
+    background 140ms ease,
+    transform 140ms ease;
 }
 
 .chip[aria-pressed="true"] {
   background: var(--tone, var(--accent));
   color: var(--card);
+  border-color: var(--tone, var(--accent));
+}
+
+.chip:active {
+  transform: translateY(1px);
 }
 
 .exercise-row {
@@ -323,14 +417,28 @@ h2 {
   align-items: center;
 }
 
+a.exercise-row {
+  box-shadow: none;
+}
+
+a.exercise-row strong {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.05rem;
+  font-weight: 500;
+  color: var(--ink);
+}
+
 .avatar {
   width: 2.6rem;
   height: 2.6rem;
-  border-radius: 0.9rem;
+  border-radius: 50%;
+  border: 1px solid color-mix(in srgb, currentcolor 25%, transparent);
   display: grid;
   place-items: center;
-  font-weight: 800;
-  font-size: 0.95rem;
+  font-family: Georgia, "Times New Roman", serif;
+  font-style: italic;
+  font-weight: 500;
+  font-size: 1rem;
 }
 
 .exercise-row strong {
@@ -340,7 +448,8 @@ h2 {
 .records {
   display: grid;
   grid-template-columns: 1fr 1fr;
-  gap: 0.6rem;
+  gap: 0.8rem;
+  padding-top: 0.25rem;
 }
 
 /* ---------------------------------------------------------------- charts */
@@ -352,11 +461,11 @@ h2 {
 }
 
 .chart .bar rect {
-  fill: color-mix(in srgb, var(--lavender) 45%, var(--card));
+  fill: color-mix(in srgb, var(--forest) 24%, var(--card));
 }
 
 .chart .bar.current rect {
-  fill: var(--mauve);
+  fill: var(--accent);
 }
 
 .chart .axis {
@@ -366,15 +475,15 @@ h2 {
 
 .chart .line {
   fill: none;
-  stroke: var(--tone, var(--mauve));
-  stroke-width: 2.5;
+  stroke: var(--tone, var(--forest));
+  stroke-width: 2;
   stroke-linejoin: round;
   stroke-linecap: round;
 }
 
 .chart .dot {
   fill: var(--card);
-  stroke: var(--tone, var(--mauve));
+  stroke: var(--tone, var(--forest));
   stroke-width: 2;
 }
 
@@ -395,34 +504,50 @@ h2 {
 
 .primary,
 .button {
-  display: inline-block;
-  border: 0;
-  border-radius: 999px;
-  padding: 0.65rem 1.2rem;
+  display: inline-flex;
+  min-height: 2.75rem;
+  align-items: center;
+  justify-content: center;
+  border: 1px solid var(--forest);
+  border-radius: var(--radius);
+  padding: 0.7rem 1rem;
   font-weight: 700;
+  letter-spacing: 0.015em;
   text-align: center;
-  background: var(--accent);
+  background: var(--forest);
   color: var(--card);
-  box-shadow: var(--shadow);
+  box-shadow: none;
+  transition:
+    transform 140ms ease,
+    background 140ms ease,
+    color 140ms ease;
 }
 
 .button {
   background: var(--card);
-  color: var(--accent);
+  color: var(--forest);
+}
+
+.primary:active,
+.button:active {
+  transform: translateY(1px);
 }
 
 .primary:disabled {
   background: var(--surface0);
   color: var(--subtext0);
+  border-color: var(--surface0);
   box-shadow: none;
 }
 
 .link {
   border: 0;
   background: none;
-  padding: 0.4rem 0;
+  padding: 0.4rem 0.1rem;
   color: var(--accent);
-  font-weight: 600;
+  font-size: 0.85rem;
+  font-weight: 700;
+  letter-spacing: 0.04em;
   text-align: left;
 }
 
@@ -445,8 +570,9 @@ h2 {
 
 .notice {
   margin: 0;
-  padding: 0.75rem 0.9rem;
+  padding: 0.85rem 1rem;
   border-radius: var(--radius);
+  border-left: 3px solid currentcolor;
   font-weight: 600;
 }
 
@@ -456,12 +582,29 @@ h2 {
 
 .start {
   display: grid;
-  gap: 0.5rem;
+  gap: 0.7rem;
   justify-items: start;
+  border-color: color-mix(in srgb, currentcolor 28%, var(--rule));
+  border-left: 3px solid currentcolor;
+  box-shadow: none;
 }
 
 .start .go {
   font-weight: 700;
+  font-size: 0.78rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
+
+.start > strong {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.25rem;
+  font-weight: 500;
+  color: var(--ink);
+}
+
+.start .primary {
+  min-width: min(14rem, 100%);
 }
 
 .home-head {
@@ -471,6 +614,14 @@ h2 {
   gap: 1rem;
 }
 
+.home-head .muted {
+  margin-bottom: 0.4rem;
+  font-size: 0.75rem;
+  font-weight: 700;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
 .head-links {
   display: flex;
   gap: 0.25rem;
@@ -478,11 +629,66 @@ h2 {
 
 .head-link {
   position: relative;
-  font-size: 1.5rem;
+  /* Not a grid: the hidden glyph (font-size 0) would be a second grid item
+     and push the drawn icon into the top row. */
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  flex: none;
+  width: 2.55rem;
+  height: 2.55rem;
+  border: 1px solid var(--rule);
+  border-radius: 50%;
+  background: var(--card);
+  font-size: 0;
   line-height: 1;
-  padding: 0.4rem;
+  padding: 0;
   color: var(--subtext0);
   text-decoration: none;
+}
+
+/* Icons drawn in CSS, each centred on the link. */
+.head-link::before,
+.head-link::after {
+  content: "";
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  box-sizing: border-box;
+}
+
+/* The inbox: an envelope, and its flap. */
+.head-link[href^="#/inbox"]::before {
+  width: 1.1rem;
+  height: 0.8rem;
+  border: 1.5px solid currentcolor;
+  border-radius: 2px;
+  transform: translate(-50%, -50%);
+}
+
+.head-link[href^="#/inbox"]::after {
+  width: 0.62rem;
+  height: 0.62rem;
+  border-right: 1.5px solid currentcolor;
+  border-bottom: 1.5px solid currentcolor;
+  transform: translate(-50%, -88%) rotate(45deg);
+}
+
+/* Settings: a cog, a ring inside a toothed ring. */
+.head-link[href^="#/settings"]::before {
+  width: 0.62rem;
+  height: 0.62rem;
+  border: 2px solid currentcolor;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
+}
+
+.head-link[href^="#/settings"]::after {
+  width: 1.15rem;
+  height: 1.15rem;
+  border: 3px dotted currentcolor;
+  border-radius: 50%;
+  transform: translate(-50%, -50%);
 }
 
 /* How many notices are unread, on the inbox link. */
@@ -493,7 +699,7 @@ h2 {
   min-width: 1.15rem;
   padding: 0.1rem 0.3rem;
   border-radius: 999px;
-  background: var(--red);
+  background: var(--accent);
   color: var(--card);
   font-size: 0.7rem;
   font-weight: 700;
@@ -508,7 +714,7 @@ h2 {
 }
 
 .inbox-item {
-  gap: 0.3rem;
+  gap: 0.45rem;
   color: inherit;
   text-decoration: none;
 }
@@ -525,6 +731,7 @@ h2 {
   height: 0.55rem;
   border-radius: 50%;
   background: var(--accent);
+  box-shadow: 0 0 0 3px color-mix(in srgb, var(--accent) 12%, transparent);
 }
 
 .inbox-item:not(.unread) strong {
@@ -537,10 +744,30 @@ h2 {
   justify-content: space-between;
   align-items: center;
   gap: 1rem;
+  border-top: 3px solid var(--ink);
+  padding-top: 1rem;
 }
 
 .elapsed {
   font-variant-numeric: tabular-nums;
+}
+
+.log-card {
+  gap: 0.8rem;
+  border-top: 2px solid var(--ink);
+  box-shadow: none;
+}
+
+.log-card .exercise-row {
+  padding-bottom: 0.7rem;
+  border-bottom: 1px solid var(--rule);
+}
+
+.log-card .exercise-row strong {
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.15rem;
+  font-weight: 500;
+  color: var(--ink);
 }
 
 .log-table {
@@ -556,7 +783,8 @@ h2 {
   letter-spacing: 0.04em;
   text-transform: uppercase;
   color: var(--subtext0);
-  padding: 0.2rem 0.25rem;
+  padding: 0.25rem 0.25rem 0.45rem;
+  border-bottom: 1px solid var(--rule);
 }
 
 .log-table th:first-child,
@@ -589,12 +817,17 @@ h2 {
 }
 
 .log-table td {
-  padding: 0.3rem 0.25rem;
+  padding: 0.4rem 0.25rem;
   font-size: 0.9rem;
+  border-bottom: 1px solid color-mix(in srgb, var(--rule) 72%, transparent);
 }
 
 .log-table tr.done td {
-  background: color-mix(in srgb, var(--green) 12%, var(--card));
+  background: color-mix(in srgb, var(--green) 7%, var(--card));
+}
+
+.log-table tr.done td:first-child {
+  box-shadow: inset 2px 0 0 var(--green);
 }
 
 .log-table input,
@@ -602,10 +835,11 @@ h2 {
 .field input,
 .field select {
   width: 100%;
-  border: 0;
-  border-radius: 0.6rem;
-  padding: 0.45rem 0.5rem;
-  background: var(--mantle);
+  min-height: 2.6rem;
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  padding: 0.5rem 0.55rem;
+  background: var(--card);
   color: var(--text);
   font-size: 1rem;
   font-variant-numeric: tabular-nums;
@@ -615,19 +849,36 @@ h2 {
   width: 6rem;
 }
 
+.quick {
+  border-left: 3px solid var(--accent);
+}
+
+.quick h2 {
+  margin-top: 0;
+}
+
 .check {
   width: 2.2rem;
   height: 2.2rem;
-  border: 0;
-  border-radius: 0.6rem;
-  background: var(--mantle);
+  border: 1px solid var(--rule);
+  border-radius: 50%;
+  background: var(--card);
   color: var(--overlay1);
   font-weight: 800;
+  transition:
+    background 150ms ease,
+    color 150ms ease,
+    transform 150ms ease;
 }
 
 .check[aria-pressed="true"] {
-  background: var(--green);
+  border-color: var(--forest);
+  background: var(--forest);
   color: var(--card);
+}
+
+.check:active {
+  transform: scale(0.94);
 }
 
 .check:disabled {
@@ -643,13 +894,16 @@ h2 {
   z-index: 1;
   width: min(40rem, calc(100% - 2rem));
   margin: 0 auto;
-  display: flex;
-  flex-wrap: wrap;
+  display: grid;
+  grid-template-columns: 1fr auto;
   align-items: center;
-  gap: 0.5rem;
-  padding: 0.6rem 0.8rem;
+  gap: 0.55rem 0.8rem;
+  padding: 0.7rem 0.8rem;
   border-radius: var(--radius);
-  box-shadow: var(--shadow);
+  border: 1px solid var(--forest);
+  background: var(--forest);
+  color: var(--paper);
+  box-shadow: 0 12px 30px rgb(32 35 29 / 20%);
   font-variant-numeric: tabular-nums;
 }
 
@@ -671,8 +925,26 @@ h2 {
 }
 
 .rest strong {
-  flex: 1;
-  font-size: 1.1rem;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.2rem;
+  font-weight: 500;
+}
+
+.rest-controls {
+  display: flex;
+  gap: 0.35rem;
+}
+
+.rest .chip {
+  min-height: 2.25rem;
+  border-color: rgb(248 244 235 / 24%);
+  background: transparent;
+  color: var(--paper);
+}
+
+.rest .chip:last-child {
+  background: var(--paper);
+  color: var(--forest);
 }
 
 .field {
@@ -680,6 +952,21 @@ h2 {
   gap: 0.3rem;
   font-weight: 600;
   font-size: 0.9rem;
+}
+
+.field:not(.inline) {
+  color: var(--subtext1);
+  font-size: 0.74rem;
+  font-weight: 700;
+  letter-spacing: 0.07em;
+  text-transform: uppercase;
+}
+
+.field:not(.inline) input,
+.field:not(.inline) select {
+  color: var(--text);
+  letter-spacing: 0;
+  text-transform: none;
 }
 
 .field.inline {
@@ -695,13 +982,19 @@ h2 {
 
 .pick {
   width: 100%;
-  border: 0;
+  border: 1px solid var(--rule);
+  background: var(--card);
   text-align: left;
   color: inherit;
+  cursor: pointer;
 }
 
 .pick > span {
   display: grid;
+}
+
+.pick:hover {
+  border-color: var(--overlay0);
 }
 
 /* ---------------------------------------------------------------- coach */
@@ -711,29 +1004,31 @@ h2 {
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 0.5rem;
+  gap: 0.75rem;
 }
 
 .bubble {
   max-width: 85%;
-  padding: 0.6rem 0.85rem;
+  padding: 0.75rem 0.9rem;
   border-radius: var(--radius);
   white-space: pre-wrap;
   overflow-wrap: anywhere;
-  box-shadow: var(--shadow);
+  box-shadow: none;
 }
 
 .bubble.user {
   justify-self: end;
-  background: var(--accent);
+  border-bottom-right-radius: 0;
+  background: var(--forest);
   color: var(--card);
-  border-bottom-right-radius: 0.3rem;
 }
 
 .bubble.assistant {
   justify-self: start;
+  border: 1px solid var(--rule);
+  border-left: 3px solid var(--accent);
+  border-bottom-left-radius: 0;
   background: var(--card);
-  border-bottom-left-radius: 0.3rem;
 }
 
 /* "You:" / "Coach:" are for screen readers only: never part of copied text. */
@@ -758,10 +1053,11 @@ h2 {
   display: flex;
   gap: 0.5rem;
   align-items: end;
-  padding: 0.5rem;
+  padding: 0.55rem;
   background: var(--card);
   border-radius: var(--radius);
-  box-shadow: var(--shadow);
+  border: 1px solid var(--rule);
+  box-shadow: 0 10px 28px rgb(32 35 29 / 12%);
 }
 
 .composer textarea {
@@ -786,22 +1082,25 @@ h2 {
 .composer.inline {
   position: static;
   box-shadow: none;
-  background: var(--mantle);
+  border: 1px solid var(--rule);
+  border-radius: var(--radius);
+  background: var(--paper-deep);
 }
 
 .eyebrow {
   margin: 0;
-  font-size: 0.75rem;
+  font-size: 0.7rem;
   font-weight: 700;
-  letter-spacing: 0.06em;
+  letter-spacing: 0.12em;
   text-transform: uppercase;
 }
 
 /* Tinted, so a proposal never reads as the program being trained. */
 .card.proposal {
   display: grid;
-  gap: 0.6rem;
-  background: color-mix(in srgb, var(--peach) 10%, var(--card));
+  gap: 0.8rem;
+  border-left: 3px solid var(--accent);
+  background: color-mix(in srgb, var(--peach) 7%, var(--card));
 }
 
 .proposal h2,
@@ -815,11 +1114,17 @@ h2 {
 
 .program-head {
   display: grid;
-  gap: 0.5rem;
+  gap: 0.75rem;
+  border-top: 3px solid var(--ink);
 }
 
 .program-head p {
   margin: 0;
+}
+
+.program-head + .program-days,
+.proposal > .program-days {
+  margin-top: 0.9rem;
 }
 
 .program-head .deload {
@@ -833,32 +1138,37 @@ h2 {
   padding: 0;
   display: grid;
   grid-template-columns: repeat(auto-fit, minmax(2rem, 1fr));
-  gap: 0.35rem;
+  gap: 0.45rem;
+  padding: 0.25rem 0;
 }
 
 .weeks li {
   display: grid;
   place-items: center;
-  height: 2rem;
-  border-radius: 0.6rem;
-  background: var(--mantle);
+  height: 2.1rem;
+  border: 1px solid var(--rule);
+  border-radius: 50%;
+  background: transparent;
   color: var(--subtext0);
   font-weight: 700;
   font-variant-numeric: tabular-nums;
 }
 
 .weeks li.done {
-  background: color-mix(in srgb, var(--green) 20%, var(--card));
-  color: var(--green);
-}
-
-.weeks li[aria-current="step"] {
-  background: var(--accent);
+  border-color: var(--forest);
+  background: var(--forest);
   color: var(--card);
 }
 
+.weeks li[aria-current="step"] {
+  border: 2px solid var(--accent);
+  background: transparent;
+  color: var(--accent);
+}
+
 .weeks li:last-child:not([aria-current]) {
-  background: color-mix(in srgb, var(--teal) 16%, var(--card));
+  border-style: dashed;
+  background: transparent;
   color: var(--teal);
 }
 
@@ -867,12 +1177,26 @@ h2 {
   flex-wrap: wrap;
   gap: 0.5rem;
   align-items: center;
-  margin: 0 0 0.4rem;
-  font-size: 1.05rem;
+  margin: 0 0 0.65rem;
+  padding-bottom: 0.65rem;
+  border-bottom: 2px solid var(--ink);
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 1.18rem;
+  font-weight: 500;
+  color: var(--ink);
 }
 
 .program-day[aria-current="step"] {
-  outline: 2px solid var(--green);
+  border-left: 3px solid var(--accent);
+  box-shadow: none;
+}
+
+.program-day h3 > .muted {
+  font-family: Inter, ui-sans-serif, system-ui, sans-serif;
+  font-size: 0.68rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
 }
 
 .blocks {
@@ -880,12 +1204,12 @@ h2 {
   margin: 0;
   padding: 0;
   display: grid;
-  gap: 0.5rem;
+  gap: 0.7rem;
 }
 
 .block {
-  padding-top: 0.4rem;
-  border-top: 1px solid var(--mantle);
+  padding-top: 0.65rem;
+  border-top: 1px solid var(--rule);
 }
 
 .block:first-child {
@@ -895,31 +1219,39 @@ h2 {
 
 /* A superset reads as one unit: its exercises side by side on a shared rail. */
 .block.superset .lines {
-  padding-left: 0.6rem;
-  border-left: 3px solid var(--mauve);
+  padding-left: 0.75rem;
+  border-left: 2px solid var(--accent);
 }
 
 .block-kind,
 .block .block-rest {
   margin: 0.1rem 0;
-  font-size: 0.8rem;
+  font-size: 0.7rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
 }
 
 .block-letter {
   display: inline-block;
   min-width: 1.7rem;
-  color: var(--mauve);
+  color: var(--accent);
   font-weight: 700;
 }
 
 .target {
   display: grid;
-  gap: 0.1rem;
-  margin: 0 0 0.5rem;
+  gap: 0.2rem;
+  margin: 0 0 0.35rem;
+  padding-left: 0.7rem;
+  border-left: 2px solid var(--accent);
+}
+
+.target strong {
+  font-size: 0.9rem;
 }
 
 .target .decision {
-  font-size: 0.85rem;
+  font-size: 0.76rem;
 }
 
 .target .decision.progress {
@@ -937,14 +1269,17 @@ h2 {
 /* A superset's exercises, done in turn, on one rail. */
 .superset-group {
   display: grid;
-  gap: 0.6rem;
-  padding-left: 0.6rem;
-  border-left: 3px solid var(--mauve);
+  gap: 0.75rem;
+  padding-left: 0.75rem;
+  border-left: 2px solid var(--accent);
 }
 
 .superset-note {
   margin: 0;
-  font-size: 0.85rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
 }
 
 /* Today: the name and target on one line, last time under them. */
@@ -952,20 +1287,41 @@ h2 {
   display: grid;
   grid-template-columns: 1fr auto;
   column-gap: 0.75rem;
+  padding: 0.55rem 0;
 }
 
 .planned .last {
   grid-column: 1 / -1;
-  font-size: 0.85rem;
+  margin-top: 0.15rem;
+  font-size: 0.78rem;
 }
 
 .today-head {
   display: grid;
-  gap: 0.4rem;
+  gap: 0.55rem;
+  border-top: 3px solid var(--ink);
+  padding-top: 1rem;
 }
 
 .today-head p {
   margin: 0;
+}
+
+.today-head > .muted:first-child {
+  font-size: 0.7rem;
+  font-weight: 700;
+  letter-spacing: 0.11em;
+  text-transform: uppercase;
+}
+
+.today-head .primary {
+  margin-top: 0.45rem;
+  width: min(18rem, 100%);
+}
+
+.today-head + .list > .block {
+  border-top: 2px solid var(--ink);
+  box-shadow: none;
 }
 
 .reply {
@@ -978,31 +1334,141 @@ h2 {
 .tabs {
   position: fixed;
   inset: auto 0 0 0;
+  z-index: 3;
   display: grid;
   grid-template-columns: repeat(5, 1fr);
-  background: color-mix(in srgb, var(--card) 88%, transparent);
-  backdrop-filter: blur(12px);
-  border-top: 1px solid var(--crust);
+  background: color-mix(in srgb, var(--card) 94%, transparent);
+  backdrop-filter: blur(18px);
+  border-top: 1px solid var(--rule);
   padding-bottom: env(safe-area-inset-bottom);
 }
 
 .tabs a {
+  position: relative;
   display: grid;
   justify-items: center;
-  gap: 0.1rem;
-  padding: 0.55rem 0 0.65rem;
+  gap: 0.2rem;
+  min-height: 4rem;
+  padding: 0.65rem 0 0.55rem;
   color: var(--overlay1);
-  font-size: 0.75rem;
-  font-weight: 600;
+  font-size: 0.66rem;
+  font-weight: 700;
+  letter-spacing: 0.035em;
+  text-transform: uppercase;
+  transition: color 140ms ease;
 }
 
 .tabs a span[aria-hidden] {
-  font-size: 1.3rem;
+  position: relative;
+  display: block;
+  width: 1rem;
+  height: 1rem;
+  font-size: 0;
   line-height: 1;
+}
+
+.tabs a span[aria-hidden]::before,
+.tabs a span[aria-hidden]::after {
+  content: "";
+  position: absolute;
+  display: block;
+}
+
+.tabs a:nth-child(1) span[aria-hidden]::before {
+  inset: 0.15rem;
+  border: 1.5px solid currentcolor;
+  border-radius: 50%;
+}
+
+.tabs a:nth-child(1) span[aria-hidden]::after {
+  inset: 0.38rem;
+  border-radius: 50%;
+  background: currentcolor;
+}
+
+.tabs a:nth-child(2) span[aria-hidden]::before {
+  inset: 0.08rem;
+  border: 1.5px solid currentcolor;
+}
+
+.tabs a:nth-child(2) span[aria-hidden]::after {
+  top: 0.08rem;
+  bottom: 0.08rem;
+  left: 0.48rem;
+  width: 1px;
+  background: currentcolor;
+}
+
+.tabs a:nth-child(3) span[aria-hidden]::before {
+  top: 0.22rem;
+  right: 0;
+  width: 0.72rem;
+  height: 1.5px;
+  background: currentcolor;
+  box-shadow:
+    0 0.28rem 0 currentcolor,
+    0 0.56rem 0 currentcolor;
+}
+
+.tabs a:nth-child(3) span[aria-hidden]::after {
+  top: 0.16rem;
+  left: 0;
+  width: 0.14rem;
+  height: 0.14rem;
+  border-radius: 50%;
+  background: currentcolor;
+  box-shadow:
+    0 0.28rem 0 currentcolor,
+    0 0.56rem 0 currentcolor;
+}
+
+.tabs a:nth-child(4) span[aria-hidden]::before {
+  inset: 0.14rem;
+  border: 1.5px solid currentcolor;
+  transform: rotate(45deg);
+}
+
+.tabs a:nth-child(5) span[aria-hidden]::before {
+  content: "H";
+  inset: -0.08rem 0 0;
+  font-family: Georgia, "Times New Roman", serif;
+  font-size: 0.95rem;
+  font-style: italic;
+  text-align: center;
 }
 
 .tabs a[aria-current="page"] {
   color: var(--accent);
+}
+
+.tabs a[aria-current="page"]::before {
+  content: "";
+  position: absolute;
+  top: -1px;
+  width: 2rem;
+  height: 2px;
+  background: var(--accent);
+}
+
+@media (prefers-reduced-motion: no-preference) {
+  .app main > :not(.rest) {
+    animation: page-in 220ms ease-out both;
+  }
+
+  .app main > :nth-child(3) {
+    animation-delay: 35ms;
+  }
+
+  .app main > :nth-child(4) {
+    animation-delay: 60ms;
+  }
+}
+
+@keyframes page-in {
+  from {
+    opacity: 0;
+    transform: translateY(0.3rem);
+  }
 }
 
 /* ---------------------------------------------------------------- switch */
@@ -1011,13 +1477,16 @@ h2 {
   appearance: none;
   flex: none;
   position: relative;
-  box-sizing: content-box;
+  box-sizing: border-box;
+  /* Not the text inputs' size: .field input sets a min-height and width. */
   width: 2.9rem;
-  padding: 0;
-  border: 0;
+  min-width: 2.9rem;
   height: 1.75rem;
+  min-height: 0;
+  padding: 0;
   margin: 0;
   border-radius: 999px;
+  border: 1px solid var(--rule);
   background: var(--surface0);
   transition: background 0.15s;
 }
@@ -1025,24 +1494,68 @@ h2 {
 .field input[role="switch"]::after {
   content: "";
   position: absolute;
-  top: 0.2rem;
-  left: 0.2rem;
+  top: 50%;
+  left: 0.15rem;
+  margin-top: -0.675rem;
   width: 1.35rem;
   height: 1.35rem;
   border-radius: 50%;
-  background: var(--card);
-  box-shadow: var(--shadow);
+  background: var(--paper);
+  box-shadow: 0 1px 2px rgb(32 35 29 / 18%);
   transition: transform 0.15s;
 }
 
 .field input[role="switch"]:checked {
-  background: var(--green);
+  border-color: var(--forest);
+  background: var(--forest);
 }
 
 .field input[role="switch"]:checked::after {
-  transform: translateX(1.15rem);
+  transform: translateX(1.2rem);
 }
 
 .field input[role="switch"]:disabled {
   opacity: 0.6;
+}
+
+@media (max-width: 26rem) {
+  .app main {
+    padding-right: 0.75rem;
+    padding-left: 0.75rem;
+  }
+
+  .card {
+    padding-right: 0.85rem;
+    padding-left: 0.85rem;
+  }
+
+  .tiles {
+    gap: 0.4rem;
+  }
+
+  .tile strong {
+    font-size: 1.4rem;
+  }
+
+  .log-head {
+    align-items: flex-start;
+  }
+
+  .log-head .primary {
+    min-height: 2.5rem;
+    padding: 0.55rem 0.75rem;
+  }
+
+  .rest {
+    grid-template-columns: 1fr;
+  }
+
+  .rest-controls {
+    display: grid;
+    grid-template-columns: repeat(3, 1fr);
+  }
+
+  .rest-space {
+    height: 6.5rem;
+  }
 }

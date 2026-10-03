@@ -39,7 +39,7 @@ export function BarChart({
               y={PAD_TOP + plot - height}
               width={slot * 0.64}
               height={Math.max(height, 2)}
-              rx={4}
+              rx={1}
             >
               <title>{`${bar.label}: ${format(bar.value)}`}</title>
             </rect>
