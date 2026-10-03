@@ -10,7 +10,7 @@ committed `deploy/local.env.example` documents the keys with placeholders.
 - systemd, `python3` (3.13) with `venv`, `curl`, `git`, `useradd`
 - `uv`, `git`, Node (see `web/.nvmrc`) and pnpm (Corepack) for the unprivileged
   build step, which also fetches the pinned Hermes release from GitHub
-- an API key for the model provider (an OpenAI-compatible endpoint, D13)
+- an API key for the model provider (an OpenAI-compatible endpoint)
 - Tailscale with HTTPS certificates enabled for the tailnet, and an ACL that
   lets only the owner's devices reach port 443 on the host
 
