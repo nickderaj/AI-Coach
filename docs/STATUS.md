@@ -50,6 +50,7 @@ Last updated: 2026-10-02.
 | Phase 5b — Web Push from its own sandboxed unit; the inbox and push API; the coach's answer notified; VAPID keys kept by `write-keys`; schema v8 | #33 | Deployed 2026-10-02 (backup first). `push-secrets.sh` made the pair (root-only, 0600) and started `trainer-push`; a second run kept it. Live: all three units active, `/api/push/key` serves the key in `push-public.env`, `/api/inbox` answers the owner (403 otherwise), schema v8, no subscriptions yet. One throwaway coach turn (its own session, deleted afterwards; no memory written) returned a `notice_id` and held its notice. |
 | Phase 5c — notifications in the app: Settings switch and test, the Inbox, pushes shown and opened, replies claimed | #35 | Deployed 2026-10-02 (backup first). Live: all three units active; the served `sw.js` has no `import` and handles `push` and `notificationclick`; the app bundle has the Inbox and the switch. Phone-size render of the merged build on a backup copy sent to the owner. No phone subscribed yet. **Phase 5 built.** |
 | Opening a notice shows it read (tapped card or notification); the tap waits 2 s at most for the read | #37 | Deployed 2026-10-02 (backup first). On the owner's phone, a tapped test notification opened the Inbox with the notice already read: the API logged its read, then the list reloading. Steps 1 and 2 of phase 5's exit criterion seen; step 3 to do (see below). |
+| The Ledger redesign (the owner's), with three layout fixes: the notifications switch, the header icons, set numbers | #40 | Deployed 2026-10-03 (backup first), replacing the unreviewed preview of the branch deployed 2026-10-02 at the owner's request. Live: the served stylesheet carries the three fixes, `sw.js` still has no `import`, all three units healthy. |
 
 ## Phase 2 — logging: done
 
@@ -842,7 +843,7 @@ All three worked on 2026-10-02 (above).
   change is the bot's own shutdown); only SQLite's shared-memory file beside
   it, owned by v1's user, was touched by the read-only reader.
 
-## The Ledger redesign (this PR)
+## The Ledger redesign (done, #40)
 
 The owner's restyle of the web app ("Ledger heritage": paper and ink colours,
 a serif for headings, ruled tables), web only: `index.css`, the chart bars
