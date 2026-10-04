@@ -1118,10 +1118,6 @@ a.exercise-row strong {
   }
 }
 
-.chat-end {
-  height: 0;
-}
-
 /* Stays above the tab bar while the conversation scrolls. */
 .composer {
   position: sticky;
@@ -1266,6 +1262,18 @@ a.exercise-row strong {
   font-weight: 800;
   letter-spacing: -0.015em;
   color: var(--ink);
+}
+
+/* The next day's name links to Today; its hit area stretches over the card. */
+.program-day[aria-current="step"] {
+  position: relative;
+}
+
+.day-link::after {
+  content: "";
+  position: absolute;
+  inset: 0;
+  border-radius: inherit;
 }
 
 .program-day[aria-current="step"] {
