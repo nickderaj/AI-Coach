@@ -77,6 +77,17 @@ describe("Coach", () => {
     expect(screen.queryByText(/Nothing said yet/)).not.toBeInTheDocument();
   });
 
+  it("opens at the bottom of the page, below the composer", async () => {
+    const page = document.scrollingElement ?? document.documentElement;
+    // jsdom lays nothing out: give the page a height to scroll through.
+    vi.spyOn(page, "scrollHeight", "get").mockReturnValue(5000);
+    routeFetch({ [`GET ${MESSAGES}`]: { body: HISTORY } });
+    render(<App />);
+
+    await screen.findByText("What did I bench?", { exact: false });
+    expect(page.scrollTop).toBe(5000);
+  });
+
   it("suggests a first question when nothing has been said", async () => {
     routeFetch({ [`GET ${MESSAGES}`]: { body: [] } });
     render(<App />);

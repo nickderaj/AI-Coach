@@ -158,6 +158,25 @@ describe("Program", () => {
     expect(screen.getByRole("heading", { name: "Change it with the coach" })).toBeInTheDocument();
   });
 
+  it("opens Today from the next day only", async () => {
+    routeFetch(programsReply(ACTIVE, null, { week: 3, day: 2 }));
+    render(<App />);
+
+    const current = await screen.findByRole("region", { name: "Current program" });
+    const days = current.querySelectorAll(".program-day");
+    const link = within(days[1] as HTMLElement).getByRole("link", { name: "Lower" });
+    expect(link).toHaveAttribute("href", "#/today");
+    expect(within(days[0] as HTMLElement).queryByRole("link")).not.toBeInTheDocument();
+  });
+
+  it("links no day of a proposal", async () => {
+    routeFetch(programsReply(null, PROPOSED, null));
+    render(<App />);
+
+    const proposal = await screen.findByRole("region", { name: "Proposed program" });
+    expect(proposal.querySelector(".day-link")).toBeNull();
+  });
+
   it("marks the deload week", async () => {
     routeFetch(programsReply(ACTIVE, null, { week: 7, day: 1 }));
     render(<App />);

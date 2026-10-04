@@ -1,4 +1,4 @@
-import { useEffect, useRef, useState } from "react";
+import { useEffect, useState } from "react";
 import type { ReactElement } from "react";
 
 import { askCoach, coachHistory, useReplyClaim } from "../api";
@@ -63,9 +63,11 @@ function Conversation({
   messages: CoachMessage[];
   waiting: boolean;
 }): ReactElement {
-  const end = useRef<HTMLLIElement>(null);
+  // To the bottom of the page, not of the list: the composer and the space
+  // kept for the tab bar sit below the last message, and would cover it.
   useEffect(() => {
-    end.current?.scrollIntoView({ block: "end" });
+    const page = document.scrollingElement ?? document.documentElement;
+    page.scrollTop = page.scrollHeight;
   }, [messages.length, waiting]);
   return (
     <ol className="chat" aria-label="Conversation">
@@ -83,7 +85,6 @@ function Conversation({
           Thinking…
         </li>
       ) : null}
-      <li ref={end} className="chat-end" aria-hidden="true" />
     </ol>
   );
 }
