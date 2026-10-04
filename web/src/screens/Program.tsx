@@ -5,6 +5,7 @@ import { askCoach, changeProgram, programsSchema, useApi, useReplyClaim } from "
 import type { CoachMessage, Position, Program as ProgramData, ProgramDay } from "../api";
 import { Load, tone } from "../components";
 import { formatDay } from "../format";
+import { href } from "../router";
 
 /**
  * "A", "B", … for blocks; a superset's exercises are "A1", "A2", …
@@ -48,7 +49,18 @@ function Day({
   return (
     <li className="card program-day" aria-current={next ? "step" : undefined}>
       <h3>
-        <span className="muted">Day {number}</span> {day.name}
+        <span className="muted">Day {number}</span>{" "}
+        {/* The next day opens Today, where it is started; the link covers the card. */}
+        {next ? (
+          <a className="day-link" href={href({ name: "today" })}>
+            {day.name}
+            <span className="muted" aria-hidden="true">
+              {" ›"}
+            </span>
+          </a>
+        ) : (
+          day.name
+        )}
         {next ? (
           <span className="pill tint" style={tone("green")}>
             Next
