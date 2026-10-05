@@ -67,6 +67,8 @@ def test_argument_schemas(database: Path) -> None:
     assert schemas["exercise_history"]["required"] == ["exercise_id"]
     assert schemas["list_exercises"].get("properties", {}) == {}
     assert schemas["body_weight"].get("properties", {}) == {}
+    detail = schemas["current_program"]["properties"]["detail"]
+    assert (detail["enum"], detail["default"]) == (["summary", "full"], "summary")
 
 
 def test_recent_workouts_newest_first(database: Path) -> None:
@@ -218,26 +220,84 @@ def test_current_program_without_one(database: Path) -> None:
     assert call(database, "current_program") == {"active": None, "proposed": None, "next": None}
 
 
-def test_current_program(imported: sqlite3.Connection, tmp_path: Path) -> None:
+def _programs(imported: sqlite3.Connection) -> int:
+    """An active one-day program and a two-day proposal; the bench press's id."""
     bench = imported.execute(
         "SELECT id FROM exercises WHERE name = 'barbell bench press'"
     ).fetchone()[0]
     imported.commit()
-    day = {
-        "name": "Push",
-        "blocks": [{"exercises": [{"exercise_id": bench, "sets": 3, "rep_min": 8, "rep_max": 10}]}],
+    slot = {
+        "exercise_id": bench,
+        "sets": 3,
+        "rep_min": 8,
+        "rep_max": 10,
+        "start_load_kg": 60,
+        "notes": "Pause on the chest.",
     }
+    day = {"name": "Push", "blocks": [{"rest_s": 120, "exercises": [slot]}]}
     now = datetime(2026, 10, 1, tzinfo=UTC)
     active = propose_program(
-        imported, ProgramIn.model_validate({"name": "Now", "days": [day]}), now
+        imported,
+        ProgramIn.model_validate({"name": "Now", "notes": "Long notes.", "days": [day]}),
+        now,
     )
     accept_proposal(imported, active.id, now)
     propose_program(imported, ProgramIn.model_validate({"name": "Next", "days": [day, day]}), now)
+    return int(bench)
+
+
+def test_current_program_summary(imported: sqlite3.Connection, tmp_path: Path) -> None:
+    bench = _programs(imported)
 
     answer = call(tmp_path / "trainer.db", "current_program")
 
+    assert answer == {
+        "active": {
+            "name": "Now",
+            "training_weeks": 6,
+            "started_at": "2026-10-01T00:00:00+00:00",
+            "days": [
+                {
+                    "name": "Push",
+                    "blocks": [
+                        {
+                            "rest_s": 120,
+                            "exercises": [
+                                {
+                                    "exercise_id": bench,
+                                    "name": "Barbell Bench Press",
+                                    "measure": "reps",
+                                    "sets": 3,
+                                    "rep_min": 8,
+                                    "rep_max": 10,
+                                }
+                            ],
+                        }
+                    ],
+                }
+            ],
+        },
+        "next": {"week": 1, "day": 1},
+        "proposed": {"name": "Next", "days": ["Push", "Push"]},
+    }
+
+
+def test_current_program_full(imported: sqlite3.Connection, tmp_path: Path) -> None:
+    bench = _programs(imported)
+
+    answer = call(tmp_path / "trainer.db", "current_program", {"detail": "full"})
+
     assert isinstance(answer, dict)
     assert answer["active"]["name"] == "Now"
-    assert answer["active"]["days"][0]["blocks"][0]["exercises"][0]["exercise_id"] == bench
+    assert answer["active"]["notes"] == "Long notes."
+    exercise = answer["active"]["days"][0]["blocks"][0]["exercises"][0]
+    assert exercise["exercise_id"] == bench
+    assert (exercise["start_load_kg"], exercise["notes"]) == (60, "Pause on the chest.")
     assert answer["proposed"]["name"] == "Next"
+    assert len(answer["proposed"]["days"]) == 2
     assert answer["next"] == {"week": 1, "day": 1}
+
+
+def test_current_program_rejects_an_unknown_detail(database: Path) -> None:
+    with pytest.raises(ToolError, match="detail"):
+        call(database, "current_program", {"detail": "everything"})

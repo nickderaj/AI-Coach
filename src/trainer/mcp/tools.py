@@ -5,7 +5,7 @@ from __future__ import annotations
 import sqlite3
 from contextlib import closing
 from dataclasses import asdict, replace
-from typing import TYPE_CHECKING, Annotated, Any
+from typing import TYPE_CHECKING, Annotated, Any, Literal
 
 from pydantic import BaseModel, ConfigDict, Field, ValidationError
 
@@ -26,6 +26,7 @@ if TYPE_CHECKING:
     from pathlib import Path
 
     from trainer.mcp.proposals import ProgramsApi
+    from trainer.storage.programs import ProgramDay
 
 
 # SQLite's INTEGER is signed 64-bit, and row ids start at 1. A larger Python int
@@ -69,7 +70,17 @@ class BodyWeight(_Arguments):
 
 
 class CurrentProgram(_Arguments):
-    """Arguments of ``current_program``: none."""
+    """Arguments of ``current_program``."""
+
+    detail: Annotated[
+        Literal["summary", "full"],
+        Field(
+            description=(
+                "summary: the days and exercises, enough to talk about the program. "
+                "full: also every note and start load; read it before proposing a change."
+            )
+        ),
+    ] = "summary"
 
 
 def _recent_workouts(conn: sqlite3.Connection, arguments: RecentWorkouts) -> object:
@@ -100,8 +111,51 @@ def _body_weight(conn: sqlite3.Connection, _arguments: BodyWeight) -> object:
     return asdict(read_profile(conn))
 
 
-def _current_program(conn: sqlite3.Connection, _arguments: CurrentProgram) -> object:
-    return asdict(programs(conn))
+def _day_summary(day: ProgramDay) -> dict[str, object]:
+    return {
+        "name": day.name,
+        "blocks": [
+            {
+                "rest_s": block.rest_s,
+                "exercises": [
+                    {
+                        "exercise_id": exercise.exercise_id,
+                        "name": exercise.name,
+                        "measure": exercise.measure,
+                        "sets": exercise.sets,
+                        "rep_min": exercise.rep_min,
+                        "rep_max": exercise.rep_max,
+                    }
+                    for exercise in block.exercises
+                ],
+            }
+            for block in day.blocks
+        ],
+    }
+
+
+def _current_program(conn: sqlite3.Connection, arguments: CurrentProgram) -> object:
+    found = programs(conn)
+    if arguments.detail == "full":
+        return asdict(found)
+    # Every request carries the whole conversation, tool results included, so the
+    # everyday answer leaves out the notes and loads only a new proposal needs.
+    active = found.active
+    proposed = found.proposed
+    return {
+        "active": None
+        if active is None
+        else {
+            "name": active.name,
+            "training_weeks": active.training_weeks,
+            "started_at": active.started_at,
+            "days": [_day_summary(day) for day in active.days],
+        },
+        "next": None if found.next is None else asdict(found.next),
+        "proposed": None
+        if proposed is None
+        else {"name": proposed.name, "days": [day.name for day in proposed.days]},
+    }
 
 
 # Each tool's description, argument model and answer, by name.
@@ -147,10 +201,12 @@ _TOOLS: dict[str, tuple[str, type[_Arguments], Callable[[sqlite3.Connection, Any
     "current_program": (
         (
             "The program being trained (active), with every day, block and exercise: "
-            "exercise_id, sets, rep_min-rep_max (seconds if timed), start_load_kg; a block "
-            "of more than one exercise is a superset. Also the next week and day to train "
-            "(next; week 7 is the deload week), and any proposal still waiting for the owner "
-            "(proposed). Read it before proposing a change to a program."
+            "exercise_id, sets, rep_min-rep_max (seconds if timed), rest_s; a block of more "
+            "than one exercise is a superset. Also the next week and day to train (next; "
+            "week 7 is the deload week), and any proposal still waiting for the owner "
+            "(proposed: its name and days). detail=full adds the program's and each "
+            "exercise's notes, start_load_kg and the whole proposal: read it with "
+            "detail=full before proposing a change to a program."
         ),
         CurrentProgram,
         _current_program,
