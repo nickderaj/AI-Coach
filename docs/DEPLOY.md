@@ -84,7 +84,9 @@ and runtime package installs are off. To upgrade Hermes, change `hermes_tag`
 and `hermes_commit` in `build.sh` in a reviewed PR.
 
 **Model.** `TRAINER_MODEL_URL` (an OpenAI-compatible base URL, HTTPS) and
-`TRAINER_MODEL` (the model id) in `deploy/local.env`. The API key is stored
+`TRAINER_MODEL` (the model id) in `deploy/local.env`. Hermes also uses it to
+compact the conversation, which `hermes/config.yaml` does at 32K tokens: every
+message resends the whole conversation, so its length is what a message costs. The API key is stored
 by `sudo ./deploy/hermes-secrets.sh`, which reads it from the terminal (or
 stdin) and never takes it as an argument. It writes two root-only files that
 systemd hands to the gateway as environment variables:
@@ -104,7 +106,9 @@ removes the rest).
 trainer's virtualenv and talks MCP to it over stdin and stdout. It reads the
 training log read-only, through six tools: `recent_workouts`, `get_workout`,
 `list_exercises`, `exercise_history`, `body_weight` and `current_program` (the
-program being trained, its next day, and any proposal). It runs in the coach's
+program being trained, its next day, and any proposal; a summary by default,
+with every note and start load only on `detail=full`, since each tool result is
+resent with every later message). It runs in the coach's
 sandbox, where the data directory is read-only. SQLite can read a WAL database
 from there only while its `-wal` and `-shm` files exist, so the API holds one
 connection open for as long as it runs, and `trainer-coach` starts after it.

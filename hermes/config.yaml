@@ -36,6 +36,11 @@ agent:
     - delegation
     - cronjob
     - connections
+# Every message resends the whole conversation, so its length is the cost of a
+# message. Compact at 32K tokens: the default compacts at the lower of half the
+# context window and 256K, which on a 1M-token model let one message carry 350K.
+compression:
+  threshold_tokens: 32000
 tools:
   # Every allowed tool is shown to the model directly; no search-and-call bridge.
   tool_search:

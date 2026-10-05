@@ -30,6 +30,14 @@ def test_learning_is_on_and_nothing_else_is_allowed() -> None:
     assert "  allow_lazy_installs: false" in lines  # no pip installs at runtime
 
 
+def test_the_conversation_is_compacted_early() -> None:
+    lines = CONFIG.splitlines()
+
+    # Each message resends the conversation: its length is what a message costs.
+    assert "compression:" in lines
+    assert "  threshold_tokens: 32000" in lines
+
+
 def test_the_tool_server_is_the_trainers_own_module() -> None:
     lines = CONFIG.splitlines()
 
