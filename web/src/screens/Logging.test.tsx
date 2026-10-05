@@ -12,6 +12,18 @@ import { OutboxContext } from "../outbox/Sync";
 import { outboxStore } from "../outbox/store";
 import { renderLogging, routeFetch, writes } from "../test/logging";
 
+const restAudio = vi.hoisted(() => ({
+  shift: vi.fn(),
+  start: vi.fn(),
+  stop: vi.fn(),
+}));
+
+vi.mock("../restAudio", () => ({
+  shiftRestAudio: restAudio.shift,
+  startRestAudio: restAudio.start,
+  stopRestAudio: restAudio.stop,
+}));
+
 // Tests run in Pacific/Auckland (UTC+13): 07:30Z is 20:30 local.
 const NOW = new Date("2026-09-30T08:00:00Z");
 const STARTED = new Date("2026-09-30T07:30:00Z");
@@ -69,6 +81,9 @@ async function go(hash: string): Promise<void> {
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(NOW);
+  restAudio.shift.mockClear();
+  restAudio.start.mockClear();
+  restAudio.stop.mockClear();
 });
 
 afterEach(() => {
@@ -502,6 +517,7 @@ describe("Log", () => {
       "true",
     );
     expect(drafts.get()?.restUntil).toBe(NOW.getTime() + 90_000);
+    expect(restAudio.start).toHaveBeenCalledWith(90_000);
     const timer = screen.getByRole("timer", { name: "Rest" });
     expect(timer).toHaveTextContent("Rest 1:30");
 
@@ -511,10 +527,13 @@ describe("Log", () => {
     expect(timer).toHaveTextContent("Rest 1:10");
     fireEvent.click(within(timer).getByRole("button", { name: "+15 s" }));
     expect(timer).toHaveTextContent("Rest 1:25");
+    expect(restAudio.shift).toHaveBeenLastCalledWith(15_000);
     fireEvent.click(within(timer).getByRole("button", { name: "−15 s" }));
     expect(timer).toHaveTextContent("Rest 1:10");
+    expect(restAudio.shift).toHaveBeenLastCalledWith(-15_000);
     fireEvent.click(within(timer).getByRole("button", { name: "Skip" }));
     expect(screen.queryByRole("timer")).not.toBeInTheDocument();
+    expect(restAudio.stop).toHaveBeenCalledOnce();
   });
 
   it("will not tick off an incomplete set", () => {

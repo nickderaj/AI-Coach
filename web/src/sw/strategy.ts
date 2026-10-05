@@ -13,7 +13,10 @@
  */
 
 /** Bump to discard every cached response when the worker is next updated. */
-export const CACHE_NAME = "coach-v3";
+export const CACHE_NAME = "coach-v4";
+
+/** Static media needed for a background rest timer, including on the first offline workout. */
+const REST_TRACK_PATH = "/rest-countdown.m4a";
 
 /** How long to wait for the network before answering from the cache. */
 export const NETWORK_TIMEOUT_MS = 3_000;
@@ -41,7 +44,9 @@ export function strategyFor(
   if (method !== "GET" || url.origin !== origin || cache === "no-store") {
     return "bypass";
   }
-  return url.pathname.startsWith("/assets/") ? "cache-first" : "network-first";
+  return url.pathname.startsWith("/assets/") || url.pathname === REST_TRACK_PATH
+    ? "cache-first"
+    : "network-first";
 }
 
 export async function cacheFirst(request: Request, deps: Deps): Promise<Response> {
@@ -120,7 +125,7 @@ export async function precache(deps: Deps, origin: string): Promise<void> {
   if (!shell.ok) {
     throw new Error(`the app shell answered ${String(shell.status)}`);
   }
-  const assets = assetPaths(await shell.clone().text());
+  const assets = [...assetPaths(await shell.clone().text()), REST_TRACK_PATH];
   for (const path of assets) {
     const response = await deps.fetch(new Request(`${origin}${path}`));
     if (!response.ok) {

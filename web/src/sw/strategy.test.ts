@@ -61,6 +61,7 @@ afterEach(() => {
 describe("strategyFor", () => {
   it.each([
     ["GET", "/assets/app-abc.js", "cache-first"],
+    ["GET", "/rest-countdown.m4a", "cache-first"],
     ["GET", "/", "network-first"],
     ["GET", "/api/workouts?limit=500", "network-first"],
     ["GET", "/manifest.webmanifest", "network-first"],
@@ -239,6 +240,7 @@ describe("precache", () => {
       [`${ORIGIN}/`]: new Response(SHELL),
       [`${ORIGIN}/assets/app-new.js`]: new Response("new js"),
       [`${ORIGIN}/assets/app-new.css`]: new Response("new css"),
+      [`${ORIGIN}/rest-countdown.m4a`]: new Response("countdown"),
     });
 
     await precache({ cache, fetch }, ORIGIN);
@@ -247,6 +249,7 @@ describe("precache", () => {
       [`${ORIGIN}/`]: SHELL,
       [`${ORIGIN}/assets/app-new.js`]: "new js",
       [`${ORIGIN}/assets/app-new.css`]: "new css",
+      [`${ORIGIN}/rest-countdown.m4a`]: "countdown",
       [`${ORIGIN}/api/workouts`]: "data",
     });
     expect(at0(fetch).cache).toBe("reload");
