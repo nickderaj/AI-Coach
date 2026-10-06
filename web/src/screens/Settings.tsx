@@ -9,6 +9,7 @@ import { useLogging } from "../log/context";
 import { parseAmount } from "../log/draft";
 import { sendTest, pushState, turnOff, turnOn } from "../push";
 import type { PushChange, PushState } from "../push";
+import { backgroundRestEnabled, setBackgroundRestEnabled } from "../restAudio";
 import { href } from "../router";
 
 const PROFILE = "/api/profile";
@@ -221,6 +222,36 @@ function Notifications(): ReactElement {
   );
 }
 
+function BackgroundRestTimer(): ReactElement {
+  const [enabled, setEnabled] = useState(() => backgroundRestEnabled(localStorage));
+  return (
+    <section className="card" aria-label="Background rest timer">
+      <h2>Background rest timer</h2>
+      <p className="muted">
+        Shows rest progress in iPhone system media controls and keeps the spoken countdown running
+        after you leave Coach.
+      </p>
+      <label className="field inline">
+        <input
+          type="checkbox"
+          role="switch"
+          checked={enabled}
+          onChange={(event) => {
+            const on = event.target.checked;
+            setBackgroundRestEnabled(localStorage, on);
+            setEnabled(on);
+          }}
+        />
+        Show rests outside Coach
+      </label>
+      <p className="muted">
+        iPhone treats this like media playback, so it may pause music from another app while you
+        rest.
+      </p>
+    </section>
+  );
+}
+
 type Queued = { checked: false } | { checked: true; profile: Profile | null };
 
 /**
@@ -268,6 +299,7 @@ export function Settings(): ReactElement {
           )
         }
       </Load>
+      <BackgroundRestTimer />
       <Notifications />
     </>
   );

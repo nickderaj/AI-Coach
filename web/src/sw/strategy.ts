@@ -52,13 +52,68 @@ export function strategyFor(
 export async function cacheFirst(request: Request, deps: Deps): Promise<Response> {
   const cached = await deps.cache.match(request);
   if (cached !== undefined) {
-    return cached;
+    return rangeResponse(request, cached);
   }
   const response = await deps.fetch(request);
-  if (response.ok) {
+  if (response.ok && response.status !== 206) {
     await deps.cache.put(request, response.clone());
   }
   return response;
+}
+
+interface ByteRange {
+  end: number;
+  start: number;
+}
+
+function boundedRange(start: number, end: number, size: number): ByteRange | null {
+  return start < size && start <= end ? { end, start } : null;
+}
+
+function suffixRange(last: string, size: number): ByteRange | null {
+  return last === "" ? null : { start: Math.max(0, size - Number(last)), end: size - 1 };
+}
+
+function byteRange(value: string, size: number): ByteRange | null {
+  const match = /^bytes=(\d*)-(\d*)$/.exec(value);
+  if (match === null) {
+    return null;
+  }
+  const first = match[1] ?? "";
+  const last = match[2] ?? "";
+  if (first === "") {
+    return suffixRange(last, size);
+  }
+  const start = Number(first);
+  const end = last === "" ? size - 1 : Math.min(Number(last), size - 1);
+  return boundedRange(start, end, size);
+}
+
+async function rangeResponse(request: Request, response: Response): Promise<Response> {
+  const requested = request.headers.get("Range");
+  if (requested === null) {
+    return response;
+  }
+  const body = await response.blob();
+  const range = byteRange(requested, body.size);
+  if (range === null) {
+    return new Response(null, {
+      status: 416,
+      headers: { "Content-Range": `bytes */${String(body.size)}` },
+    });
+  }
+  const headers = new Headers(response.headers);
+  headers.set("Accept-Ranges", "bytes");
+  headers.set("Content-Length", String(range.end - range.start + 1));
+  headers.set(
+    "Content-Range",
+    `bytes ${String(range.start)}-${String(range.end)}/${String(body.size)}`,
+  );
+  return new Response(body.slice(range.start, range.end + 1, body.type), {
+    status: 206,
+    statusText: "Partial Content",
+    headers,
+  });
 }
 
 export interface Answer {

@@ -23,7 +23,7 @@ import {
 import type { Draft, DraftBlock, DraftSet, Plan, Typed } from "../log/draft";
 import { markFinished } from "../log/finished";
 import { useNow } from "../log/useNow";
-import { shiftRestAudio, startRestAudio, stopRestAudio } from "../restAudio";
+import { MAX_REST_MS, shiftRestAudio, startRestAudio, stopRestAudio } from "../restAudio";
 import { href, navigate } from "../router";
 
 /** Rest started when a set is ticked off. */
@@ -91,7 +91,7 @@ function actionsFor({ outbox, drafts }: Logging, draft: Draft): Actions {
         // A program block rests as long as it says, and a superset only after its round.
         const index = block.sets.findIndex((row) => row.id === set.id);
         const rest = restAfter(draft, block, index, REST_MS);
-        if (rest !== null) {
+        if (rest !== null && rest > 0) {
           startRestAudio(rest);
         }
         change((d) => ({
@@ -337,7 +337,10 @@ function RestTimer({ logging, draft }: { logging: Logging; draft: Draft }): Reac
         ? null
         : {
             ...current,
-            restUntil: ms === null || current.restUntil === null ? null : current.restUntil + ms,
+            restUntil:
+              ms === null || current.restUntil === null
+                ? null
+                : Math.min(current.restUntil + ms, Date.now() + MAX_REST_MS),
           },
     );
   };

@@ -10,9 +10,15 @@
 
 const TRACK_SECONDS = 600;
 const TRACK_URL = "/rest-countdown.m4a";
+const BACKGROUND_REST_KEY = "coach.background-rest";
+export const MAX_REST_MS = TRACK_SECONDS * 1000;
 
-type RestMediaSession = Pick<MediaSession, "metadata" | "playbackState">;
-type RestAudioElement = Pick<HTMLAudioElement, "currentTime" | "pause" | "play" | "preload">;
+type RestMediaSession = Pick<MediaSession, "metadata" | "playbackState" | "setActionHandler">;
+type RestAudioElement = Pick<
+  HTMLAudioElement,
+  "addEventListener" | "currentTime" | "pause" | "play" | "preload"
+>;
+type RestStorage = Pick<Storage, "getItem" | "setItem">;
 
 interface RestAudio {
   start: (seconds: number) => void;
@@ -33,19 +39,39 @@ function restAudioController(audio: RestAudioElement, session: RestMediaSession 
       session.playbackState = "none";
     }
   };
+  audio.addEventListener("ended", stop);
   return {
     start: (seconds): void => {
       audio.currentTime = position(TRACK_SECONDS - seconds);
       if (session !== null) {
         session.playbackState = "playing";
       }
-      void Promise.resolve(audio.play()).catch(() => undefined);
+      void Promise.resolve(audio.play()).catch(stop);
     },
     shift: (seconds): void => {
       audio.currentTime = position(audio.currentTime - seconds);
     },
     stop,
   };
+}
+
+const SYSTEM_ACTIONS: MediaSessionAction[] = [
+  "pause",
+  "play",
+  "seekbackward",
+  "seekforward",
+  "seekto",
+  "stop",
+];
+
+function disableSystemControls(session: RestMediaSession): void {
+  for (const action of SYSTEM_ACTIONS) {
+    try {
+      session.setActionHandler(action, null);
+    } catch {
+      // Safari versions expose different subsets; disable every action they accept.
+    }
+  }
 }
 
 let controller: RestAudio | null = null;
@@ -57,6 +83,9 @@ function browserController(): RestAudio {
   const audio = new Audio(TRACK_URL);
   audio.preload = "auto";
   const session = "mediaSession" in navigator ? navigator.mediaSession : null;
+  if (session !== null) {
+    disableSystemControls(session);
+  }
   if (session !== null && typeof MediaMetadata === "function") {
     session.metadata = new MediaMetadata({
       title: "Rest timer",
@@ -68,14 +97,27 @@ function browserController(): RestAudio {
   return controller;
 }
 
+export function backgroundRestEnabled(storage: RestStorage): boolean {
+  return storage.getItem(BACKGROUND_REST_KEY) === "on";
+}
+
+export function setBackgroundRestEnabled(storage: RestStorage, enabled: boolean): void {
+  storage.setItem(BACKGROUND_REST_KEY, enabled ? "on" : "off");
+  if (!enabled) {
+    stopRestAudio();
+  }
+}
+
 /** Start the background-safe countdown from a set-completion tap. */
 export function startRestAudio(milliseconds: number): void {
-  browserController().start(milliseconds / 1000);
+  if (milliseconds > 0 && backgroundRestEnabled(localStorage)) {
+    browserController().start(milliseconds / 1000);
+  }
 }
 
 /** Apply the timer's adjustment to the audio timeline too. */
 export function shiftRestAudio(milliseconds: number): void {
-  browserController().shift(milliseconds / 1000);
+  controller?.shift(milliseconds / 1000);
 }
 
 /** Remove the rest timer from the system media surface. */

@@ -4,6 +4,9 @@ saveExact: true
 # Refuse versions published less than a day ago (supply-chain buffer; Dependabot
 # adds a further seven-day cooldown).
 minimumReleaseAge: 1440
+overrides:
+  # Transitive through Vite/PostCSS; 1.2.1 has GHSA-68fv-2mgg-jv7q.
+  source-map-js: 1.2.2
 # Do not self-manage the pnpm version: that writes an extra "environment" document
 # at the top of pnpm-lock.yaml, which GitHub's dependency graph and Dependabot read as
 # an empty graph (dependabot/dependabot-core#15904). The version is pinned by
