@@ -32,24 +32,43 @@ function position(seconds: number): number {
 
 /** Build the controller separately from browser globals so its timing is testable. */
 function restAudioController(audio: RestAudioElement, session: RestMediaSession | null): RestAudio {
+  let endsAt: number | null = null;
   const stop = (): void => {
+    endsAt = null;
     audio.pause();
     audio.currentTime = 0;
     if (session !== null) {
       session.playbackState = "none";
     }
   };
+  const sync = (): void => {
+    if (endsAt === null) {
+      return;
+    }
+    const seconds = (endsAt - Date.now()) / 1000;
+    if (seconds <= 0) {
+      stop();
+      return;
+    }
+    audio.currentTime = position(TRACK_SECONDS - seconds);
+  };
   audio.addEventListener("ended", stop);
+  audio.addEventListener("play", sync);
   return {
     start: (seconds): void => {
-      audio.currentTime = position(TRACK_SECONDS - seconds);
+      endsAt = Date.now() + seconds * 1000;
+      sync();
       if (session !== null) {
         session.playbackState = "playing";
       }
       void Promise.resolve(audio.play()).catch(stop);
     },
     shift: (seconds): void => {
-      audio.currentTime = position(audio.currentTime - seconds);
+      if (endsAt !== null) {
+        const remaining = position((endsAt - Date.now()) / 1000 + seconds);
+        endsAt = Date.now() + remaining * 1000;
+        sync();
+      }
     },
     stop,
   };
@@ -65,9 +84,10 @@ const SYSTEM_ACTIONS: MediaSessionAction[] = [
 ];
 
 function disableSystemControls(session: RestMediaSession): void {
+  const ignore = (): void => undefined;
   for (const action of SYSTEM_ACTIONS) {
     try {
-      session.setActionHandler(action, null);
+      session.setActionHandler(action, ignore);
     } catch {
       // Safari versions expose different subsets; disable every action they accept.
     }

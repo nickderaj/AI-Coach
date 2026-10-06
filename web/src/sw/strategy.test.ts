@@ -142,10 +142,15 @@ describe("cacheFirst", () => {
       new Request(`${ORIGIN}/rest-countdown.m4a`, { headers: { Range: "bytes=20-" } }),
       { cache, fetch: fetchFrom({}) },
     );
+    const empty = await cacheFirst(
+      new Request(`${ORIGIN}/rest-countdown.m4a`, { headers: { Range: "bytes=-0" } }),
+      { cache, fetch: fetchFrom({}) },
+    );
 
     expect(await suffix.text()).toBe("down");
     expect(missing.status).toBe(416);
     expect(missing.headers.get("Content-Range")).toBe("bytes */9");
+    expect(empty.status).toBe(416);
   });
 
   it("passes through and does not cache a partial network response", async () => {

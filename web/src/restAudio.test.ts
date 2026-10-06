@@ -26,12 +26,22 @@ function installAudio(audio: TestAudio): ReturnType<typeof vi.fn> {
   return AudioConstructor;
 }
 
+function listener(audio: TestAudio, type: string): EventListener {
+  const call = audio.addEventListener.mock.calls.find((candidate) => candidate[0] === type);
+  const found = call?.[1] as EventListener | undefined;
+  if (found === undefined) {
+    throw new TypeError(`${type} listener was not installed`);
+  }
+  return found;
+}
+
 describe("rest audio", () => {
   beforeEach(() => {
     localStorage.clear();
   });
 
   it("publishes metadata and keeps one system media session aligned with the timer", async () => {
+    const now = vi.spyOn(Date, "now").mockReturnValue(1000);
     const audio = fakeAudio();
     const AudioConstructor = installAudio(audio);
     const metadata = vi.fn();
@@ -51,8 +61,11 @@ describe("rest audio", () => {
     startRestAudio(90_000);
     expect(audio.currentTime).toBe(510);
     expect(session.playbackState).toBe("playing");
+    now.mockReturnValue(31_000);
+    listener(audio, "play")(new Event("play"));
+    expect(audio.currentTime).toBe(540);
     shiftRestAudio(15_000);
-    expect(audio.currentTime).toBe(495);
+    expect(audio.currentTime).toBe(525);
     startRestAudio(60_000);
     stopRestAudio();
 
@@ -69,7 +82,7 @@ describe("rest audio", () => {
     expect(audio.currentTime).toBe(0);
     expect(session.playbackState).toBe("none");
     expect(setActionHandler).toHaveBeenCalledTimes(6);
-    expect(setActionHandler.mock.calls.every((call) => call[1] === null)).toBe(true);
+    expect(setActionHandler.mock.calls.every((call) => typeof call[1] === "function")).toBe(true);
   });
 
   it("clamps seeks and ignores a browser refusal to play", async () => {
@@ -82,14 +95,14 @@ describe("rest audio", () => {
       await import("./restAudio");
 
     setBackgroundRestEnabled(localStorage, true);
-    startRestAudio(601_000);
-    expect(audio.currentTime).toBe(0);
-    shiftRestAudio(-700_000);
-    expect(audio.currentTime).toBe(600);
+    startRestAudio(590_000);
+    expect(audio.currentTime).toBe(10);
     shiftRestAudio(700_000);
     expect(audio.currentTime).toBe(0);
+    shiftRestAudio(-700_000);
+    expect(audio.currentTime).toBe(0);
     await Promise.resolve();
-    expect(audio.pause).toHaveBeenCalledOnce();
+    expect(audio.pause).toHaveBeenCalledTimes(2);
   });
 
   it("works when Media Session exists but MediaMetadata does not", async () => {
@@ -139,11 +152,7 @@ describe("rest audio", () => {
     setBackgroundRestEnabled(localStorage, true);
     startRestAudio(60_000);
 
-    const ended = audio.addEventListener.mock.calls[0]?.[1] as EventListener | undefined;
-    if (ended === undefined) {
-      throw new TypeError("ended listener was not installed");
-    }
-    ended(new Event("ended"));
+    listener(audio, "ended")(new Event("ended"));
 
     expect(audio.pause).toHaveBeenCalledOnce();
     expect(audio.currentTime).toBe(0);

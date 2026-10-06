@@ -71,7 +71,8 @@ function boundedRange(start: number, end: number, size: number): ByteRange | nul
 }
 
 function suffixRange(last: string, size: number): ByteRange | null {
-  return last === "" ? null : { start: Math.max(0, size - Number(last)), end: size - 1 };
+  const length = Number(last);
+  return last === "" || length === 0 ? null : { start: Math.max(0, size - length), end: size - 1 };
 }
 
 function byteRange(value: string, size: number): ByteRange | null {
