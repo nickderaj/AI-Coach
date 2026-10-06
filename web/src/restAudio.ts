@@ -6,21 +6,10 @@
  * instead of pausing that music, and it never takes over the system's Now
  * Playing controls. iOS plays ambient audio only while Coach is on screen and
  * the ring switch is on; the on-screen clock is unaffected either way.
- *
- * Someone who opts into the background rest timer (`restMedia`) gets that
- * instead: its track carries the same voice and keeps going outside Coach, at
- * the cost of pausing other music.
  */
 
-import {
-  backgroundRestEnabled,
-  MAX_REST_MS,
-  shiftRestMedia,
-  startRestMedia,
-  stopRestMedia,
-} from "./restMedia";
-
-export { MAX_REST_MS };
+/** The longest rest the timer allows. */
+export const MAX_REST_MS = 600_000;
 
 const CLIP_URL = "/rest-voice.m4a";
 const CLIP_SECONDS = 5;
@@ -156,18 +145,13 @@ export function restVoiceEnabled(storage: RestStorage): boolean {
 export function setRestVoiceEnabled(storage: RestStorage, enabled: boolean): void {
   storage.setItem(VOICE_KEY, enabled ? "on" : "off");
   if (!enabled) {
-    controller?.stop();
+    stopRestAudio();
   }
 }
 
 /** Start the countdown from a set-completion tap, which lets the audio start. */
 export function startRestAudio(milliseconds: number): void {
-  if (milliseconds <= 0) {
-    return;
-  }
-  if (backgroundRestEnabled(localStorage)) {
-    startRestMedia(milliseconds);
-  } else if (restVoiceEnabled(localStorage)) {
+  if (milliseconds > 0 && restVoiceEnabled(localStorage)) {
     browserController()?.start(milliseconds / 1000);
   }
 }
@@ -175,11 +159,9 @@ export function startRestAudio(milliseconds: number): void {
 /** Apply the timer's adjustment to the countdown too. */
 export function shiftRestAudio(milliseconds: number): void {
   controller?.shift(milliseconds / 1000);
-  shiftRestMedia(milliseconds);
 }
 
 /** Cancel the countdown. */
 export function stopRestAudio(): void {
   controller?.stop();
-  stopRestMedia();
 }
