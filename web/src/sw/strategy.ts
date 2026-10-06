@@ -13,7 +13,10 @@
  */
 
 /** Bump to discard every cached response when the worker is next updated. */
-export const CACHE_NAME = "coach-v3";
+export const CACHE_NAME = "coach-v4";
+
+/** Static media needed for a background rest timer, including on the first offline workout. */
+const REST_TRACK_PATH = "/rest-countdown.m4a";
 
 /** How long to wait for the network before answering from the cache. */
 export const NETWORK_TIMEOUT_MS = 3_000;
@@ -41,19 +44,77 @@ export function strategyFor(
   if (method !== "GET" || url.origin !== origin || cache === "no-store") {
     return "bypass";
   }
-  return url.pathname.startsWith("/assets/") ? "cache-first" : "network-first";
+  return url.pathname.startsWith("/assets/") || url.pathname === REST_TRACK_PATH
+    ? "cache-first"
+    : "network-first";
 }
 
 export async function cacheFirst(request: Request, deps: Deps): Promise<Response> {
   const cached = await deps.cache.match(request);
   if (cached !== undefined) {
-    return cached;
+    return rangeResponse(request, cached);
   }
   const response = await deps.fetch(request);
-  if (response.ok) {
+  if (response.ok && response.status !== 206) {
     await deps.cache.put(request, response.clone());
   }
   return response;
+}
+
+interface ByteRange {
+  end: number;
+  start: number;
+}
+
+function boundedRange(start: number, end: number, size: number): ByteRange | null {
+  return start < size && start <= end ? { end, start } : null;
+}
+
+function suffixRange(last: string, size: number): ByteRange | null {
+  const length = Number(last);
+  return last === "" || length === 0 ? null : { start: Math.max(0, size - length), end: size - 1 };
+}
+
+function byteRange(value: string, size: number): ByteRange | null {
+  const match = /^bytes=(\d*)-(\d*)$/.exec(value);
+  if (match === null) {
+    return null;
+  }
+  const first = match[1] ?? "";
+  const last = match[2] ?? "";
+  if (first === "") {
+    return suffixRange(last, size);
+  }
+  const start = Number(first);
+  const end = last === "" ? size - 1 : Math.min(Number(last), size - 1);
+  return boundedRange(start, end, size);
+}
+
+async function rangeResponse(request: Request, response: Response): Promise<Response> {
+  const requested = request.headers.get("Range");
+  if (requested === null) {
+    return response;
+  }
+  const body = await response.blob();
+  const range = byteRange(requested, body.size);
+  if (range === null) {
+    return new Response(null, {
+      status: 416,
+      headers: { "Content-Range": `bytes */${String(body.size)}` },
+    });
+  }
+  const headers = new Headers(response.headers);
+  headers.set("Accept-Ranges", "bytes");
+  headers.set("Content-Length", String(range.end - range.start + 1));
+  headers.set(
+    "Content-Range",
+    `bytes ${String(range.start)}-${String(range.end)}/${String(body.size)}`,
+  );
+  return new Response(body.slice(range.start, range.end + 1, body.type), {
+    status: 206,
+    statusText: "Partial Content",
+    headers,
+  });
 }
 
 export interface Answer {
@@ -120,7 +181,7 @@ export async function precache(deps: Deps, origin: string): Promise<void> {
   if (!shell.ok) {
     throw new Error(`the app shell answered ${String(shell.status)}`);
   }
-  const assets = assetPaths(await shell.clone().text());
+  const assets = [...assetPaths(await shell.clone().text()), REST_TRACK_PATH];
   for (const path of assets) {
     const response = await deps.fetch(new Request(`${origin}${path}`));
     if (!response.ok) {

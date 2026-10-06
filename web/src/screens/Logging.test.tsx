@@ -11,6 +11,20 @@ import { createOutbox } from "../outbox/outbox";
 import { OutboxContext } from "../outbox/Sync";
 import { outboxStore } from "../outbox/store";
 import { renderLogging, routeFetch, writes } from "../test/logging";
+import type * as RestAudioModule from "../restAudio";
+
+const restAudio = vi.hoisted(() => ({
+  shift: vi.fn(),
+  start: vi.fn(),
+  stop: vi.fn(),
+}));
+
+vi.mock("../restAudio", async (importOriginal) => ({
+  ...(await importOriginal<typeof RestAudioModule>()),
+  shiftRestAudio: restAudio.shift,
+  startRestAudio: restAudio.start,
+  stopRestAudio: restAudio.stop,
+}));
 
 // Tests run in Pacific/Auckland (UTC+13): 07:30Z is 20:30 local.
 const NOW = new Date("2026-09-30T08:00:00Z");
@@ -69,6 +83,9 @@ async function go(hash: string): Promise<void> {
 beforeEach(() => {
   vi.useFakeTimers({ toFake: ["Date"] });
   vi.setSystemTime(NOW);
+  restAudio.shift.mockClear();
+  restAudio.start.mockClear();
+  restAudio.stop.mockClear();
 });
 
 afterEach(() => {
@@ -502,6 +519,7 @@ describe("Log", () => {
       "true",
     );
     expect(drafts.get()?.restUntil).toBe(NOW.getTime() + 90_000);
+    expect(restAudio.start).toHaveBeenCalledWith(90_000);
     const timer = screen.getByRole("timer", { name: "Rest" });
     expect(timer).toHaveTextContent("Rest 1:30");
 
@@ -511,10 +529,13 @@ describe("Log", () => {
     expect(timer).toHaveTextContent("Rest 1:10");
     fireEvent.click(within(timer).getByRole("button", { name: "+15 s" }));
     expect(timer).toHaveTextContent("Rest 1:25");
+    expect(restAudio.shift).toHaveBeenLastCalledWith(15_000);
     fireEvent.click(within(timer).getByRole("button", { name: "−15 s" }));
     expect(timer).toHaveTextContent("Rest 1:10");
+    expect(restAudio.shift).toHaveBeenLastCalledWith(-15_000);
     fireEvent.click(within(timer).getByRole("button", { name: "Skip" }));
     expect(screen.queryByRole("timer")).not.toBeInTheDocument();
+    expect(restAudio.stop).toHaveBeenCalledOnce();
   });
 
   it("will not tick off an incomplete set", () => {
@@ -524,6 +545,17 @@ describe("Log", () => {
     expect(screen.getByRole("button", { name: "Set 1 done" })).toBeDisabled();
     fireEvent.blur(within(table()).getByLabelText("Set 1 reps"));
     expect(outbox.send).not.toHaveBeenCalled();
+  });
+
+  it("caps an adjusted rest at the audio track's ten-minute limit", () => {
+    const draft = { ...benchDraft(), restUntil: NOW.getTime() + 595_000 };
+    const { drafts } = renderLogging(draft);
+    const timer = screen.getByRole("timer", { name: "Rest" });
+
+    fireEvent.click(within(timer).getByRole("button", { name: "+15 s" }));
+
+    expect(drafts.get()?.restUntil).toBe(NOW.getTime() + 600_000);
+    expect(timer).toHaveTextContent("Rest 10:00");
   });
 
   it("queues a correction to a logged set as it is typed", () => {
@@ -801,6 +833,26 @@ describe("QuickLog", () => {
 });
 
 describe("Settings", () => {
+  it("only enables the background rest timer after an explicit choice", async () => {
+    routeFetch({ "GET /api/profile": { body: { bodyweight_kg: 65 } } });
+    await go("#/settings");
+    renderLogging();
+
+    const section = screen.getByRole("region", { name: "Background rest timer" });
+    const toggle = within(section).getByRole("switch", { name: "Show rests outside Coach" });
+    expect(toggle).not.toBeChecked();
+    expect(section).toHaveTextContent("may pause music from another app");
+
+    fireEvent.click(toggle);
+    expect(toggle).toBeChecked();
+    cleanup();
+    renderLogging();
+
+    expect(
+      within(screen.getByRole("region", { name: "Background rest timer" })).getByRole("switch"),
+    ).toBeChecked();
+  });
+
   it("saves the body weight through the outbox", async () => {
     routeFetch({ "GET /api/profile": { body: { bodyweight_kg: 65 } } });
     await go("#/settings");

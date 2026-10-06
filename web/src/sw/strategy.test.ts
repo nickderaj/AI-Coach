@@ -61,6 +61,7 @@ afterEach(() => {
 describe("strategyFor", () => {
   it.each([
     ["GET", "/assets/app-abc.js", "cache-first"],
+    ["GET", "/rest-countdown.m4a", "cache-first"],
     ["GET", "/", "network-first"],
     ["GET", "/api/workouts?limit=500", "network-first"],
     ["GET", "/manifest.webmanifest", "network-first"],
@@ -110,6 +111,61 @@ describe("cacheFirst", () => {
     const response = await cacheFirst(get("/assets/gone.js"), { cache, fetch: fetchFrom({}) });
 
     expect(response.status).toBe(404);
+    expect(cache.entries.size).toBe(0);
+  });
+
+  it("serves Safari media ranges from a complete cached response", async () => {
+    const cache = fakeCache({ [`${ORIGIN}/rest-countdown.m4a`]: "countdown" });
+    const fetch = fetchFrom({});
+    const request = new Request(`${ORIGIN}/rest-countdown.m4a`, {
+      headers: { Range: "bytes=1-4" },
+    });
+
+    const response = await cacheFirst(request, { cache, fetch });
+
+    expect(response.status).toBe(206);
+    expect(response.headers.get("Accept-Ranges")).toBe("bytes");
+    expect(response.headers.get("Content-Length")).toBe("4");
+    expect(response.headers.get("Content-Range")).toBe("bytes 1-4/9");
+    expect(await response.text()).toBe("ount");
+    expect(fetch).not.toHaveBeenCalled();
+  });
+
+  it("supports suffix ranges and rejects ranges outside the cached response", async () => {
+    const cache = fakeCache({ [`${ORIGIN}/rest-countdown.m4a`]: "countdown" });
+
+    const suffix = await cacheFirst(
+      new Request(`${ORIGIN}/rest-countdown.m4a`, { headers: { Range: "bytes=-4" } }),
+      { cache, fetch: fetchFrom({}) },
+    );
+    const missing = await cacheFirst(
+      new Request(`${ORIGIN}/rest-countdown.m4a`, { headers: { Range: "bytes=20-" } }),
+      { cache, fetch: fetchFrom({}) },
+    );
+    const empty = await cacheFirst(
+      new Request(`${ORIGIN}/rest-countdown.m4a`, { headers: { Range: "bytes=-0" } }),
+      { cache, fetch: fetchFrom({}) },
+    );
+
+    expect(await suffix.text()).toBe("down");
+    expect(missing.status).toBe(416);
+    expect(missing.headers.get("Content-Range")).toBe("bytes */9");
+    expect(empty.status).toBe(416);
+  });
+
+  it("passes through and does not cache a partial network response", async () => {
+    const cache = fakeCache();
+    const request = new Request(`${ORIGIN}/rest-countdown.m4a`, {
+      headers: { Range: "bytes=0-1" },
+    });
+    const fetch = fetchFrom({
+      [`${ORIGIN}/rest-countdown.m4a`]: new Response("co", { status: 206 }),
+    });
+
+    const response = await cacheFirst(request, { cache, fetch });
+
+    expect(response.status).toBe(206);
+    expect(await response.text()).toBe("co");
     expect(cache.entries.size).toBe(0);
   });
 });
@@ -239,6 +295,7 @@ describe("precache", () => {
       [`${ORIGIN}/`]: new Response(SHELL),
       [`${ORIGIN}/assets/app-new.js`]: new Response("new js"),
       [`${ORIGIN}/assets/app-new.css`]: new Response("new css"),
+      [`${ORIGIN}/rest-countdown.m4a`]: new Response("countdown"),
     });
 
     await precache({ cache, fetch }, ORIGIN);
@@ -247,6 +304,7 @@ describe("precache", () => {
       [`${ORIGIN}/`]: SHELL,
       [`${ORIGIN}/assets/app-new.js`]: "new js",
       [`${ORIGIN}/assets/app-new.css`]: "new css",
+      [`${ORIGIN}/rest-countdown.m4a`]: "countdown",
       [`${ORIGIN}/api/workouts`]: "data",
     });
     expect(at0(fetch).cache).toBe("reload");

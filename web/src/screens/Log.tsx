@@ -23,6 +23,7 @@ import {
 import type { Draft, DraftBlock, DraftSet, Plan, Typed } from "../log/draft";
 import { markFinished } from "../log/finished";
 import { useNow } from "../log/useNow";
+import { MAX_REST_MS, shiftRestAudio, startRestAudio, stopRestAudio } from "../restAudio";
 import { href, navigate } from "../router";
 
 /** Rest started when a set is ticked off. */
@@ -90,6 +91,9 @@ function actionsFor({ outbox, drafts }: Logging, draft: Draft): Actions {
         // A program block rests as long as it says, and a superset only after its round.
         const index = block.sets.findIndex((row) => row.id === set.id);
         const rest = restAfter(draft, block, index, REST_MS);
+        if (rest !== null && rest > 0) {
+          startRestAudio(rest);
+        }
         change((d) => ({
           ...updateSet(d, block.key, set.id, { logged: typedOf(set) }),
           restUntil: rest === null ? d.restUntil : Date.now() + rest,
@@ -323,12 +327,20 @@ function RestTimer({ logging, draft }: { logging: Logging; draft: Draft }): Reac
     return null;
   }
   const shift = (ms: number | null): void => {
+    if (ms === null) {
+      stopRestAudio();
+    } else {
+      shiftRestAudio(ms);
+    }
     logging.drafts.update((current) =>
       current === null
         ? null
         : {
             ...current,
-            restUntil: ms === null || current.restUntil === null ? null : current.restUntil + ms,
+            restUntil:
+              ms === null || current.restUntil === null
+                ? null
+                : Math.min(current.restUntil + ms, Date.now() + MAX_REST_MS),
           },
     );
   };
@@ -381,6 +393,7 @@ function ActiveWorkout({ logging, draft }: { logging: Logging; draft: Draft }): 
   const logged = loggedSets(draft);
 
   const close = async (write: ReturnType<typeof finishWrite>): Promise<void> => {
+    stopRestAudio();
     await logging.outbox.send(write);
     logging.drafts.set(null);
     await Promise.race([
