@@ -833,6 +833,26 @@ describe("QuickLog", () => {
 });
 
 describe("Settings", () => {
+  it("speaks the rest countdown until it is turned off", async () => {
+    routeFetch({ "GET /api/profile": { body: { bodyweight_kg: 65 } } });
+    await go("#/settings");
+    renderLogging();
+
+    const section = screen.getByRole("region", { name: "Rest countdown" });
+    const toggle = within(section).getByRole("switch", { name: "Spoken countdown" });
+    expect(toggle).toBeChecked();
+    expect(section).toHaveTextContent("over any music you are playing");
+
+    fireEvent.click(toggle);
+    expect(toggle).not.toBeChecked();
+    cleanup();
+    renderLogging();
+
+    expect(
+      within(screen.getByRole("region", { name: "Rest countdown" })).getByRole("switch"),
+    ).not.toBeChecked();
+  });
+
   it("only enables the background rest timer after an explicit choice", async () => {
     routeFetch({ "GET /api/profile": { body: { bodyweight_kg: 65 } } });
     await go("#/settings");

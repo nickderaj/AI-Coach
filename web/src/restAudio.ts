@@ -1,157 +1,185 @@
 /**
- * The rest clock's system-media companion.
+ * The rest clock's spoken 5, 4, 3, 2, 1.
  *
- * iOS pauses background JavaScript timers, but continues an audio element that
- * was started by a tap. The ten-minute track is silent until its final five
- * seconds, where it contains the spoken countdown. Seeking to `duration - rest`
- * therefore keeps both the voice and the system's remaining-time display in
- * step with the on-screen clock.
+ * The voice is a five-second clip played through Web Audio with the page's
+ * audio session set to "ambient", so iOS mixes it over music from another app
+ * instead of pausing that music, and it never takes over the system's Now
+ * Playing controls. iOS plays ambient audio only while Coach is on screen and
+ * the ring switch is on; the on-screen clock is unaffected either way.
+ *
+ * Someone who opts into the background rest timer (`restMedia`) gets that
+ * instead: its track carries the same voice and keeps going outside Coach, at
+ * the cost of pausing other music.
  */
 
-const TRACK_SECONDS = 600;
-const TRACK_URL = "/rest-countdown.m4a";
-const BACKGROUND_REST_KEY = "coach.background-rest";
-export const MAX_REST_MS = TRACK_SECONDS * 1000;
+import {
+  backgroundRestEnabled,
+  MAX_REST_MS,
+  shiftRestMedia,
+  startRestMedia,
+  stopRestMedia,
+} from "./restMedia";
 
-type RestMediaSession = Pick<MediaSession, "metadata" | "playbackState" | "setActionHandler">;
-type RestAudioElement = Pick<
-  HTMLAudioElement,
-  "addEventListener" | "currentTime" | "pause" | "play" | "preload"
+export { MAX_REST_MS };
+
+const CLIP_URL = "/rest-voice.m4a";
+const CLIP_SECONDS = 5;
+const VOICE_KEY = "coach.rest-voice";
+
+type RestContext = Pick<
+  AudioContext,
+  "createBufferSource" | "currentTime" | "decodeAudioData" | "destination" | "resume"
 >;
 type RestStorage = Pick<Storage, "getItem" | "setItem">;
 
-interface RestAudio {
+/** Safari's Audio Session API; absent from TypeScript's DOM types. */
+interface AudioSessionNavigator {
+  audioSession?: { type: string };
+}
+
+interface RestVoice {
   start: (seconds: number) => void;
   shift: (seconds: number) => void;
   stop: () => void;
+  /** Re-place the clip after the page was hidden, when the audio clock may have paused. */
+  resync: () => void;
 }
 
-function position(seconds: number): number {
-  return Math.min(TRACK_SECONDS, Math.max(0, seconds));
-}
-
-/** Build the controller separately from browser globals so its timing is testable. */
-function restAudioController(audio: RestAudioElement, session: RestMediaSession | null): RestAudio {
+/**
+ * Schedule the clip against the audio clock so it lands on the timer's end
+ * without relying on JavaScript timers.
+ *
+ * @internal Exported for tests; the app uses the functions below.
+ */
+export function restVoiceController(
+  context: RestContext,
+  load: () => Promise<ArrayBuffer>,
+  now: () => number = Date.now,
+): RestVoice {
   let endsAt: number | null = null;
-  const stop = (): void => {
-    endsAt = null;
-    audio.pause();
-    audio.currentTime = 0;
-    if (session !== null) {
-      session.playbackState = "none";
+  let clip: Promise<AudioBuffer> | null = null;
+  let source: AudioBufferSourceNode | null = null;
+  let generation = 0;
+
+  const cancel = (): void => {
+    generation += 1;
+    source?.stop();
+    source = null;
+  };
+  const decoded = async (): Promise<AudioBuffer | null> => {
+    clip ??= load().then((bytes) => context.decodeAudioData(bytes));
+    try {
+      return await clip;
+    } catch {
+      clip = null;
+      return null;
     }
   };
-  const sync = (): void => {
-    if (endsAt === null) {
+  const schedule = async (): Promise<void> => {
+    cancel();
+    const mine = generation;
+    const buffer = await decoded();
+    if (buffer === null || endsAt === null || mine !== generation) {
       return;
     }
-    const seconds = (endsAt - Date.now()) / 1000;
-    if (seconds <= 0) {
-      stop();
+    const lead = (endsAt - now()) / 1000 - CLIP_SECONDS;
+    if (lead <= -CLIP_SECONDS) {
       return;
     }
-    audio.currentTime = position(TRACK_SECONDS - seconds);
+    const node = context.createBufferSource();
+    node.buffer = buffer;
+    node.connect(context.destination);
+    // Join a countdown already under way part-way through, as after +/- or a return.
+    node.start(context.currentTime + Math.max(0, lead), Math.max(0, -lead));
+    source = node;
   };
-  const resume = (): void => {
-    sync();
-    if (endsAt !== null) {
-      void Promise.resolve(audio.play()).catch(stop);
-    }
+  const place = (): void => {
+    void Promise.resolve(context.resume())
+      .catch(() => undefined)
+      .then(schedule);
   };
-  audio.addEventListener("ended", stop);
-  audio.addEventListener("play", sync);
-  if (session !== null) {
-    configureSystemControls(session, resume);
-  }
+
   return {
     start: (seconds): void => {
-      endsAt = Date.now() + seconds * 1000;
-      if (session !== null) {
-        session.playbackState = "playing";
-      }
-      resume();
+      endsAt = now() + seconds * 1000;
+      place();
     },
     shift: (seconds): void => {
       if (endsAt !== null) {
-        const remaining = position((endsAt - Date.now()) / 1000 + seconds);
-        endsAt = Date.now() + remaining * 1000;
-        sync();
+        endsAt = Math.min(endsAt + seconds * 1000, now() + MAX_REST_MS);
+        void schedule();
       }
     },
-    stop,
+    stop: (): void => {
+      endsAt = null;
+      cancel();
+    },
+    resync: (): void => {
+      if (endsAt !== null) {
+        place();
+      }
+    },
   };
 }
 
-const SYSTEM_ACTIONS: MediaSessionAction[] = [
-  "pause",
-  "seekbackward",
-  "seekforward",
-  "seekto",
-  "stop",
-];
+let controller: RestVoice | null = null;
 
-function configureSystemControls(session: RestMediaSession, resume: () => void): void {
-  const ignore = (): void => undefined;
-  for (const action of SYSTEM_ACTIONS) {
-    try {
-      session.setActionHandler(action, ignore);
-    } catch {
-      // Safari versions expose different subsets; disable every action they accept.
-    }
-  }
-  try {
-    session.setActionHandler("play", resume);
-  } catch {
-    // Some Safari versions do not expose the play action.
-  }
-}
-
-let controller: RestAudio | null = null;
-
-function browserController(): RestAudio {
-  if (controller !== null) {
+/** The app's one controller, or null where the browser has no Web Audio. */
+function browserController(): RestVoice | null {
+  if (controller !== null || typeof AudioContext === "undefined") {
     return controller;
   }
-  const audio = new Audio(TRACK_URL);
-  audio.preload = "auto";
-  const session = "mediaSession" in navigator ? navigator.mediaSession : null;
-  if (session !== null && typeof MediaMetadata === "function") {
-    session.metadata = new MediaMetadata({
-      title: "Rest timer",
-      artist: "Coach",
-      artwork: [{ src: "/icon-512.png", sizes: "512x512", type: "image/png" }],
-    });
+  const session = (navigator as AudioSessionNavigator).audioSession;
+  if (session !== undefined) {
+    session.type = "ambient";
   }
-  controller = restAudioController(audio, session);
-  return controller;
+  const voice = restVoiceController(new AudioContext(), async () => {
+    const response = await fetch(CLIP_URL);
+    if (!response.ok) {
+      throw new Error(`${CLIP_URL} answered ${String(response.status)}`);
+    }
+    return response.arrayBuffer();
+  });
+  document.addEventListener("visibilitychange", () => {
+    if (document.visibilityState === "visible") {
+      voice.resync();
+    }
+  });
+  controller = voice;
+  return voice;
 }
 
-export function backgroundRestEnabled(storage: RestStorage): boolean {
-  return storage.getItem(BACKGROUND_REST_KEY) === "on";
+export function restVoiceEnabled(storage: RestStorage): boolean {
+  return storage.getItem(VOICE_KEY) !== "off";
 }
 
-export function setBackgroundRestEnabled(storage: RestStorage, enabled: boolean): void {
-  storage.setItem(BACKGROUND_REST_KEY, enabled ? "on" : "off");
+export function setRestVoiceEnabled(storage: RestStorage, enabled: boolean): void {
+  storage.setItem(VOICE_KEY, enabled ? "on" : "off");
   if (!enabled) {
-    stopRestAudio();
+    controller?.stop();
   }
 }
 
-/** Start the background-safe countdown from a set-completion tap. */
+/** Start the countdown from a set-completion tap, which lets the audio start. */
 export function startRestAudio(milliseconds: number): void {
-  if (milliseconds > 0 && backgroundRestEnabled(localStorage)) {
-    browserController().start(milliseconds / 1000);
+  if (milliseconds <= 0) {
+    return;
+  }
+  if (backgroundRestEnabled(localStorage)) {
+    startRestMedia(milliseconds);
+  } else if (restVoiceEnabled(localStorage)) {
+    browserController()?.start(milliseconds / 1000);
   }
 }
 
-/** Apply the timer's adjustment to the audio timeline too. */
+/** Apply the timer's adjustment to the countdown too. */
 export function shiftRestAudio(milliseconds: number): void {
   controller?.shift(milliseconds / 1000);
+  shiftRestMedia(milliseconds);
 }
 
-/** Remove the rest timer from the system media surface. */
+/** Cancel the countdown. */
 export function stopRestAudio(): void {
-  if (controller !== null) {
-    controller.stop();
-  }
+  controller?.stop();
+  stopRestMedia();
 }

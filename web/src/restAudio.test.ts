@@ -1,177 +1,269 @@
 import { beforeEach, describe, expect, it, vi } from "vitest";
 
-interface TestAudio {
-  addEventListener: ReturnType<typeof vi.fn>;
-  currentTime: number;
-  pause: ReturnType<typeof vi.fn>;
-  play: ReturnType<typeof vi.fn<() => Promise<void>>>;
-  preload: string;
+import { restVoiceController } from "./restAudio";
+
+interface FakeSource {
+  buffer: AudioBuffer | null;
+  connect: ReturnType<typeof vi.fn>;
+  start: ReturnType<typeof vi.fn>;
+  stop: ReturnType<typeof vi.fn>;
 }
 
-function fakeAudio(start = 0): TestAudio {
-  return {
-    addEventListener: vi.fn(),
-    currentTime: start,
-    pause: vi.fn(),
-    play: vi.fn(() => Promise.resolve()),
-    preload: "",
+const CLIP = { duration: 5 } as AudioBuffer;
+
+interface FakeContext {
+  context: {
+    currentTime: number;
+    destination: AudioDestinationNode;
+    resume: ReturnType<typeof vi.fn<() => Promise<void>>>;
+    decodeAudioData: ReturnType<typeof vi.fn<() => Promise<AudioBuffer>>>;
+    createBufferSource: ReturnType<typeof vi.fn<() => AudioBufferSourceNode>>;
   };
+  sources: FakeSource[];
 }
 
-function installAudio(audio: TestAudio): ReturnType<typeof vi.fn> {
-  const AudioConstructor = vi.fn(function Audio(): TestAudio {
-    return audio;
+interface FakeBrowser extends FakeContext {
+  AudioContextConstructor: ReturnType<typeof vi.fn>;
+  fetchClip: ReturnType<typeof vi.fn<() => Promise<Response>>>;
+}
+
+function fakeContext(currentTime = 100): FakeContext {
+  const sources: FakeSource[] = [];
+  const context = {
+    currentTime,
+    destination: {} as AudioDestinationNode,
+    resume: vi.fn(() => Promise.resolve()),
+    decodeAudioData: vi.fn(() => Promise.resolve(CLIP)),
+    createBufferSource: vi.fn(() => {
+      const source: FakeSource = { buffer: null, connect: vi.fn(), start: vi.fn(), stop: vi.fn() };
+      sources.push(source);
+      return source as unknown as AudioBufferSourceNode;
+    }),
+  };
+  return { context, sources };
+}
+
+/** Let the resume, load and decode promises settle. */
+async function settle(): Promise<void> {
+  for (let i = 0; i < 10; i += 1) {
+    await Promise.resolve();
+  }
+}
+
+describe("rest voice controller", () => {
+  it("schedules the clip to finish as the rest ends and follows adjustments", async () => {
+    let clock = 1_000;
+    const { context, sources } = fakeContext();
+    const load = vi.fn(() => Promise.resolve(new ArrayBuffer(8)));
+    const voice = restVoiceController(context, load, () => clock);
+
+    voice.start(90);
+    expect(context.resume).toHaveBeenCalledOnce();
+    await settle();
+    expect(sources).toHaveLength(1);
+    expect(sources[0]?.buffer).toBe(CLIP);
+    expect(sources[0]?.connect).toHaveBeenCalledWith(context.destination);
+    expect(sources[0]?.start).toHaveBeenCalledWith(185, 0);
+
+    clock += 20_000;
+    voice.shift(15);
+    await settle();
+    expect(sources[0]?.stop).toHaveBeenCalledOnce();
+    expect(sources[1]?.start).toHaveBeenCalledWith(180, 0);
+
+    voice.shift(-82);
+    await settle();
+    expect(sources[2]?.start).toHaveBeenCalledWith(100, 2);
+
+    voice.stop();
+    expect(sources[2]?.stop).toHaveBeenCalledOnce();
+    voice.shift(15);
+    voice.resync();
+    await settle();
+    expect(sources).toHaveLength(3);
+    expect(load).toHaveBeenCalledOnce();
   });
-  vi.stubGlobal("Audio", AudioConstructor);
-  return AudioConstructor;
-}
 
-function listener(audio: TestAudio, type: string): EventListener {
-  const call = audio.addEventListener.mock.calls.find((candidate) => candidate[0] === type);
-  const found = call?.[1] as EventListener | undefined;
-  if (found === undefined) {
-    throw new TypeError(`${type} listener was not installed`);
-  }
-  return found;
-}
+  it("caps adjustments at ten minutes and stays silent once the rest is over", async () => {
+    const clock = 0;
+    const { context, sources } = fakeContext(0);
+    const voice = restVoiceController(
+      context,
+      () => Promise.resolve(new ArrayBuffer(8)),
+      () => clock,
+    );
 
-function actionHandler(
-  setActionHandler: ReturnType<typeof vi.fn>,
-  action: MediaSessionAction,
-): () => void {
-  const call = setActionHandler.mock.calls.find((candidate) => candidate[0] === action);
-  const found = call?.[1] as (() => void) | undefined;
-  if (found === undefined) {
-    throw new TypeError(`${action} handler was not installed`);
-  }
-  return found;
-}
+    voice.start(590);
+    voice.shift(60);
+    await settle();
+    expect(sources.at(-1)?.start).toHaveBeenCalledWith(595, 0);
+
+    voice.shift(-700);
+    await settle();
+    expect(sources).toHaveLength(1);
+    expect(sources[0]?.stop).toHaveBeenCalledOnce();
+  });
+
+  it("re-places the clip when the page comes back", async () => {
+    let clock = 0;
+    const { context, sources } = fakeContext(0);
+    const voice = restVoiceController(
+      context,
+      () => Promise.resolve(new ArrayBuffer(8)),
+      () => clock,
+    );
+
+    voice.start(60);
+    await settle();
+    clock = 40_000;
+    context.resume.mockRejectedValueOnce(new DOMException("blocked", "NotAllowedError"));
+    voice.resync();
+    await settle();
+
+    expect(context.resume).toHaveBeenCalledTimes(2);
+    expect(sources[1]?.start).toHaveBeenCalledWith(15, 0);
+  });
+
+  it("drops a schedule overtaken while the clip was loading", async () => {
+    const { context, sources } = fakeContext(0);
+    const voice = restVoiceController(
+      context,
+      () => Promise.resolve(new ArrayBuffer(8)),
+      () => 0,
+    );
+
+    voice.start(60);
+    voice.stop();
+    await settle();
+
+    expect(sources).toHaveLength(0);
+  });
+
+  it("retries the clip after it fails to load", async () => {
+    const { context, sources } = fakeContext(0);
+    const load = vi
+      .fn<() => Promise<ArrayBuffer>>()
+      .mockRejectedValueOnce(new TypeError("offline"))
+      .mockResolvedValue(new ArrayBuffer(8));
+    const voice = restVoiceController(context, load, () => 0);
+
+    voice.start(60);
+    await settle();
+    expect(sources).toHaveLength(0);
+    voice.start(60);
+    await settle();
+
+    expect(load).toHaveBeenCalledTimes(2);
+    expect(sources).toHaveLength(1);
+  });
+});
 
 describe("rest audio", () => {
   beforeEach(() => {
     localStorage.clear();
+    vi.resetModules();
   });
 
-  it("publishes metadata and keeps one system media session aligned with the timer", async () => {
-    const now = vi.spyOn(Date, "now").mockReturnValue(1000);
-    const audio = fakeAudio();
-    const AudioConstructor = installAudio(audio);
-    const metadata = vi.fn();
-    const MediaMetadataConstructor = vi.fn(function MediaMetadata(init: MediaMetadataInit): object {
-      metadata(init);
-      return {};
+  function installBrowser(ok = true): FakeBrowser {
+    const { context, sources } = fakeContext(0);
+    const AudioContextConstructor = vi.fn(function AudioContext() {
+      return context;
     });
-    const setActionHandler = vi.fn();
-    const session = { metadata: null, playbackState: "none", setActionHandler };
-    vi.stubGlobal("MediaMetadata", MediaMetadataConstructor);
-    vi.stubGlobal("navigator", { mediaSession: session });
-    vi.resetModules();
-    const { setBackgroundRestEnabled, shiftRestAudio, startRestAudio, stopRestAudio } =
-      await import("./restAudio");
+    const fetchClip = vi.fn(() =>
+      Promise.resolve(new Response(ok ? "clip" : "", { status: ok ? 200 : 404 })),
+    );
+    vi.stubGlobal("AudioContext", AudioContextConstructor);
+    vi.stubGlobal("fetch", fetchClip);
+    return { AudioContextConstructor, context, fetchClip, sources };
+  }
 
-    setBackgroundRestEnabled(localStorage, true);
-    startRestAudio(90_000);
-    expect(audio.currentTime).toBe(510);
-    expect(session.playbackState).toBe("playing");
-    now.mockReturnValue(31_000);
-    actionHandler(setActionHandler, "play")();
-    expect(audio.currentTime).toBe(540);
-    shiftRestAudio(15_000);
-    expect(audio.currentTime).toBe(525);
+  it("mixes the countdown with other audio and resyncs on return", async () => {
+    const audioSession = { type: "auto" };
+    vi.stubGlobal("navigator", { audioSession });
+    const { AudioContextConstructor, fetchClip, sources } = installBrowser();
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("visible");
+    const { shiftRestAudio, startRestAudio, stopRestAudio } = await import("./restAudio");
+
     startRestAudio(60_000);
+    await settle();
+    shiftRestAudio(15_000);
+    startRestAudio(30_000);
+    await settle();
+    document.dispatchEvent(new Event("visibilitychange"));
+    await settle();
     stopRestAudio();
 
-    expect(AudioConstructor).toHaveBeenCalledOnce();
-    expect(AudioConstructor).toHaveBeenCalledWith("/rest-countdown.m4a");
-    expect(audio.preload).toBe("auto");
-    expect(metadata).toHaveBeenCalledWith({
-      title: "Rest timer",
-      artist: "Coach",
-      artwork: [{ src: "/icon-512.png", sizes: "512x512", type: "image/png" }],
-    });
-    expect(audio.play).toHaveBeenCalledTimes(3);
-    expect(audio.pause).toHaveBeenCalledOnce();
-    expect(audio.currentTime).toBe(0);
-    expect(session.playbackState).toBe("none");
-    expect(setActionHandler).toHaveBeenCalledTimes(6);
-    expect(setActionHandler.mock.calls.every((call) => typeof call[1] === "function")).toBe(true);
-    expect(actionHandler(setActionHandler, "pause")).not.toBe(
-      actionHandler(setActionHandler, "play"),
-    );
+    expect(audioSession.type).toBe("ambient");
+    expect(AudioContextConstructor).toHaveBeenCalledOnce();
+    expect(fetchClip).toHaveBeenCalledExactlyOnceWith("/rest-voice.m4a");
+    expect(sources.at(-1)?.stop).toHaveBeenCalledOnce();
   });
 
-  it("clamps seeks and ignores a browser refusal to play", async () => {
-    const audio = fakeAudio();
-    audio.play.mockRejectedValueOnce(new DOMException("blocked", "NotAllowedError"));
-    installAudio(audio);
+  it("ignores a hidden page and a clip that cannot be fetched", async () => {
     vi.stubGlobal("navigator", {});
-    vi.resetModules();
-    const { setBackgroundRestEnabled, shiftRestAudio, startRestAudio } =
-      await import("./restAudio");
+    const { sources } = installBrowser(false);
+    vi.spyOn(document, "visibilityState", "get").mockReturnValue("hidden");
+    const { startRestAudio } = await import("./restAudio");
 
-    setBackgroundRestEnabled(localStorage, true);
-    startRestAudio(590_000);
-    expect(audio.currentTime).toBe(10);
-    shiftRestAudio(700_000);
-    expect(audio.currentTime).toBe(0);
-    shiftRestAudio(-700_000);
-    expect(audio.currentTime).toBe(0);
-    await Promise.resolve();
-    expect(audio.pause).toHaveBeenCalledTimes(2);
+    startRestAudio(60_000);
+    await settle();
+    document.dispatchEvent(new Event("visibilitychange"));
+    await settle();
+
+    expect(sources).toHaveLength(0);
   });
 
-  it("works when Media Session exists but MediaMetadata does not", async () => {
-    const audio = fakeAudio();
-    installAudio(audio);
-    const session = { metadata: null, playbackState: "none", setActionHandler: vi.fn() };
-    vi.stubGlobal("MediaMetadata", undefined);
-    vi.stubGlobal("navigator", { mediaSession: session });
-    vi.resetModules();
-    const { setBackgroundRestEnabled, startRestAudio } = await import("./restAudio");
+  it("leaves the countdown to the background timer when that is on", async () => {
+    const { AudioContextConstructor } = installBrowser();
+    const media = {
+      addEventListener: vi.fn(),
+      currentTime: 0,
+      pause: vi.fn(),
+      play: vi.fn(() => Promise.resolve()),
+      preload: "",
+    };
+    const AudioConstructor = vi.fn(function Audio() {
+      return media;
+    });
+    vi.stubGlobal("Audio", AudioConstructor);
+    vi.stubGlobal("navigator", {});
+    const { setBackgroundRestEnabled } = await import("./restMedia");
+    const { shiftRestAudio, startRestAudio, stopRestAudio } = await import("./restAudio");
 
     setBackgroundRestEnabled(localStorage, true);
     startRestAudio(60_000);
+    shiftRestAudio(15_000);
+    stopRestAudio();
 
-    expect(audio.play).toHaveBeenCalledOnce();
-    expect(session.metadata).toBeNull();
+    expect(AudioConstructor).toHaveBeenCalledExactlyOnceWith("/rest-countdown.m4a");
+    expect(media.play).toHaveBeenCalledOnce();
+    expect(media.pause).toHaveBeenCalledOnce();
+    expect(AudioContextConstructor).not.toHaveBeenCalled();
   });
 
-  it("does not create media merely to stop an inactive timer", async () => {
-    const AudioConstructor = vi.fn();
-    vi.stubGlobal("Audio", AudioConstructor);
-    vi.resetModules();
-    const { setBackgroundRestEnabled, shiftRestAudio, startRestAudio, stopRestAudio } =
+  it("stays silent without Web Audio", async () => {
+    vi.stubGlobal("AudioContext", undefined);
+    const { startRestAudio } = await import("./restAudio");
+
+    expect(() => {
+      startRestAudio(60_000);
+    }).not.toThrow();
+  });
+
+  it("stays silent when turned off and creates no audio merely to stop", async () => {
+    const { AudioContextConstructor } = installBrowser();
+    const { restVoiceEnabled, setRestVoiceEnabled, shiftRestAudio, startRestAudio, stopRestAudio } =
       await import("./restAudio");
 
+    expect(restVoiceEnabled(localStorage)).toBe(true);
+    setRestVoiceEnabled(localStorage, false);
     startRestAudio(60_000);
     startRestAudio(0);
     shiftRestAudio(15_000);
-    setBackgroundRestEnabled(localStorage, false);
     stopRestAudio();
+    expect(AudioContextConstructor).not.toHaveBeenCalled();
 
-    expect(AudioConstructor).not.toHaveBeenCalled();
-  });
-
-  it("clears the media session when playback ends and tolerates unsupported controls", async () => {
-    const audio = fakeAudio(540);
-    installAudio(audio);
-    const setActionHandler = vi.fn((action: MediaSessionAction) => {
-      if (action === "seekto") {
-        throw new DOMException("unsupported", "NotSupportedError");
-      }
-    });
-    const session = { metadata: null, playbackState: "none", setActionHandler };
-    vi.stubGlobal("navigator", { mediaSession: session });
-    vi.resetModules();
-    const { setBackgroundRestEnabled, startRestAudio } = await import("./restAudio");
-    setBackgroundRestEnabled(localStorage, true);
-    startRestAudio(60_000);
-
-    listener(audio, "ended")(new Event("ended"));
-
-    expect(audio.pause).toHaveBeenCalledOnce();
-    expect(audio.currentTime).toBe(0);
-    expect(session.playbackState).toBe("none");
-    expect(setActionHandler).toHaveBeenCalledTimes(6);
+    setRestVoiceEnabled(localStorage, true);
+    expect(restVoiceEnabled(localStorage)).toBe(true);
   });
 });

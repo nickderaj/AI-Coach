@@ -9,7 +9,8 @@ import { useLogging } from "../log/context";
 import { parseAmount } from "../log/draft";
 import { sendTest, pushState, turnOff, turnOn } from "../push";
 import type { PushChange, PushState } from "../push";
-import { backgroundRestEnabled, setBackgroundRestEnabled } from "../restAudio";
+import { restVoiceEnabled, setRestVoiceEnabled } from "../restAudio";
+import { backgroundRestEnabled, setBackgroundRestEnabled } from "../restMedia";
 import { href } from "../router";
 
 const PROFILE = "/api/profile";
@@ -222,6 +223,32 @@ function Notifications(): ReactElement {
   );
 }
 
+function RestVoice(): ReactElement {
+  const [enabled, setEnabled] = useState(() => restVoiceEnabled(localStorage));
+  return (
+    <section className="card" aria-label="Rest countdown">
+      <h2>Rest countdown</h2>
+      <p className="muted">
+        Counts down the last five seconds of each rest out loud, over any music you are playing.
+      </p>
+      <label className="field inline">
+        <input
+          type="checkbox"
+          role="switch"
+          checked={enabled}
+          onChange={(event) => {
+            const on = event.target.checked;
+            setRestVoiceEnabled(localStorage, on);
+            setEnabled(on);
+          }}
+        />
+        Spoken countdown
+      </label>
+      <p className="muted">iPhone plays it only while Coach is open and the ring switch is on.</p>
+    </section>
+  );
+}
+
 function BackgroundRestTimer(): ReactElement {
   const [enabled, setEnabled] = useState(() => backgroundRestEnabled(localStorage));
   return (
@@ -299,6 +326,7 @@ export function Settings(): ReactElement {
           )
         }
       </Load>
+      <RestVoice />
       <BackgroundRestTimer />
       <Notifications />
     </>
