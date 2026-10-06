@@ -853,6 +853,26 @@ describe("Settings", () => {
     ).not.toBeChecked();
   });
 
+  it("only enables the background rest timer after an explicit choice", async () => {
+    routeFetch({ "GET /api/profile": { body: { bodyweight_kg: 65 } } });
+    await go("#/settings");
+    renderLogging();
+
+    const section = screen.getByRole("region", { name: "Background rest timer" });
+    const toggle = within(section).getByRole("switch", { name: "Show rests outside Coach" });
+    expect(toggle).not.toBeChecked();
+    expect(section).toHaveTextContent("may pause music from another app");
+
+    fireEvent.click(toggle);
+    expect(toggle).toBeChecked();
+    cleanup();
+    renderLogging();
+
+    expect(
+      within(screen.getByRole("region", { name: "Background rest timer" })).getByRole("switch"),
+    ).toBeChecked();
+  });
+
   it("saves the body weight through the outbox", async () => {
     routeFetch({ "GET /api/profile": { body: { bodyweight_kg: 65 } } });
     await go("#/settings");

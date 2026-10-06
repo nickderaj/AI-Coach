@@ -62,6 +62,7 @@ describe("strategyFor", () => {
   it.each([
     ["GET", "/assets/app-abc.js", "cache-first"],
     ["GET", "/rest-voice.m4a", "cache-first"],
+    ["GET", "/rest-countdown.m4a", "cache-first"],
     ["GET", "/", "network-first"],
     ["GET", "/api/workouts?limit=500", "network-first"],
     ["GET", "/manifest.webmanifest", "network-first"],
@@ -115,9 +116,9 @@ describe("cacheFirst", () => {
   });
 
   it("serves Safari media ranges from a complete cached response", async () => {
-    const cache = fakeCache({ [`${ORIGIN}/rest-voice.m4a`]: "countdown" });
+    const cache = fakeCache({ [`${ORIGIN}/rest-countdown.m4a`]: "countdown" });
     const fetch = fetchFrom({});
-    const request = new Request(`${ORIGIN}/rest-voice.m4a`, {
+    const request = new Request(`${ORIGIN}/rest-countdown.m4a`, {
       headers: { Range: "bytes=1-4" },
     });
 
@@ -132,18 +133,18 @@ describe("cacheFirst", () => {
   });
 
   it("supports suffix ranges and rejects ranges outside the cached response", async () => {
-    const cache = fakeCache({ [`${ORIGIN}/rest-voice.m4a`]: "countdown" });
+    const cache = fakeCache({ [`${ORIGIN}/rest-countdown.m4a`]: "countdown" });
 
     const suffix = await cacheFirst(
-      new Request(`${ORIGIN}/rest-voice.m4a`, { headers: { Range: "bytes=-4" } }),
+      new Request(`${ORIGIN}/rest-countdown.m4a`, { headers: { Range: "bytes=-4" } }),
       { cache, fetch: fetchFrom({}) },
     );
     const missing = await cacheFirst(
-      new Request(`${ORIGIN}/rest-voice.m4a`, { headers: { Range: "bytes=20-" } }),
+      new Request(`${ORIGIN}/rest-countdown.m4a`, { headers: { Range: "bytes=20-" } }),
       { cache, fetch: fetchFrom({}) },
     );
     const empty = await cacheFirst(
-      new Request(`${ORIGIN}/rest-voice.m4a`, { headers: { Range: "bytes=-0" } }),
+      new Request(`${ORIGIN}/rest-countdown.m4a`, { headers: { Range: "bytes=-0" } }),
       { cache, fetch: fetchFrom({}) },
     );
 
@@ -155,11 +156,11 @@ describe("cacheFirst", () => {
 
   it("passes through and does not cache a partial network response", async () => {
     const cache = fakeCache();
-    const request = new Request(`${ORIGIN}/rest-voice.m4a`, {
+    const request = new Request(`${ORIGIN}/rest-countdown.m4a`, {
       headers: { Range: "bytes=0-1" },
     });
     const fetch = fetchFrom({
-      [`${ORIGIN}/rest-voice.m4a`]: new Response("co", { status: 206 }),
+      [`${ORIGIN}/rest-countdown.m4a`]: new Response("co", { status: 206 }),
     });
 
     const response = await cacheFirst(request, { cache, fetch });
@@ -295,7 +296,8 @@ describe("precache", () => {
       [`${ORIGIN}/`]: new Response(SHELL),
       [`${ORIGIN}/assets/app-new.js`]: new Response("new js"),
       [`${ORIGIN}/assets/app-new.css`]: new Response("new css"),
-      [`${ORIGIN}/rest-voice.m4a`]: new Response("countdown"),
+      [`${ORIGIN}/rest-voice.m4a`]: new Response("voice"),
+      [`${ORIGIN}/rest-countdown.m4a`]: new Response("countdown"),
     });
 
     await precache({ cache, fetch }, ORIGIN);
@@ -304,7 +306,8 @@ describe("precache", () => {
       [`${ORIGIN}/`]: SHELL,
       [`${ORIGIN}/assets/app-new.js`]: "new js",
       [`${ORIGIN}/assets/app-new.css`]: "new css",
-      [`${ORIGIN}/rest-voice.m4a`]: "countdown",
+      [`${ORIGIN}/rest-voice.m4a`]: "voice",
+      [`${ORIGIN}/rest-countdown.m4a`]: "countdown",
       [`${ORIGIN}/api/workouts`]: "data",
     });
     expect(at0(fetch).cache).toBe("reload");
