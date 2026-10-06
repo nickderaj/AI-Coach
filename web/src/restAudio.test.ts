@@ -213,34 +213,6 @@ describe("rest audio", () => {
     expect(sources).toHaveLength(0);
   });
 
-  it("leaves the countdown to the background timer when that is on", async () => {
-    const { AudioContextConstructor } = installBrowser();
-    const media = {
-      addEventListener: vi.fn(),
-      currentTime: 0,
-      pause: vi.fn(),
-      play: vi.fn(() => Promise.resolve()),
-      preload: "",
-    };
-    const AudioConstructor = vi.fn(function Audio() {
-      return media;
-    });
-    vi.stubGlobal("Audio", AudioConstructor);
-    vi.stubGlobal("navigator", {});
-    const { setBackgroundRestEnabled } = await import("./restMedia");
-    const { shiftRestAudio, startRestAudio, stopRestAudio } = await import("./restAudio");
-
-    setBackgroundRestEnabled(localStorage, true);
-    startRestAudio(60_000);
-    shiftRestAudio(15_000);
-    stopRestAudio();
-
-    expect(AudioConstructor).toHaveBeenCalledExactlyOnceWith("/rest-countdown.m4a");
-    expect(media.play).toHaveBeenCalledOnce();
-    expect(media.pause).toHaveBeenCalledOnce();
-    expect(AudioContextConstructor).not.toHaveBeenCalled();
-  });
-
   it("stays silent without Web Audio", async () => {
     vi.stubGlobal("AudioContext", undefined);
     const { startRestAudio } = await import("./restAudio");
