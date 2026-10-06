@@ -9,7 +9,7 @@ import { useLogging } from "../log/context";
 import { parseAmount } from "../log/draft";
 import { sendTest, pushState, turnOff, turnOn } from "../push";
 import type { PushChange, PushState } from "../push";
-import { backgroundRestEnabled, setBackgroundRestEnabled } from "../restAudio";
+import { restVoiceEnabled, setRestVoiceEnabled } from "../restAudio";
 import { href } from "../router";
 
 const PROFILE = "/api/profile";
@@ -222,14 +222,13 @@ function Notifications(): ReactElement {
   );
 }
 
-function BackgroundRestTimer(): ReactElement {
-  const [enabled, setEnabled] = useState(() => backgroundRestEnabled(localStorage));
+function RestVoice(): ReactElement {
+  const [enabled, setEnabled] = useState(() => restVoiceEnabled(localStorage));
   return (
-    <section className="card" aria-label="Background rest timer">
-      <h2>Background rest timer</h2>
+    <section className="card" aria-label="Rest countdown">
+      <h2>Rest countdown</h2>
       <p className="muted">
-        Shows rest progress in iPhone system media controls and keeps the spoken countdown running
-        after you leave Coach.
+        Counts down the last five seconds of each rest out loud, over any music you are playing.
       </p>
       <label className="field inline">
         <input
@@ -238,16 +237,13 @@ function BackgroundRestTimer(): ReactElement {
           checked={enabled}
           onChange={(event) => {
             const on = event.target.checked;
-            setBackgroundRestEnabled(localStorage, on);
+            setRestVoiceEnabled(localStorage, on);
             setEnabled(on);
           }}
         />
-        Show rests outside Coach
+        Spoken countdown
       </label>
-      <p className="muted">
-        iPhone treats this like media playback, so it may pause music from another app while you
-        rest.
-      </p>
+      <p className="muted">iPhone plays it only while Coach is open and the ring switch is on.</p>
     </section>
   );
 }
@@ -299,7 +295,7 @@ export function Settings(): ReactElement {
           )
         }
       </Load>
-      <BackgroundRestTimer />
+      <RestVoice />
       <Notifications />
     </>
   );

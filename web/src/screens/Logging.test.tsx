@@ -833,24 +833,24 @@ describe("QuickLog", () => {
 });
 
 describe("Settings", () => {
-  it("only enables the background rest timer after an explicit choice", async () => {
+  it("speaks the rest countdown until it is turned off", async () => {
     routeFetch({ "GET /api/profile": { body: { bodyweight_kg: 65 } } });
     await go("#/settings");
     renderLogging();
 
-    const section = screen.getByRole("region", { name: "Background rest timer" });
-    const toggle = within(section).getByRole("switch", { name: "Show rests outside Coach" });
-    expect(toggle).not.toBeChecked();
-    expect(section).toHaveTextContent("may pause music from another app");
+    const section = screen.getByRole("region", { name: "Rest countdown" });
+    const toggle = within(section).getByRole("switch", { name: "Spoken countdown" });
+    expect(toggle).toBeChecked();
+    expect(section).toHaveTextContent("over any music you are playing");
 
     fireEvent.click(toggle);
-    expect(toggle).toBeChecked();
+    expect(toggle).not.toBeChecked();
     cleanup();
     renderLogging();
 
     expect(
-      within(screen.getByRole("region", { name: "Background rest timer" })).getByRole("switch"),
-    ).toBeChecked();
+      within(screen.getByRole("region", { name: "Rest countdown" })).getByRole("switch"),
+    ).not.toBeChecked();
   });
 
   it("saves the body weight through the outbox", async () => {

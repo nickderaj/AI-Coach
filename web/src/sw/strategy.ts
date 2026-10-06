@@ -13,10 +13,10 @@
  */
 
 /** Bump to discard every cached response when the worker is next updated. */
-export const CACHE_NAME = "coach-v4";
+export const CACHE_NAME = "coach-v5";
 
-/** Static media needed for a background rest timer, including on the first offline workout. */
-const REST_TRACK_PATH = "/rest-countdown.m4a";
+/** The spoken rest countdown, needed on the first offline workout too. */
+const REST_TRACK_PATH = "/rest-voice.m4a";
 
 /** How long to wait for the network before answering from the cache. */
 export const NETWORK_TIMEOUT_MS = 3_000;
