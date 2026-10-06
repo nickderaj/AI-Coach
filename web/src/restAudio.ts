@@ -52,16 +52,24 @@ function restAudioController(audio: RestAudioElement, session: RestMediaSession 
     }
     audio.currentTime = position(TRACK_SECONDS - seconds);
   };
+  const resume = (): void => {
+    sync();
+    if (endsAt !== null) {
+      void Promise.resolve(audio.play()).catch(stop);
+    }
+  };
   audio.addEventListener("ended", stop);
   audio.addEventListener("play", sync);
+  if (session !== null) {
+    configureSystemControls(session, resume);
+  }
   return {
     start: (seconds): void => {
       endsAt = Date.now() + seconds * 1000;
-      sync();
       if (session !== null) {
         session.playbackState = "playing";
       }
-      void Promise.resolve(audio.play()).catch(stop);
+      resume();
     },
     shift: (seconds): void => {
       if (endsAt !== null) {
@@ -76,14 +84,13 @@ function restAudioController(audio: RestAudioElement, session: RestMediaSession 
 
 const SYSTEM_ACTIONS: MediaSessionAction[] = [
   "pause",
-  "play",
   "seekbackward",
   "seekforward",
   "seekto",
   "stop",
 ];
 
-function disableSystemControls(session: RestMediaSession): void {
+function configureSystemControls(session: RestMediaSession, resume: () => void): void {
   const ignore = (): void => undefined;
   for (const action of SYSTEM_ACTIONS) {
     try {
@@ -91,6 +98,11 @@ function disableSystemControls(session: RestMediaSession): void {
     } catch {
       // Safari versions expose different subsets; disable every action they accept.
     }
+  }
+  try {
+    session.setActionHandler("play", resume);
+  } catch {
+    // Some Safari versions do not expose the play action.
   }
 }
 
@@ -103,9 +115,6 @@ function browserController(): RestAudio {
   const audio = new Audio(TRACK_URL);
   audio.preload = "auto";
   const session = "mediaSession" in navigator ? navigator.mediaSession : null;
-  if (session !== null) {
-    disableSystemControls(session);
-  }
   if (session !== null && typeof MediaMetadata === "function") {
     session.metadata = new MediaMetadata({
       title: "Rest timer",

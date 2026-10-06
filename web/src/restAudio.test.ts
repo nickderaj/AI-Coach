@@ -35,6 +35,18 @@ function listener(audio: TestAudio, type: string): EventListener {
   return found;
 }
 
+function actionHandler(
+  setActionHandler: ReturnType<typeof vi.fn>,
+  action: MediaSessionAction,
+): () => void {
+  const call = setActionHandler.mock.calls.find((candidate) => candidate[0] === action);
+  const found = call?.[1] as (() => void) | undefined;
+  if (found === undefined) {
+    throw new TypeError(`${action} handler was not installed`);
+  }
+  return found;
+}
+
 describe("rest audio", () => {
   beforeEach(() => {
     localStorage.clear();
@@ -62,7 +74,7 @@ describe("rest audio", () => {
     expect(audio.currentTime).toBe(510);
     expect(session.playbackState).toBe("playing");
     now.mockReturnValue(31_000);
-    listener(audio, "play")(new Event("play"));
+    actionHandler(setActionHandler, "play")();
     expect(audio.currentTime).toBe(540);
     shiftRestAudio(15_000);
     expect(audio.currentTime).toBe(525);
@@ -77,12 +89,15 @@ describe("rest audio", () => {
       artist: "Coach",
       artwork: [{ src: "/icon-512.png", sizes: "512x512", type: "image/png" }],
     });
-    expect(audio.play).toHaveBeenCalledTimes(2);
+    expect(audio.play).toHaveBeenCalledTimes(3);
     expect(audio.pause).toHaveBeenCalledOnce();
     expect(audio.currentTime).toBe(0);
     expect(session.playbackState).toBe("none");
     expect(setActionHandler).toHaveBeenCalledTimes(6);
     expect(setActionHandler.mock.calls.every((call) => typeof call[1] === "function")).toBe(true);
+    expect(actionHandler(setActionHandler, "pause")).not.toBe(
+      actionHandler(setActionHandler, "play"),
+    );
   });
 
   it("clamps seeks and ignores a browser refusal to play", async () => {
